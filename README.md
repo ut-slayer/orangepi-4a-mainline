@@ -1,5 +1,7 @@
 # Orange Pi 4A (Allwinner T527 / A523) — mainline Linux 6.18.36
 
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-☕-FFDD00?logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/TU-USUARIO-BMC)
+
 Soporte **mainline** para la Orange Pi 4A (SoC Allwinner **T527**, familia A523 /
 `sun55iw3`), sobre un kernel **6.18.36 vanilla**. Serie de 66 parches +
 `defconfig` + device-tree de la placa.
@@ -68,6 +70,17 @@ inyecta display en el FDT): stubs `/soc/{de,sunxi-drm}`, `/memory` estático,
 regiones secure del firmware, `simple-framebuffer` sobre el FB de U-Boot, LED
 heartbeat. Con **U-Boot mainline** sobran. Se incluyen para reproducir el
 arranque tal cual, no como propuesta upstream.
+
+## ☕ Apoya el proyecto
+
+Esto es trabajo de ingeniería inversa en tiempo libre (bring-up de display, GPU,
+audio, red…). Si te ha servido para tu Orange Pi 4A, puedes invitarme a un café:
+
+- **Buy me a Coffee:** https://www.buymeacoffee.com/TU-USUARIO-BMC
+- **Ko-fi:** https://ko-fi.com/TU-USUARIO-KOFI
+- **GitHub Sponsors:** botón *Sponsor* arriba en el repo
+
+*(Sustituye los `TU-USUARIO-*` por tus handles reales; ver `.github/FUNDING.yml`.)*
 
 ## Créditos
 
