@@ -1,0 +1,12 @@
+SPDX-License-Identifier: GPL-2.0-only
+
+Estos parches se derivan del kernel Linux y se distribuyen bajo los mismos
+términos: GNU General Public License, versión 2 (GPL-2.0-only), tal y como
+figura en el fichero COPYING del árbol de fuentes de Linux:
+
+    https://www.kernel.org/doc/html/latest/process/license-rules.html
+    https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/COPYING
+
+Cada parche conserva sus propias cabeceras Signed-off-by / SPDX. El trabajo de
+bring-up del pipeline de display se basa en parciales de la comunidad minimyth2
+(también GPL-2.0), acreditados en los mensajes de commit correspondientes.
