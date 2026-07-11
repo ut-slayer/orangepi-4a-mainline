@@ -1,0 +1,37 @@
+From 5d9f07c7fa87622aea1ac92ee2259f19155c08b3 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 02:34:10 +0200
+Subject: [PATCH T527 13/66] dts: opi4a: rgmii puro (PHY sin delay) para barrer
+ syscon RX en vivo
+
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts     | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 543309b70..f73a18759 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -497,14 +497,14 @@ &gmac1 {
+ 	 * aporta delay de RX y el syscon (max 3.1ns) no centraba. La PHY
+ 	 * YT8531 pone el delay de RX (~2ns) via rgmii-rxid; el TX funciona
+ 	 * con 100ps de syscon (rx-internal-delay-ps=0 para no doblar RX). */
+-	phy-mode = "rgmii-rxid";
++	/* PHY sin delay (rgmii) -> TODO el delay RX lo pone el syscon del
++	 * MAC (bits [9:5] de 0x03000034), barrible en vivo con devmem para
++	 * hallar el optimo. tx-delay del syscon = 100ps. */
++	phy-mode = "rgmii";
+ 	phy-handle = <&ext_rgmii_phy>;
+ 	phy-supply = <&reg_cldo4>;
+ 	tx-internal-delay-ps = <100>;
+-	/* PHY pone 1.9ns de RXC (rgmii-rxid + PHY rx=1900); sumamos 300ps
+-	 * de syscon para el total ~2.2ns del BSP (RX marginal con solo
+-	 * 1.9ns: rx_packets subia de 1 en 1). */
+-	rx-internal-delay-ps = <300>;
++	rx-internal-delay-ps = <0>;
+ 	status = "okay";
+ };
+ 
+-- 
+2.47.3
+

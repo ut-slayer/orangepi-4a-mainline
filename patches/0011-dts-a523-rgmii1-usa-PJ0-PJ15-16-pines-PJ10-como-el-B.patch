@@ -1,0 +1,36 @@
+From 7ed86593143064b3ebeb3286862fe228840cae17 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 02:05:52 +0200
+Subject: [PATCH T527 11/66] dts: a523: rgmii1 usa PJ0-PJ15 (16 pines, +PJ10
+ como el BSP)
+
+Mainline se saltaba PJ10; el BSP del OPi4A mapea PJ0..PJ15 completo a gmac1.
+Con PJ10 sin mapear una senal de RX se quedaba fuera -> rx_packets=0 pese a
+link 1Gbps y TX ok. 4 cambios de delay no movieron el RX (0 crc_errors =
+no llega reloj), asi que el culpable es estructural: el pin que faltaba.
+---
+ arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index f1648c0c6..e9e22edb6 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -183,9 +183,13 @@ rgmii0_pins: rgmii0-pins {
+ 			};
+ 
+ 			rgmii1_pins: rgmii1-pins {
++				/* El OPi4A usa PJ0..PJ15 (16 pines, como el BSP);
++				 * mainline se saltaba PJ10, dejando una senal de RX
++				 * sin mapear -> rx_packets=0. */
+ 				pins = "PJ0", "PJ1", "PJ2", "PJ3", "PJ4",
+ 				       "PJ5", "PJ6", "PJ7", "PJ8", "PJ9",
+-				       "PJ11", "PJ12", "PJ13", "PJ14", "PJ15";
++				       "PJ10", "PJ11", "PJ12", "PJ13", "PJ14",
++				       "PJ15";
+ 				allwinner,pinmux = <5>;
+ 				function = "gmac1";
+ 				drive-strength = <40>;
+-- 
+2.47.3
+

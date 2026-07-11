@@ -1,0 +1,76 @@
+From 5a9e15ebf578486d62ef2ddf6f97882c6273d04d Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:15:29 +0200
+Subject: [PATCH T527 41/66] drm/sun4i: PHY Inno: tabla MPLL completa del BSP +
+ fixes de auditoria
+
+- Restaurar las 12 entradas prePLL/postPLL que el parche recorto
+  (verbatim de phy_inno.c del BSP 5.15; primer duplicado gana). Sin
+  ellas, 85.5 MHz (1360x768@60, el modo del monitor de esta placa) y
+  otros modos DMT caian al fallback de la entrada inferior.
+- INNO_PLL0_PIX_CLK_BP: bit1, no bit2 (phy_inno.h: bit2 es prepll_bp).
+- Limite superior de la tabla electrica exclusivo (<) como el BSP.
+
+Pendiente documentado (no bloqueante para 1080p-class): calibracion de
+terminacion 4K60/4K30 (DR5/DR6), LDO_cur y deteccion de version de
+silicio, svsret inicial y dw_phy_wait_lock final.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c b/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
+index 638a42c4c..ad79c1964 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
++++ b/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
+@@ -686,7 +686,7 @@ static const struct dw_hdmi_phy_config sun50i_h616_phy_config[] = {
+ #define INNO_CTL0_RST_AN		BIT(7)
+ #define INNO_PLL0			0xa0
+ #define INNO_PLL0_PREPLL_POW		BIT(0)	/* 0 = on, 1 = off */
+-#define INNO_PLL0_PIX_CLK_BP		GENMASK(2, 2)	/* via clk_div2 byte2 */
++#define INNO_PLL0_PIX_CLK_BP		BIT(1)	/* phy_inno.h: pix_clk_bp es bit1 de 0xA0 (bit2 = prepll_bp) */
+ #define INNO_PLL0_PREPLL_DIV		GENMASK(13, 8)
+ #define INNO_PLL0_PREPLL_FBDIV1		GENMASK(19, 16)
+ #define INNO_PLL0_PREPLL_FRA_CTL	GENMASK(21, 20)
+@@ -775,16 +775,28 @@ static const struct inno_phy_mpll sun55i_a523_inno_mpll[] = {
+ 	{ 27000,  0x00003601, 0x00020202, 0x00000603, 0x00000403, 0x03000000, 0x03280000, 0x03 },
+ 	{ 33750,  0x00003601, 0x00020202, 0x00000603, 0x00000403, 0x03000000, 0x03280000, 0x03 },
+ 	{ 36000,  0x00002401, 0x00010102, 0x00000101, 0x00000403, 0x03000000, 0x03280001, 0x03 },
++	{ 37125,  0x00006301, 0x00030301, 0x00000102, 0x00000403, 0x03000000, 0x03500004, 0x01 },
+ 	{ 40000,  0x00002801, 0x00010102, 0x00000101, 0x00000403, 0x03000000, 0x03140001, 0x01 },
++	{ 46406,  0x00006301, 0x00030301, 0x00000102, 0x00000403, 0x03000000, 0x03500004, 0x01 },
+ 	{ 65000,  0x00004101, 0x00010102, 0x00000101, 0x00000403, 0x03000000, 0x03140001, 0x01 },
++	{ 68250,  0x00005b01, 0x00030300, 0x00000102, 0x00000403, 0x03000000, 0x03140001, 0x01 },
+ 	{ 71000,  0x00004701, 0x00010102, 0x00000101, 0x00000403, 0x03000000, 0x03140001, 0x01 },
++	{ 72000,  0x00002401, 0x00000002, 0x00000101, 0x00000202, 0x03000000, 0x03140001, 0x01 },
+ 	{ 74250,  0x00006301, 0x00020201, 0x00000102, 0x00000403, 0x03000000, 0x03140001, 0x01 },
++	{ 75000,  0x00003201, 0x00020200, 0x00000100, 0x00000403, 0x03000000, 0x030a0001, 0x00 },
++	{ 79500,  0x00003501, 0x00020200, 0x00000100, 0x00000403, 0x03000000, 0x030a0001, 0x00 },
++	{ 85500,  0x00003901, 0x00020200, 0x00000100, 0x00000403, 0x03000000, 0x030a0001, 0x00 },
++	{ 88750,  0x00002c01, 0x00000002, 0x00000101, 0x00000202, 0x00000060, 0x03140001, 0x01 },
++	{ 92813,  0x00006301, 0x00020201, 0x00000102, 0x00000403, 0x03000000, 0x03140001, 0x01 },
++	{ 101000, 0x00006501, 0x00010102, 0x00000101, 0x00000403, 0x03000000, 0x030a0001, 0x00 },
+ 	{ 108000, 0x00002401, 0x00010100, 0x00000100, 0x00000202, 0x03000000, 0x030a0001, 0x00 },
++	{ 119000, 0x00007701, 0x00010102, 0x00000101, 0x00000403, 0x03000000, 0x030a0001, 0x00 },
+ 	{ 148500, 0x00006301, 0x00010101, 0x00000102, 0x00000202, 0x03000000, 0x030a0001, 0x00 },
+ 	{ 154000, 0x00004d01, 0x00000002, 0x00000101, 0x00000202, 0x03000000, 0x030a0001, 0x00 },
+ 	{ 185625, 0x00006301, 0x00010101, 0x00000102, 0x00000202, 0x03000000, 0x030a0001, 0x00 },
+ 	{ 234000, 0x00007501, 0x00000002, 0x00000303, 0x00000202, 0x03000000, 0x030a0000, 0x00 },
+ 	{ 297000, 0x00006301, 0x00000001, 0x00000102, 0x00000101, 0x03000000, 0x03140002, 0x00 },
++	{ 312250, 0x00006801, 0x00000001, 0x00000403, 0x00000101, 0x00555515, 0x030a0000, 0x00 },
+ 	{ 371250, 0x00007b01, 0x00000201, 0x00000103, 0x00000101, 0x000000c0, 0x000a0002, 0x00 },
+ 	{ 594000, 0x00006301, 0x00000200, 0x00000100, 0x00000101, 0x03000000, 0x00140004, 0x00 },
+ };
+@@ -944,7 +956,7 @@ sun55i_a523_inno_get_elec(unsigned int tmds_khz)
+ 
+ 	for (i = 0; i < ARRAY_SIZE(sun55i_a523_inno_elec); i++)
+ 		if (tmds_khz >= sun55i_a523_inno_elec[i].min_clk &&
+-		    tmds_khz <= sun55i_a523_inno_elec[i].max_clk)
++		    tmds_khz < sun55i_a523_inno_elec[i].max_clk)
+ 			return &sun55i_a523_inno_elec[i];
+ 	return &sun55i_a523_inno_elec[0];
+ }
+-- 
+2.47.3
+

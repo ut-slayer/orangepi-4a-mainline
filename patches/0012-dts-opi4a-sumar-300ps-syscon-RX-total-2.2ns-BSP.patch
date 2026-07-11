@@ -1,0 +1,32 @@
+From 1e44b16a5c5c045f93aed7560fa7e3d52f03604e Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 02:15:26 +0200
+Subject: [PATCH T527 12/66] dts: opi4a: sumar 300ps syscon RX (total ~2.2ns =
+ BSP)
+
+Con PJ10 el RX revivio pero marginal (rx_packets subia de 1 en 1, 0 crc).
+Anadimos rx-internal-delay-ps=300 en el MAC encima del 1.9ns de la PHY
+para el total ~2.2ns del BSP.
+---
+ arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index cdc678c37..543309b70 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -501,7 +501,10 @@ &gmac1 {
+ 	phy-handle = <&ext_rgmii_phy>;
+ 	phy-supply = <&reg_cldo4>;
+ 	tx-internal-delay-ps = <100>;
+-	rx-internal-delay-ps = <0>;
++	/* PHY pone 1.9ns de RXC (rgmii-rxid + PHY rx=1900); sumamos 300ps
++	 * de syscon para el total ~2.2ns del BSP (RX marginal con solo
++	 * 1.9ns: rx_packets subia de 1 en 1). */
++	rx-internal-delay-ps = <300>;
+ 	status = "okay";
+ };
+ 
+-- 
+2.47.3
+

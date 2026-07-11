@@ -1,0 +1,46 @@
+From 23eedbab2d3ab2d99df7cdcaecc1008cae3eb3a2 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:08:56 +0200
+Subject: [PATCH T527 37/66] arm64: dts: a523: nodos IOMMU (minimyth2 2805)
+
+Origen: serie display A523 de Justin Suess empaquetada en minimyth2
+(warpme), backport a 6.18.36.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index 97f9944c3..ede603c8e 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -174,6 +174,8 @@ mixer0: mixer@100000 {
+ 				clock-names = "bus", "mod";
+ 				resets = <&display_clocks RST_MIXER0>;
+ 				power-domains = <&pck600 PD_DE>;
++				/* Vendor micro-TLB map: the whole DE is master 5 */
++				iommus = <&iommu 5>;
+ 
+ 				ports {
+ 					#address-cells = <1>;
+@@ -432,6 +434,16 @@ ccu: clock-controller@2001000 {
+ 			#reset-cells = <1>;
+ 		};
+ 
++		iommu: iommu@2010000 {
++				compatible = "allwinner,sun55i-a523-iommu",
++				"allwinner,sun50i-h616-iommu";
++				reg = <0x02010000 0x1000>;
++				interrupts = <GIC_SPI 65 IRQ_TYPE_LEVEL_HIGH>;
++				clocks = <&ccu CLK_BUS_IOMMU>;
++				resets = <&ccu RST_BUS_IOMMU>;
++				#iommu-cells = <1>;
++		};
++
+ 		wdt: watchdog@2050000 {
+ 			compatible = "allwinner,sun55i-a523-wdt";
+ 			reg = <0x2050000 0x20>;
+-- 
+2.47.3
+

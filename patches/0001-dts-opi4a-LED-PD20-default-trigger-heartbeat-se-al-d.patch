@@ -1,0 +1,29 @@
+From 0cd1c210846598eca8039be364611073841989ff Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 21 Jun 2026 18:12:25 +0200
+Subject: [PATCH T527 01/66] =?UTF-8?q?dts:=20opi4a:=20LED=20PD20=20default?=
+ =?UTF-8?q?-trigger=3Dheartbeat=20(se=C3=B1al=20de=20vida=20sin=20UART)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 39a4e1947..65d8f52b3 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -37,6 +37,7 @@ led {
+ 			function = LED_FUNCTION_STATUS;
+ 			color = <LED_COLOR_ID_GREEN>;
+ 			gpios = <&pio 3 20 GPIO_ACTIVE_HIGH>; /* PD20 */
++			linux,default-trigger = "heartbeat";
+ 		};
+ 	};
+ 
+-- 
+2.47.3
+

@@ -1,0 +1,52 @@
+From 154a7abb306e483775323c8fa0627839dd3aab6b Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:13:44 +0200
+Subject: [PATCH T527 40/66] drm/sun4i: aplanar sun55i_a523_mixer0_cfg para la
+ struct de 6.18
+
+El initializer del parche usaba la sub-struct .lay_cfg del refactor DE33
+de 7.1; en 6.18 sun8i_mixer_cfg tiene los campos planos.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .config                             | 2 +-
+ drivers/gpu/drm/sun4i/sun8i_mixer.c | 8 +++-----
+ 2 files changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/.config b/.config
+index 812a775c7..28091ecf1 100644
+--- a/.config
++++ b/.config
+@@ -7237,7 +7237,7 @@ CONFIG_ARM_SMMU_V3=y
+ # CONFIG_ARM_SMMU_V3_SVA is not set
+ # CONFIG_TEGRA241_CMDQV is not set
+ # CONFIG_IOMMUFD is not set
+-# CONFIG_SUN50I_IOMMU is not set
++CONFIG_SUN50I_IOMMU=y
+ # CONFIG_VIRTIO_IOMMU is not set
+ 
+ #
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index 5655b7c12..148bc5d75 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -913,13 +913,11 @@ static const struct sun8i_mixer_cfg sun50i_h616_mixer0_cfg = {
+  * pipeline through the RCQ DMA rather than plain MMIO.
+  */
+ static const struct sun8i_mixer_cfg sun55i_a523_mixer0_cfg = {
+-	.lay_cfg = {
+-		.de_type	= SUN8I_MIXER_DE33,
+-		.scaler_mask	= 0xf,
+-		.scanline_yuv	= 4096,
+-	},
++	.ccsc		= CCSC_MIXER0_LAYOUT,
+ 	.de_type	= SUN8I_MIXER_DE33,
+ 	.mod_rate	= 600000000,
++	.scaler_mask	= 0xf,
++	.scanline_yuv	= 4096,
+ 	.ui_num		= 3,
+ 	.vi_num		= 1,
+ 	.map		= {0, 6, 7, 8},
+-- 
+2.47.3
+

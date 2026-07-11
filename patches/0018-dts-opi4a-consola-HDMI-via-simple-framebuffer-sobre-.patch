@@ -1,0 +1,86 @@
+From 3d54a80d65feaf4c8072af53a104ef067233e3be Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:16:55 +0200
+Subject: [PATCH T527 18/66] dts: opi4a: consola HDMI via simple-framebuffer
+ sobre el FB de U-Boot (ETAPA A display)
+
+Nodo simple-framebuffer en /chosen apuntando al FB que el U-Boot BSP deja
+pintado y escaneando tras bootm: 0xbbea2000 + 0x3fc000 (1360x768 ARGB8888,
+stride 5440), verificado en vivo contra el memreserve que
+sunxi_drm_kernel_para_flush() anade al FDT (/sys/firmware/fdt del 6.18).
+
+Reserva no-map de la region: el memreserve plano de U-Boot la deja en el
+linear map y en arm64 memremap(WC)/ioremap_wc fallan sobre RAM mapeada.
+
+El scanout sobrevive al boot porque los power domains PCK-600 (DE/VO0/VO1)
+quedan on y el cmdline del BSP ya lleva clk_ignore_unused; console=tty1 ya
+esta en bootargs -> fbcon sale por HDMI sin tocar nada mas. Kernel ya lleva
+DRM_SIMPLEDRM/FBDEV_EMULATION/FRAMEBUFFER_CONSOLE =y: solo cambia el DTB.
+
+CAVEAT: el modo (y con el la direccion/tamano) lo elige U-Boot segun el
+monitor; si se cambia de monitor, revalidar contra el memreserve del FDT
+vivo.
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 38 +++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 4569ad285..fec24dc58 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -19,7 +19,33 @@ aliases {
+ 	};
+ 
+ 	chosen {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
+ 		stdout-path = "serial0:115200n8";
++
++		/*
++		 * ETAPA A display: consola HDMI via SIMPLEDRM usando el FB que el
++		 * U-Boot BSP deja pintado (logo) y con el DE aun escaneando tras
++		 * bootm. Direccion/tamano VERIFICADOS EN VIVO 2026-07-08: es el
++		 * memreserve que sunxi_drm_kernel_para_flush() anade al FDT
++		 * (/sys/firmware/fdt del 6.18 corriendo): 0xbbea2000 + 0x3fc000
++		 * = 5440 (stride) x 768 -> 1360x768 32bpp. OJO: el modo lo elige
++		 * U-Boot segun el monitor conectado; si se cambia de monitor,
++		 * revalidar contra el memreserve del FDT vivo. El formato real es
++		 * ARGB8888 (fb0 del 5.15); declaramos x8r8g8b8 (mismo layout)
++		 * para que DRM no asuma blending por alpha.
++		 */
++		framebuffer@bbea2000 {
++			compatible = "simple-framebuffer";
++			reg = <0x0 0xbbea2000 0x0 0x003fc000>;
++			memory-region = <&uboot_fb>;
++			width = <1360>;
++			height = <768>;
++			stride = <5440>;
++			format = "x8r8g8b8";
++		};
+ 	};
+ 
+ 	/*
+@@ -74,6 +100,18 @@ bl31@48000000 {
+ 		optee@4941d000 {
+ 			reg = <0x0 0x4941d000 0x0 0x00be3000>;
+ 		};
++
++		/*
++		 * FB de U-Boot para el nodo simple-framebuffer de /chosen (ver
++		 * comentario alli). U-Boot ya mete un memreserve plano de esta
++		 * region, pero eso la deja en el linear map y en arm64 tanto
++		 * memremap(WC) como ioremap_wc FALLAN sobre RAM mapeada ->
++		 * simpledrm no podria mapearla. no-map es OBLIGATORIO.
++		 */
++		uboot_fb: framebuffer@bbea2000 {
++			reg = <0x0 0xbbea2000 0x0 0x003fc000>;
++			no-map;
++		};
+ 	};
+ 
+ 	/*
+-- 
+2.47.3
+

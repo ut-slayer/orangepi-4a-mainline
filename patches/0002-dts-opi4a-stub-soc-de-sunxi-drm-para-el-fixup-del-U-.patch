@@ -1,0 +1,47 @@
+From 0472736da7d7253ce3d9bdd9f7cc1ea34b3ac022 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 21 Jun 2026 19:12:48 +0200
+Subject: [PATCH T527 02/66] dts: opi4a: stub /soc/{de,sunxi-drm} para el fixup
+ del U-Boot BSP
+
+El bootm del U-Boot v2018.05-t527 llama sunxi_drm_kernel_para_flush() que
+inyecta su display en el FDT buscando /soc/sunxi-drm y /soc/de. Sin ellos el
+fixup corrompe el FDT y el kernel mainline cuelga tras 'Starting kernel'.
+Nodos vacios -> fixup OK, kernel los ignora. U-Boot intacto (5.15 los usa).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts   | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 65d8f52b3..d6cb2eed0 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -22,6 +22,23 @@ chosen {
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
++	/*
++	 * Stub nodes para el U-Boot BSP (v2018.05-t527): su bootm llama a
++	 * sunxi_drm_kernel_para_flush() que busca /soc/sunxi-drm y /soc/de en el
++	 * FDT para inyectar los parametros de su display. El DTB mainline no los
++	 * tiene -> el fixup falla a medias y corrompe el FDT -> el kernel cuelga.
++	 * Con estos nodos vacios el fixup completa sin error; el kernel mainline
++	 * los ignora (sin compatible). NO tocar el U-Boot: el 5.15 BSP necesita
++	 * esas inyecciones.
++	 */
++	soc {
++		sunxi-drm {
++		};
++
++		de {
++		};
++	};
++
+ 	ext_osc32k: ext-osc32k-clk {
+ 		#clock-cells = <0>;
+ 		compatible = "fixed-clock";
+-- 
+2.47.3
+

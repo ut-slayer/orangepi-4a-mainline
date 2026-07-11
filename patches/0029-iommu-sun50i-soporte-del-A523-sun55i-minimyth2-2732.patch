@@ -1,0 +1,163 @@
+From 9673d9ccbec12629fb7e20f4a22bb355857d455d Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:08:07 +0200
+Subject: [PATCH T527 29/66] iommu/sun50i: soporte del A523/sun55i (minimyth2
+ 2732)
+
+Origen: serie display A523 de Justin Suess empaquetada en minimyth2
+(warpme), backport a 6.18.36.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/iommu/sun50i-iommu.c | 75 ++++++++++++++++++++++++++++++------
+ 1 file changed, 63 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/iommu/sun50i-iommu.c b/drivers/iommu/sun50i-iommu.c
+index 422a03d5f..5473c4b7d 100644
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -19,6 +19,7 @@
+ #include <linux/of_platform.h>
+ #include <linux/platform_device.h>
+ #include <linux/pm.h>
++#include <linux/property.h>
+ #include <linux/pm_runtime.h>
+ #include <linux/reset.h>
+ #include <linux/sizes.h>
+@@ -44,6 +45,12 @@
+ #define IOMMU_TLB_ENABLE_REG		0x060
+ #define IOMMU_TLB_PREFETCH_REG		0x070
+ #define IOMMU_TLB_PREFETCH_MASTER_ENABLE(m)	BIT(m)
++/*
++ * Only prefetch valid pages into the TLB/PTW caches (bits present since
++ * the v14 revision of the IOMMU, e.g. A523; reserved/ignored on older
++ * revisions).
++ */
++#define IOMMU_TLB_PREFETCH_ONLY_VALID		(BIT(16) | BIT(17))
+ 
+ #define IOMMU_TLB_FLUSH_REG		0x080
+ #define IOMMU_TLB_FLUSH_PTW_CACHE		BIT(17)
+@@ -97,12 +104,18 @@
+ 
+ #define SPAGE_SIZE			4096
+ 
++struct sun50i_iommu_variant {
++	u32 tlb_prefetch;
++};
++
+ struct sun50i_iommu {
+ 	struct iommu_device iommu;
+ 
+ 	/* Lock to modify the IOMMU registers */
+ 	spinlock_t iommu_lock;
+ 
++	const struct sun50i_iommu_variant *variant;
++
+ 	struct device *dev;
+ 	void __iomem *base;
+ 	struct reset_control *reset;
+@@ -259,14 +272,26 @@ enum sun50i_iommu_aci {
+ #define SUN50I_PTE_ACI_MASK		GENMASK(7, 4)
+ #define SUN50I_PTE_PAGE_VALID		BIT(1)
+ 
++/*
++ * The IOMMU's output address space is 32 bits wide, while DRAM starts at
++ * 0x40000000, so on 4 GiB boards the top gigabyte of DRAM lies above the
++ * 32-bit boundary. The interconnect aliases IOMMU-side output addresses
++ * 0x0 - 0x40000000 (a hole from the IOMMU's point of view, as no DRAM
++ * lives there) onto that high gigabyte, so leaf page addresses must be
++ * folded into the alias window when mapping and unfolded when resolving.
++ * The vendor driver applies the same transformation for this whole IOMMU
++ * generation ("iommu phy" vs "cpu phy" in their pagetable code).
++ */
++#define SUN50I_IOMMU_DRAM_BASE		0x40000000UL
++
+ static phys_addr_t sun50i_pte_get_page_address(u32 pte)
+ {
+-	phys_addr_t paddr = pte & SUN50I_PTE_PAGE_ADDRESS_MASK;
++	phys_addr_t page = (phys_addr_t)pte & SUN50I_PTE_PAGE_ADDRESS_MASK;
+ 
+-	if (paddr < PHYS_OFFSET)
+-		paddr |= SZ_4G;
++	if (page < SUN50I_IOMMU_DRAM_BASE)
++		page += SZ_4G;
+ 
+-	return paddr;
++	return page;
+ }
+ 
+ static enum sun50i_iommu_aci sun50i_get_pte_aci(u32 pte)
+@@ -294,6 +319,8 @@ static u32 sun50i_mk_pte(phys_addr_t page, int prot)
+ 		aci = SUN50I_IOMMU_ACI_NONE;
+ 
+ 	flags |= FIELD_PREP(SUN50I_PTE_ACI_MASK, aci);
++	if (page >= SZ_4G)
++		page -= SZ_4G;
+ 	page &= SUN50I_PTE_PAGE_ADDRESS_MASK;
+ 	return page | flags | SUN50I_PTE_PAGE_VALID;
+ }
+@@ -456,12 +483,7 @@ static int sun50i_iommu_enable(struct sun50i_iommu *iommu)
+ 
+ 	iommu_write(iommu, IOMMU_TTB_REG, sun50i_domain->dt_dma);
+ 	iommu_write(iommu, IOMMU_TLB_PREFETCH_REG,
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(0) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(1) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(2) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(3) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(4) |
+-		    IOMMU_TLB_PREFETCH_MASTER_ENABLE(5));
++		    iommu->variant->tlb_prefetch);
+ 	iommu_write(iommu, IOMMU_BYPASS_REG, 0);
+ 	iommu_write(iommu, IOMMU_INT_ENABLE_REG, IOMMU_INT_MASK);
+ 	iommu_write(iommu, IOMMU_DM_AUT_CTRL_REG(SUN50I_IOMMU_ACI_NONE),
+@@ -1008,6 +1030,7 @@ static int sun50i_iommu_probe(struct platform_device *pdev)
+ 	iommu->domain = &sun50i_iommu_identity_domain;
+ 	platform_set_drvdata(pdev, iommu);
+ 	iommu->dev = &pdev->dev;
++	iommu->variant = device_get_match_data(&pdev->dev);
+ 
+ 	iommu->pt_pool = kmem_cache_create(dev_name(&pdev->dev),
+ 					   PT_SIZE, PT_SIZE,
+@@ -1070,9 +1093,37 @@ static int sun50i_iommu_probe(struct platform_device *pdev)
+ 	return ret;
+ }
+ 
++static const struct sun50i_iommu_variant sun50i_h6_variant = {
++	.tlb_prefetch = IOMMU_TLB_PREFETCH_MASTER_ENABLE(0) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(1) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(2) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(3) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(4) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(5),
++};
++
++/*
++ * The vendor driver ships the A523 with master prefetch disabled, citing a
++ * display-RCQ-related bug. Without prefetch, though, every micro-TLB miss
++ * stalls the DE fetch pipe and 4K scanout underruns to a dead screen (1080p
++ * survives). Enable prefetch together with the "only prefetch valid pages"
++ * bits new in this revision, which defuse prefetches of unmapped pages -
++ * the likely subject of the vendor's debugging.
++ */
++static const struct sun50i_iommu_variant sun55i_a523_variant = {
++	.tlb_prefetch = IOMMU_TLB_PREFETCH_MASTER_ENABLE(0) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(1) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(2) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(3) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(4) |
++			IOMMU_TLB_PREFETCH_MASTER_ENABLE(5) |
++			IOMMU_TLB_PREFETCH_ONLY_VALID,
++};
++
+ static const struct of_device_id sun50i_iommu_dt[] = {
+-	{ .compatible = "allwinner,sun50i-h6-iommu", },
+-	{ .compatible = "allwinner,sun50i-h616-iommu", },
++	{ .compatible = "allwinner,sun50i-h6-iommu", .data = &sun50i_h6_variant },
++	{ .compatible = "allwinner,sun50i-h616-iommu", .data = &sun50i_h6_variant },
++	{ .compatible = "allwinner,sun55i-a523-iommu", .data = &sun55i_a523_variant },
+ 	{ /* sentinel */ },
+ };
+ MODULE_DEVICE_TABLE(of, sun50i_iommu_dt);
+-- 
+2.47.3
+

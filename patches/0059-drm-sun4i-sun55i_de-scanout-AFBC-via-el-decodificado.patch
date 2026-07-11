@@ -1,0 +1,374 @@
+From 5f0ebef352e062016a5eab191cff34eae015141e Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 03:11:30 +0200
+Subject: [PATCH T527 59/66] drm/sun4i: sun55i_de: scanout AFBC via el
+ decodificador AFBD del v350
+
+Port del AFBD del BSP (lowlevel_de/afbd/de_fbd_atw.c) al canal UI phys 6:
+nuevo bloque RCQ de 0x58 bytes en channel_base+0x5000 (fbd_u_reg). Cuando
+el fb trae modifier AFBC, el AFBD sustituye al fetch del OVL (BSP:
+layer_en_cnt=0) y produce la misma ventana src hacia el VSU; el resto del
+datapath no cambia. Anunciamos AFBC 16x16 SPARSE[|YTR][|SPLIT] para los
+formatos RGB 8888 en el plano primario del mixer v35x (IN_FORMATS +
+format_mod_supported; layer->mixer se asigna antes de plane_init porque
+el hook corre al construir el blob). Programado verbatim del BSP:
+fmt=FBD_RGBA8888, sbs={1,1}, compbits {8,9,9,8}, header=dma_addr+offsets[0],
+blk_size sobre el fb completo, YTR desde el modifier.
+
+Con esto Mesa/panfrost negocia AFBC y el DE lo escanea directo (sin
+PAN_MESA_DEBUG=linear ni shadowfb): mismo mecanismo que usaba el BSP 5.15.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c      | 187 ++++++++++++++++++++++---
+ drivers/gpu/drm/sun4i/sun55i_de.h      |   8 ++
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c |  42 +++++-
+ 3 files changed, 220 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 02227b20e..e053a1d5e 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -25,6 +25,7 @@
+ 
+ #include <drm/drm_atomic.h>
+ #include <drm/drm_fb_dma_helper.h>
++#include <drm/drm_gem_dma_helper.h>
+ #include <drm/drm_vblank.h>
+ #include <drm/drm_fourcc.h>
+ #include <drm/drm_framebuffer.h>
+@@ -165,6 +166,31 @@
+  * layer (de_rtmx_chn_apply_csc: cdc_check_bypass == 1 -> de_cdc_disable).
+  */
+ #define SUN55I_DE_TFBD_BASE		0x1c5400
++
++/*
++ * AFBD (decodificador AFBC de ARM) del canal UI phys 6: channel_base+0x5000.
++ * Port del BSP de_fbd_atw.c (struct fbd_u_reg, bloque UI de 0x58 bytes, RCQ).
++ */
++#define SUN55I_DE_AFBD_BASE		0x1c5000
++#define SUN55I_AFBD_CTL			0x00
++#define SUN55I_AFBD_CTL_EN		BIT(0)
++#define SUN55I_AFBD_CTL_ALPHA_MODE(m)	((m) << 2)	/* 1=global 2=mixed */
++#define SUN55I_AFBD_CTL_ALPHA(a)	((u32)(a) << 24)
++#define SUN55I_AFBD_FMT_SEQ		0x04
++#define SUN55I_AFBD_IMG_SIZE		0x08
++#define SUN55I_AFBD_BLK_SIZE		0x0c
++#define SUN55I_AFBD_SRC_CROP		0x10
++#define SUN55I_AFBD_LAY_CROP		0x14
++#define SUN55I_AFBD_FMT			0x18
++#define SUN55I_AFBD_HD_LADDR		0x20
++#define SUN55I_AFBD_HD_HADDR		0x24
++#define SUN55I_AFBD_OVL_SIZE		0x30
++#define SUN55I_AFBD_OVL_COOR		0x34
++#define SUN55I_AFBD_BG_COLOR		0x38
++#define SUN55I_AFBD_COLOR0		0x50
++#define SUN55I_AFBD_COLOR1		0x54
++
++#define SUN55I_AFBD_FMT_RGBA8888	0x02	/* FBD_RGBA8888 del BSP */
+ #define SUN55I_DE_CCSC_BASE		0x1c0800
+ #define SUN55I_DE_CDC_BASE		0x1c8000
+ 
+@@ -413,6 +439,7 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 		[SUN55I_DE_BLK_VSU_COEFF2] = { SUN55I_DE_VSU_BASE,
+ 			SUN55I_DE_VSU_COEFF2_OFF, SUN55I_DE_VSU_COEFF_SIZE },
+ 		[SUN55I_DE_BLK_TFBD_CTL] = { SUN55I_DE_TFBD_BASE, 0, 4 },
++		[SUN55I_DE_BLK_AFBD]     = { SUN55I_DE_AFBD_BASE, 0, 0x58 },
+ 		[SUN55I_DE_BLK_CCSC_CTL] = { SUN55I_DE_CCSC_BASE, 0, 4 },
+ 		[SUN55I_DE_BLK_CDC_CTL]  = { SUN55I_DE_CDC_BASE, 0, 4 },
+ 	};
+@@ -786,8 +813,115 @@ static void sun55i_de_vsu_setup(struct sun8i_mixer *mixer,
+ }
+ 
+ /* turn the blender pipe 0 off (output falls back to the background color) */
++/*
++ * Modifiers AFBC que el AFBD del v350 decodifica para RGB 8888. El BSP
++ * anuncia 32x8|SPARSE|YTR|SPLIT pero su hardware programa igualmente 16x16
++ * (superblock_layout[0]); Mesa/panfrost produce 16x16, asi que anunciamos
++ * las variantes 16x16 y dejamos que Mesa elija la que sabe generar.
++ */
++static const u64 sun55i_de_afbc_modifiers[] = {
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_YTR |
++				AFBC_FORMAT_MOD_SPLIT),
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_YTR),
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_SPLIT),
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++				AFBC_FORMAT_MOD_SPARSE),
++};
++
++/* fmt_seq del BSP (de_afbd_apply_lay) por formato */
++static int sun55i_de_afbc_fmt_seq(u32 drm_fmt, u32 *seq)
++{
++	switch (drm_fmt) {
++	case DRM_FORMAT_ARGB8888:
++	case DRM_FORMAT_XRGB8888:
++		*seq = 0x1230;
++		return 0;
++	case DRM_FORMAT_ABGR8888:
++	case DRM_FORMAT_XBGR8888:
++		*seq = 0x3210;
++		return 0;
++	case DRM_FORMAT_RGBA8888:
++	case DRM_FORMAT_RGBX8888:
++		*seq = 0x0123;
++		return 0;
++	case DRM_FORMAT_BGRA8888:
++	case DRM_FORMAT_BGRX8888:
++		*seq = 0x2103;
++		return 0;
++	}
++	return -EINVAL;
++}
++
++bool sun55i_de_afbc_mod_supported(u32 drm_fmt, u64 modifier)
++{
++	u32 seq;
++	unsigned int i;
++
++	if (sun55i_de_afbc_fmt_seq(drm_fmt, &seq))
++		return false;
++	for (i = 0; i < ARRAY_SIZE(sun55i_de_afbc_modifiers); i++)
++		if (modifier == sun55i_de_afbc_modifiers[i])
++			return true;
++	return false;
++}
++
++/*
++ * Programa el bloque AFBD para un fb AFBC RGB8888 16x16 (port de
++ * de_afbd_apply_lay + de_fbd_get_info del BSP). El AFBD sustituye al OVL:
++ * produce la ventana src (0,0 src_w x src_h) hacia el VSU, como haria el
++ * overlay en el camino lineal.
++ */
++static void sun55i_de_afbd_stage(struct sun8i_mixer *mixer,
++				 struct drm_framebuffer *fb,
++				 u32 src_w, u32 src_h)
++{
++	struct sun55i_de_block *afbd = de_blk(mixer, SUN55I_DE_BLK_AFBD);
++	struct drm_gem_dma_object *gem = drm_fb_dma_get_gem_obj(fb, 0);
++	u64 addr = gem->dma_addr + fb->offsets[0];
++	bool ytr = fb->modifier &
++		   DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_YTR);
++	u32 seq, fmt;
++
++	sun55i_de_afbc_fmt_seq(fb->format->format, &seq);
++
++	/* enable + alpha global 0xff, sin rotacion (uch0 no la tiene) */
++	de_blk_write(afbd, SUN55I_AFBD_CTL, SUN55I_AFBD_CTL_EN |
++		     SUN55I_AFBD_CTL_ALPHA_MODE(1) | SUN55I_AFBD_CTL_ALPHA(0xff));
++	de_blk_write(afbd, SUN55I_AFBD_FMT_SEQ, seq);
++	de_blk_write(afbd, SUN55I_AFBD_IMG_SIZE,
++		     ((src_w - 1) & 0xfff) | (((src_h - 1) & 0xfff) << 16));
++	/* bloques del stream: sobre el tamano TOTAL del fb, no del crop */
++	de_blk_write(afbd, SUN55I_AFBD_BLK_SIZE,
++		     (DIV_ROUND_UP(fb->width, 16) & 0x3ff) |
++		     ((DIV_ROUND_UP(fb->height, 16) & 0x3ff) << 16));
++	de_blk_write(afbd, SUN55I_AFBD_SRC_CROP, 0);
++	de_blk_write(afbd, SUN55I_AFBD_LAY_CROP, 0);
++	/* fmt | yuv_tran<<7 | sb_layout(16x16=0)<<8 | sbs {1,1} (BSP RGB) */
++	fmt = SUN55I_AFBD_FMT_RGBA8888 | ((ytr ? 1 : 0) << 7) |
++	      (1 << 16) | (1 << 18);
++	de_blk_write(afbd, SUN55I_AFBD_FMT, fmt);
++	de_blk_write(afbd, SUN55I_AFBD_HD_LADDR, lower_32_bits(addr));
++	de_blk_write(afbd, SUN55I_AFBD_HD_HADDR, upper_32_bits(addr) & 0xff);
++	de_blk_write(afbd, SUN55I_AFBD_OVL_SIZE,
++		     ((src_w - 1) & 0x1fff) | (((src_h - 1) & 0x1fff) << 16));
++	de_blk_write(afbd, SUN55I_AFBD_OVL_COOR, 0);
++	de_blk_write(afbd, SUN55I_AFBD_BG_COLOR, 0xff000000);
++	/* compbits RGBA8888 {8,9,9,8}: color0=c0|c3<<16, color1=c2|c1<<16 */
++	de_blk_write(afbd, SUN55I_AFBD_COLOR0, 0x00ff00ff);
++	de_blk_write(afbd, SUN55I_AFBD_COLOR1, 0x01ff01ff);
++}
++
++static void sun55i_de_afbd_disable(struct sun8i_mixer *mixer)
++{
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_AFBD), SUN55I_AFBD_CTL, 0);
++}
++
+ static void sun55i_de_layer_disable(struct sun8i_mixer *mixer)
+ {
++	sun55i_de_afbd_disable(mixer);
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_OVL_LAY0),
+ 		     SUN55I_OVL_LAY_ATTCTL, 0);
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR),
+@@ -834,6 +968,14 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 		return;
+ 	}
+ 
++	if (fb->modifier != DRM_FORMAT_MOD_LINEAR &&
++	    !sun55i_de_afbc_mod_supported(fb->format->format, fb->modifier)) {
++		DRM_DEBUG_DRIVER("sun55i_de: unsupported modifier %016llx\n",
++				 fb->modifier);
++		sun55i_de_layer_disable(mixer);
++		return;
++	}
++
+ 	/* source crop (16.16) and on-screen destination */
+ 	src_w = drm_rect_width(&state->src) >> 16;
+ 	src_h = drm_rect_height(&state->src) >> 16;
+@@ -856,22 +998,35 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 	attr = de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR);
+ 	ctl  = de_blk(mixer, SUN55I_DE_BLK_BLD_CTL);
+ 
+-	/* --- de_ovl layer 0 (de_ovl_u_apply_lay) --- */
+-	attctl = SUN55I_OVL_ATTCTL_EN |
+-		 SUN55I_OVL_ATTCTL_ALPHA_MODE(SUN55I_OVL_ATTCTL_GLOBAL_ALPHA) |
+-		 SUN55I_OVL_ATTCTL_FMT(fmt) | SUN55I_OVL_ATTCTL_ALPHA(0xff);
+-	de_blk_write(lay, SUN55I_OVL_LAY_ATTCTL, attctl);
+-	de_blk_write(lay, SUN55I_OVL_LAY_MBSIZE, SUN55I_DE_OUT_SIZE(src_w, src_h));
+-	de_blk_write(lay, SUN55I_OVL_LAY_MBCOOR, 0);
+-	de_blk_write(lay, SUN55I_OVL_LAY_PITCH, fb->pitches[0]);
+-	de_blk_write(lay, SUN55I_OVL_LAY_TOP_LADDR, lower_32_bits(addr));
+-	de_blk_write(lay, SUN55I_OVL_LAY_BOT_LADDR, 0);
+-
+-	/* top_haddr: high byte packed per layer; layer 0 -> bits[7:0] */
+-	de_blk_write(para, SUN55I_OVL_PARA_TOP_HADDR,
+-		     upper_32_bits(addr) & 0xff);
+-	de_blk_write(para, SUN55I_OVL_PARA_WIN_SIZE,
+-		     SUN55I_DE_OUT_SIZE(src_w, src_h));
++	if (fb->modifier == DRM_FORMAT_MOD_LINEAR) {
++		sun55i_de_afbd_disable(mixer);
++
++		/* --- de_ovl layer 0 (de_ovl_u_apply_lay) --- */
++		attctl = SUN55I_OVL_ATTCTL_EN |
++			 SUN55I_OVL_ATTCTL_ALPHA_MODE(SUN55I_OVL_ATTCTL_GLOBAL_ALPHA) |
++			 SUN55I_OVL_ATTCTL_FMT(fmt) | SUN55I_OVL_ATTCTL_ALPHA(0xff);
++		de_blk_write(lay, SUN55I_OVL_LAY_ATTCTL, attctl);
++		de_blk_write(lay, SUN55I_OVL_LAY_MBSIZE,
++			     SUN55I_DE_OUT_SIZE(src_w, src_h));
++		de_blk_write(lay, SUN55I_OVL_LAY_MBCOOR, 0);
++		de_blk_write(lay, SUN55I_OVL_LAY_PITCH, fb->pitches[0]);
++		de_blk_write(lay, SUN55I_OVL_LAY_TOP_LADDR, lower_32_bits(addr));
++		de_blk_write(lay, SUN55I_OVL_LAY_BOT_LADDR, 0);
++
++		/* top_haddr: high byte packed per layer; layer 0 -> bits[7:0] */
++		de_blk_write(para, SUN55I_OVL_PARA_TOP_HADDR,
++			     upper_32_bits(addr) & 0xff);
++		de_blk_write(para, SUN55I_OVL_PARA_WIN_SIZE,
++			     SUN55I_DE_OUT_SIZE(src_w, src_h));
++	} else {
++		/*
++		 * AFBC: el AFBD sustituye al fetch del OVL (BSP:
++		 * layer_en_cnt=0) y produce la misma ventana src hacia el
++		 * VSU; el resto del datapath (VSU/BLD) no cambia.
++		 */
++		de_blk_write(lay, SUN55I_OVL_LAY_ATTCTL, 0);
++		sun55i_de_afbd_stage(mixer, fb, src_w, src_h);
++	}
+ 
+ 	/* --- blender: enable pipe 0, route to the channel, set geometry --- */
+ 	de_blk_write(attr, SUN55I_BLD_ATTR_PIPE_EN, SUN55I_BLD_PIPE_EN(0));
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index 64d8f1f40..222017fa9 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -80,6 +80,13 @@ enum {
+ 	SUN55I_DE_BLK_VSU_COEFF1,	/* y_vert_coeff (unity) */
+ 	SUN55I_DE_BLK_VSU_COEFF2,	/* c_hori_coeff (unity) */
+ 	SUN55I_DE_BLK_TFBD_CTL,	/* tiled-FB decoder ctrl: zeroed (de_tfbd_disable) */
++	/*
++	 * AFBD: decodificador AFBC (ARM FBC) del canal UI phys 6
++	 * (channel_base + 0x5000). Cuando esta activo SUSTITUYE al fetch del
++	 * OVL (el BSP pone layer_en_cnt=0) y produce la misma ventana hacia
++	 * el VSU->blender. BSP: lowlevel_de/afbd/de_fbd_atw.c (fbd_u_reg).
++	 */
++	SUN55I_DE_BLK_AFBD,
+ 	SUN55I_DE_BLK_CCSC_CTL,	/* channel CSC ctl: zeroed (en=0 bypass) */
+ 	SUN55I_DE_BLK_CDC_CTL,	/* channel CDC colour ctl: zeroed (de_cdc_disable) */
+ 	SUN55I_DE_BLK_NUM
+@@ -151,6 +158,7 @@ struct sun55i_de {
+ 	u32				arm_deferred;	/* arms pushed to the timer */
+ };
+ 
++bool sun55i_de_afbc_mod_supported(u32 drm_fmt, u64 modifier);
+ int sun55i_de_init(struct sun8i_mixer *mixer);
+ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 			const struct drm_display_mode *mode);
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index d0200d02c..e9d114239 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -264,11 +264,30 @@ static const struct drm_plane_helper_funcs sun8i_ui_layer_helper_funcs = {
+ 	.atomic_update	= sun8i_ui_layer_atomic_update,
+ };
+ 
++/*
++ * v35x: el canal UI primario tiene decodificador AFBC (AFBD). LINEAR vale
++ * para todo; AFBC solo en las combinaciones que sun55i_de decodifica.
++ * OJO: se invoca desde drm_universal_plane_init (construccion del blob
++ * IN_FORMATS), por eso layer->mixer se asigna ANTES de crear el plano.
++ */
++static bool sun8i_ui_layer_format_mod_supported(struct drm_plane *plane,
++						u32 format, u64 modifier)
++{
++	struct sun8i_layer *layer = plane_to_sun8i_layer(plane);
++
++	if (modifier == DRM_FORMAT_MOD_LINEAR)
++		return true;
++	if (!layer->mixer || !layer->mixer->cfg->uses_rcq)
++		return false;
++	return sun55i_de_afbc_mod_supported(format, modifier);
++}
++
+ static const struct drm_plane_funcs sun8i_ui_layer_funcs = {
+ 	.atomic_destroy_state	= drm_atomic_helper_plane_destroy_state,
+ 	.atomic_duplicate_state	= drm_atomic_helper_plane_duplicate_state,
+ 	.destroy		= drm_plane_cleanup,
+ 	.disable_plane		= drm_atomic_helper_disable_plane,
++	.format_mod_supported	= sun8i_ui_layer_format_mod_supported,
+ 	.reset			= drm_atomic_helper_plane_reset,
+ 	.update_plane		= drm_atomic_helper_update_plane,
+ };
+@@ -301,12 +320,28 @@ static const uint64_t sun8i_layer_modifiers[] = {
+ 	DRM_FORMAT_MOD_INVALID
+ };
+ 
++/* plano primario del mixer v35x (RCQ + AFBD): LINEAR + AFBC 16x16 */
++static const uint64_t sun55i_layer_modifiers[] = {
++	DRM_FORMAT_MOD_LINEAR,
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_YTR |
++				AFBC_FORMAT_MOD_SPLIT),
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_YTR),
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_SPLIT),
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++				AFBC_FORMAT_MOD_SPARSE),
++	DRM_FORMAT_MOD_INVALID
++};
++
+ struct sun8i_layer *sun8i_ui_layer_init_one(struct drm_device *drm,
+ 					    struct sun8i_mixer *mixer,
+ 					    int index)
+ {
+ 	enum drm_plane_type type = DRM_PLANE_TYPE_OVERLAY;
+ 	int channel = mixer->cfg->vi_num + index;
++	const uint64_t *modifiers = sun8i_layer_modifiers;
+ 	struct sun8i_layer *layer;
+ 	unsigned int plane_cnt;
+ 	int ret;
+@@ -318,12 +353,17 @@ struct sun8i_layer *sun8i_ui_layer_init_one(struct drm_device *drm,
+ 	if (index == 0)
+ 		type = DRM_PLANE_TYPE_PRIMARY;
+ 
++	/* format_mod_supported necesita el mixer durante plane_init */
++	layer->mixer = mixer;
++	if (mixer->cfg->uses_rcq && index == 0)
++		modifiers = sun55i_layer_modifiers;
++
+ 	/* possible crtcs are set later */
+ 	ret = drm_universal_plane_init(drm, &layer->plane, 0,
+ 				       &sun8i_ui_layer_funcs,
+ 				       sun8i_ui_layer_formats,
+ 				       ARRAY_SIZE(sun8i_ui_layer_formats),
+-				       sun8i_layer_modifiers, type, NULL);
++				       modifiers, type, NULL);
+ 	if (ret) {
+ 		dev_err(drm->dev, "Couldn't initialize layer\n");
+ 		return ERR_PTR(ret);
+-- 
+2.47.3
+

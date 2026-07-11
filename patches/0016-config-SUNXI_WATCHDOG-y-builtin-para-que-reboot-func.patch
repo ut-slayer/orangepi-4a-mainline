@@ -1,0 +1,107 @@
+From 038e22809b0cae1331391ed349783c16bc978827 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 04:04:05 +0200
+Subject: [PATCH T527 16/66] config: SUNXI_WATCHDOG=y (builtin) para que
+ 'reboot' funcione
+
+Sin restart handler, el reboot de mainline cae en PSCI SYSTEM_RESET
+del ATF BSP, que NO resetea: la placa se queda congelada en
+'reboot: Restarting system' hasta un corte de corriente fisico
+(observado 2026-07-08). El BSP reinicia via watchdog sunxi; con el
+driver builtin (el rootfs no tiene modulos del 6.18) mainline
+registra sunxi_wdt_restart y el reboot vuelve a funcionar.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .config | 22 +++++++++++-----------
+ 1 file changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/.config b/.config
+index d1c8eb45c..812a775c7 100644
+--- a/.config
++++ b/.config
+@@ -1910,11 +1910,12 @@ CONFIG_DMIID=y
+ CONFIG_INTEL_STRATIX10_SERVICE=y
+ CONFIG_INTEL_STRATIX10_RSU=m
+ CONFIG_SYSFB=y
+-# CONFIG_SYSFB_SIMPLEFB is not set
++CONFIG_SYSFB_SIMPLEFB=y
+ # CONFIG_ARM_FFA_TRANSPORT is not set
+ CONFIG_GOOGLE_FIRMWARE=y
+ CONFIG_GOOGLE_CBMEM=m
+ CONFIG_GOOGLE_COREBOOT_TABLE=m
++# CONFIG_GOOGLE_FRAMEBUFFER_COREBOOT is not set
+ # CONFIG_GOOGLE_MEMCONSOLE_COREBOOT is not set
+ # CONFIG_GOOGLE_VPD is not set
+ 
+@@ -2795,7 +2796,7 @@ CONFIG_DWMAC_SOCFPGA=m
+ CONFIG_DWMAC_SOPHGO=m
+ CONFIG_DWMAC_SUNXI=m
+ CONFIG_DWMAC_SUN8I=y
+-CONFIG_DWMAC_SUN55I=m
++CONFIG_DWMAC_SUN55I=y
+ # CONFIG_DWMAC_INTEL_PLAT is not set
+ # CONFIG_STMMAC_PCI is not set
+ CONFIG_NET_VENDOR_SUN=y
+@@ -4297,7 +4298,7 @@ CONFIG_ARM_SP805_WATCHDOG=y
+ CONFIG_ARM_SBSA_WATCHDOG=y
+ # CONFIG_CADENCE_WATCHDOG is not set
+ CONFIG_DW_WATCHDOG=y
+-CONFIG_SUNXI_WATCHDOG=m
++CONFIG_SUNXI_WATCHDOG=y
+ # CONFIG_MAX63XX_WATCHDOG is not set
+ # CONFIG_MAX77620_WATCHDOG is not set
+ CONFIG_ARM_SMC_WATCHDOG=y
+@@ -5108,7 +5109,7 @@ CONFIG_APERTURE_HELPERS=y
+ CONFIG_SCREEN_INFO=y
+ CONFIG_VIDEO=y
+ # CONFIG_AUXDISPLAY is not set
+-CONFIG_DRM=m
++CONFIG_DRM=y
+ 
+ #
+ # DRM debugging options
+@@ -5117,11 +5118,11 @@ CONFIG_DRM=m
+ # end of DRM debugging options
+ 
+ CONFIG_DRM_MIPI_DSI=y
+-CONFIG_DRM_KMS_HELPER=m
++CONFIG_DRM_KMS_HELPER=y
+ # CONFIG_DRM_PANIC is not set
+ CONFIG_DRM_CLIENT=y
+-CONFIG_DRM_CLIENT_LIB=m
+-CONFIG_DRM_CLIENT_SELECTION=m
++CONFIG_DRM_CLIENT_LIB=y
++CONFIG_DRM_CLIENT_SELECTION=y
+ CONFIG_DRM_CLIENT_SETUP=y
+ 
+ #
+@@ -5150,14 +5151,14 @@ CONFIG_DRM_DISPLAY_HDMI_STATE_HELPER=y
+ CONFIG_DRM_EXEC=m
+ CONFIG_DRM_GPUVM=m
+ CONFIG_DRM_GEM_DMA_HELPER=m
+-CONFIG_DRM_GEM_SHMEM_HELPER=m
++CONFIG_DRM_GEM_SHMEM_HELPER=y
+ CONFIG_DRM_SCHED=m
+ 
+ #
+ # Drivers for system framebuffers
+ #
+-# CONFIG_DRM_EFIDRM is not set
+-# CONFIG_DRM_SIMPLEDRM is not set
++CONFIG_DRM_SYSFB_HELPER=y
++CONFIG_DRM_SIMPLEDRM=y
+ # end of Drivers for system framebuffers
+ 
+ #
+@@ -5438,7 +5439,6 @@ CONFIG_FB_EFI=y
+ # CONFIG_FB_VIRTUAL is not set
+ # CONFIG_FB_METRONOME is not set
+ # CONFIG_FB_MB862XX is not set
+-# CONFIG_FB_SIMPLE is not set
+ # CONFIG_FB_SSD1307 is not set
+ # CONFIG_FB_SM712 is not set
+ CONFIG_FB_CORE=y
+-- 
+2.47.3
+

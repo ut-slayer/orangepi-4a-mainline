@@ -1,0 +1,425 @@
+From fcb0e82731592b9c93a46a995a789a0154ceac28 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 14:34:32 +0200
+Subject: [PATCH T527 63/66] drm/sun4i: sun55i_de: fix wedge v2 = modelo BSP:
+ RST_BUS_DE en quiesce/enable
+
+Un fault del puerto MBUS del DE durante el teardown de una sesion deja
+una transaccion sin ack que cuelga el puerto para siempre: registros
+correctos, fetch muerto (pantalla al color de fondo, 0 faults nuevos) y
+a veces arrastra el interconnect entero. Solo el reset completo del DE
+(CCU DE_BGR 0x0200160c bit16 = RST_BUS_DE) lo limpia - probado en vivo
+por el pulso de de-bringup (C4C); el reset del core disp0 en el detop
+que ya pulsaba quiesce/mode_set NO lo cura.
+
+Ademas habia un segundo bug independiente con el mismo sintoma: el
+helper atomico solo llama a mode_set cuando cambia el MODO; una
+transicion solo-active (DPMS, cambio de sesion con el mismo modo) pasa
+por atomic_disable (quiesce = core gated+reset) y atomic_enable pero
+NO por mode_set -> nadie reactivaba el core -> fetch muerto sin fault.
+
+Fix, calcado de sunxi_de_enable/disable del BSP (fuente de verdad):
+
+ - quiesce (atomic_disable): tras el gate del core, ASSERT de
+   RST_BUS_DE. El DE entero queda en reset mientras el display esta
+   apagado (modelo BSP), abortando en origen cualquier transaccion
+   colgada en vez de dejarla pudrirse hasta el proximo enable.
+
+ - nuevo op sunxi_engine.enable (al FINAL del struct, regla ABI),
+   llamado desde sun4i_crtc_atomic_enable ANTES de encender el TCON,
+   en TODOS los enables: pulso assert/deassert de RST_BUS_DE + re-init
+   MMIO completo (ungate core, MBUS clk, punteros RCQ, muxes de2tcon/
+   uch2core/port2chn, async bridge, buf depth, GLB) + full RCQ reload
+   (full_arms). Es el equivalente de rtmx_start del BSP; el flujo
+   pulso->init es el mismo que de-bringup+bind valido durante dias.
+
+ - mode_set queda solo con el timing del arm y el staging de tamanos
+   en la sombra RCQ (sin MMIO).
+
+Leccion del v1 revertido (8ffd879dd): mixer->reset (RST_MIXER0 del
+de33-clk, reg 0x08 bit0) NO es un reset en el v35x - el layout del
+bloque 0x8000 cambio y ese registro es el GATE DEL RELOJ MBUS
+(de_top.c del BSP: 0x00 reset+KEY, 0x04 clk+KEY, 0x08 mbus clk).
+reset_control_reset() ahi apagaba 10us el reloj del puerto DRAM del
+DE, con transacciones en vuelo -> interconnect muerto.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun4i_crtc.c   |   8 ++
+ drivers/gpu/drm/sun4i/sun55i_de.c    | 145 ++++++++++++++++++++++-----
+ drivers/gpu/drm/sun4i/sun55i_de.h    |  15 +++
+ drivers/gpu/drm/sun4i/sun8i_mixer.c  |  11 ++
+ drivers/gpu/drm/sun4i/sunxi_engine.h |  35 ++++++-
+ 5 files changed, 185 insertions(+), 29 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun4i_crtc.c b/drivers/gpu/drm/sun4i/sun4i_crtc.c
+index 588a6c040..8400891aa 100644
+--- a/drivers/gpu/drm/sun4i/sun4i_crtc.c
++++ b/drivers/gpu/drm/sun4i/sun4i_crtc.c
+@@ -142,6 +142,14 @@ static void sun4i_crtc_atomic_enable(struct drm_crtc *crtc,
+ 
+ 	DRM_DEBUG_DRIVER("Enabling the CRTC\n");
+ 
++	/*
++	 * (Re)initialize the engine while the TCON is still stopped. This
++	 * runs on every enable - unlike mode_set, which the helper skips
++	 * for active-only transitions (DPMS on, session switches with the
++	 * same mode) - so it is the one place that can undo quiesce().
++	 */
++	sunxi_engine_enable(scrtc->engine, &crtc->state->adjusted_mode);
++
+ 	sun4i_tcon_set_status(scrtc->tcon, encoder, true);
+ 
+ 	drm_crtc_vblank_on(crtc);
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index e053a1d5e..3cbc63b58 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -11,6 +11,7 @@
+  */
+ 
+ #include <linux/bitops.h>
++#include <linux/delay.h>
+ #include <linux/device.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/hrtimer.h>
+@@ -230,6 +231,14 @@
+ 
+ #define SUN55I_RCQ_ALIGN		32
+ 
++/*
++ * CCU DE_BGR: bit0 = BUS_DE gate (held enabled by de33-clk, never touched
++ * here), bit16 = RST_BUS_DE, active low - the reset of the ENTIRE DE complex
++ * (cores, detop, de33-clk block). See the @bus_reset comment in sun55i_de.h.
++ */
++#define SUN55I_CCU_DE_BGR_PHYS		0x0200160c
++#define SUN55I_CCU_DE_BGR_RST		BIT(16)
++
+ /*
+  * TEMP tunable: the TCON scanline the deferred arm aims for, and the latest
+  * line at which an in-IRQ arm is still considered safe. <0 derives both from
+@@ -367,6 +376,22 @@ static struct sun55i_de_block *de_blk(struct sun8i_mixer *mixer, unsigned int i)
+ 	return &mixer->de->blocks[i];
+ }
+ 
++/* assert/deassert RST_BUS_DE (raw CCU MMIO; bit0 bus gate preserved) */
++static void sun55i_de_bus_reset(struct sun55i_de *de, bool assert)
++{
++	u32 val;
++
++	if (!de->bus_reset)
++		return;
++
++	val = readl(de->bus_reset);
++	if (assert)
++		val &= ~SUN55I_CCU_DE_BGR_RST;
++	else
++		val |= SUN55I_CCU_DE_BGR_RST;
++	writel(val, de->bus_reset);
++}
++
+ /*
+  * write a u32 into a block's shadow; only a real CHANGE marks the block
+  * stage-dirty (asi un flip puro solo ensucia los bloques de direccion y
+@@ -470,6 +495,12 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 		dev_warn(mixer->dev,
+ 			 "sun55i_de: sin mapa MMIO del DE; forzando modo RCQ\n");
+ 
++	/* RST_BUS_DE del CCU para el fix del wedge (ver sun55i_de.h) */
++	de->bus_reset = devm_ioremap(mixer->dev, SUN55I_CCU_DE_BGR_PHYS, 4);
++	if (!de->bus_reset)
++		dev_warn(mixer->dev,
++			 "sun55i_de: sin mapa de DE_BGR; sin reset anti-wedge\n");
++
+ 	de->nheads = ALIGN(SUN55I_DE_BLK_NUM, 2);
+ 	heads_sz = ALIGN(de->nheads * sizeof(struct sun55i_de_rcq_head),
+ 			 SUN55I_RCQ_ALIGN);
+@@ -555,8 +586,12 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ }
+ 
+ /*
+- * Program the per-mode state: de_top control (MMIO) + datapath sizes (shadow).
+- * Mirrors the vendor de_rtmx_mgr_apply enable path for sun55iw3.
++ * Program the per-mode state: arm timing + datapath sizes (RCQ shadow only).
++ * The de_top/GLB MMIO programming lives in sun55i_de_enable(): the atomic
++ * helper only calls mode_set when the MODE changed, while an active-only
++ * transition (DPMS, session switch) still goes through quiesce()+enable() -
++ * any register the quiesce/reset tears down must be rebuilt in enable(),
++ * which runs on every light-up.
+  */
+ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 			const struct drm_display_mode *mode)
+@@ -566,7 +601,6 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	u32 size = SUN55I_DE_OUT_SIZE(w, h);
+ 	u32 vtotal = mode->crtc_vtotal, clock = mode->crtc_clock;
+ 	u32 vbp;
+-	u32 mux;
+ 
+ 	/*
+ 	 * Beam-gated arm timing (see sun55i_de_vblank_quirk). The TV-TCON line
+@@ -579,8 +613,6 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	 * ns_per_line = htotal / pixel_clock, per counter tick.
+ 	 */
+ 	hrtimer_cancel(&de->arm_timer);
+-	de->armed_once = false;	/* re-stage the whole datapath for the new mode */
+-	de->full_arms_left = 4;	/* re-issue the full reload on the next vblanks */
+ 	vbp = mode->crtc_vtotal - mode->crtc_vsync_end;
+ 	de->line_total = vtotal ? vtotal : 1;
+ 	de->arm_target = vbp + (vtotal * 3) / 100;
+@@ -614,6 +646,68 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	dbg_arm_now = dbg_arm_late = dbg_commits = dbg_coalesced = 0;
+ 	dbg_arm_busy = 0;
+ 
++	/* --- datapath: staged into the RCQ shadow --- */
++
++	/* blender: all pipes off -> output is the background color */
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR),
++		     SUN55I_BLD_ATTR_PIPE_EN, 0);
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CTL),
++		     SUN55I_BLD_CTL_OUT_SIZE, size);
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CTL),
++		     SUN55I_BLD_CTL_BG_COLOR, mixer->de_bg_color);
++	/* out_ctl: fmt_space=RGB(0), premul=0, interlace=0 */
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CK),
++		     SUN55I_BLD_CK_OUT_CTL, 0);
++
++	/* output formatter size */
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_FMT),
++		     SUN55I_FMT_SIZE_REG, size);
++
++	/* TEMP diagnostic (dev_info) — revert later */
++	dev_info(mixer->dev,
++		 "sun55i_de: mode_set %ux%u size=%08x bg=%08x\n",
++		 w, h, size, mixer->de_bg_color);
++}
++
++/*
++ * (Re)initialize the DE for scanout, with the TCON still stopped. Runs on
++ * EVERY CRTC enable (sun4i_crtc_atomic_enable), including the active-only
++ * transitions that skip mode_set. Mirrors the vendor sunxi_de_enable():
++ * deassert rst_bus_de + de_top re-init (rtmx_start).
++ *
++ * The full-DE reset pulse is the actual wedge fix (C4C/fix-wedge-v2): a
++ * fault on the DE's MBUS port during a teardown (fetch of a freed buffer /
++ * unmapped IOVA while a session dies) leaves an unacknowledged transaction
++ * that permanently hangs the port - registers read back fine but nothing is
++ * fetched (screen stuck at the background color), and further traffic can
++ * drag down the whole interconnect. Only RST_BUS_DE clears it (live-proven
++ * by the C4C de-bringup pulse; the DETOP core reset that quiesce() asserts
++ * does NOT). Safe here by construction: the TCON is off, so nothing is
++ * scanning, and everything the reset clears is reprogrammed right below
++ * (de_top/GLB by MMIO) or re-staged by the post-enable full RCQ reload
++ * (full_arms_left: blender/VSU/OVL/AFBD/FMT shadows survive in RAM).
++ */
++void sun55i_de_enable(struct sun8i_mixer *mixer,
++		      const struct drm_display_mode *mode)
++{
++	struct sun55i_de *de = mixer->de;
++	u32 size = SUN55I_DE_OUT_SIZE(mode->hdisplay, mode->vdisplay);
++	u32 mux;
++
++	hrtimer_cancel(&de->arm_timer);
++	de->armed_once = false;	/* re-stage the whole datapath */
++	de->full_arms_left = 4;	/* re-issue the full reload on the next vblanks */
++
++	/*
++	 * Reset pulse. quiesce() left the reset asserted (BSP model: the DE
++	 * is held in reset the whole time the display is off); assert again
++	 * anyway so a first-enable/boot path gets the same clean slate.
++	 */
++	sun55i_de_bus_reset(de, true);
++	udelay(20);
++	sun55i_de_bus_reset(de, false);
++	udelay(10);
++
+ 	/* --- de_top control registers: plain MMIO, latch immediately --- */
+ 
+ 	/*
+@@ -641,8 +735,8 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 		     mux | SUN55I_DETOP_MBUS_CLK_EN);
+ 
+ 	/*
+-	 * Re-program the RCQ head array pointer: the disp core reset of
+-	 * quiesce() may clear it, and it is otherwise only written at init.
++	 * Re-program the RCQ head array pointer: cleared by the reset pulse,
++	 * and otherwise only written at init.
+ 	 */
+ 	regmap_write(mixer->top_regs, SUN55I_MIXER_RCQ_HEAD_LADDR,
+ 		     lower_32_bits(de->heads_dma));
+@@ -667,7 +761,8 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	 *     shift ((phy-6)<<1)+16 = 16, value hw_disp(0) -> clear bits[17:16].
+ 	 *   port2uchn (0x28): blender port 1 -> phys chn 6.  width 4,
+ 	 *     shift port<<2 = 4, value phy+2 = 8 -> nibble[1] = 8 (== 0xa980).
+-	 * RMW so we only own phys6's routing; the bootloader left the rest.
++	 * RMW so we only own phys6's routing; the reset defaults do for the rest
++	 * (same values the C4C boot-time pulse + bind flow ran on for days).
+ 	 */
+ 	regmap_read(mixer->detop_regs, SUN55I_DETOP_UCH2CORE_MUX, &mux);
+ 	mux &= ~(0x3 << (((SUN55I_DE_OVL_UI_PHYS_CHN - 6) << 1) + 16));
+@@ -683,27 +778,10 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	regmap_write(mixer->top_regs, SUN8I_MIXER_GLOBAL_CTL,
+ 		     SUN8I_MIXER_GLOBAL_CTL_RT_EN);
+ 
+-	/* --- datapath: staged into the RCQ shadow --- */
+-
+-	/* blender: all pipes off -> output is the background color */
+-	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR),
+-		     SUN55I_BLD_ATTR_PIPE_EN, 0);
+-	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CTL),
+-		     SUN55I_BLD_CTL_OUT_SIZE, size);
+-	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CTL),
+-		     SUN55I_BLD_CTL_BG_COLOR, mixer->de_bg_color);
+-	/* out_ctl: fmt_space=RGB(0), premul=0, interlace=0 */
+-	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CK),
+-		     SUN55I_BLD_CK_OUT_CTL, 0);
+-
+-	/* output formatter size */
+-	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_FMT),
+-		     SUN55I_FMT_SIZE_REG, size);
+-
+ 	/* TEMP diagnostic (dev_info) — revert later */
+ 	dev_info(mixer->dev,
+-		 "sun55i_de: mode_set %ux%u size=%08x de2tcon_mux=%08x bg=%08x\n",
+-		 w, h, size, mux, mixer->de_bg_color);
++		 "sun55i_de: enable %ux%u size=%08x port2chn_mux=%08x\n",
++		 mode->hdisplay, mode->vdisplay, size, mux);
+ }
+ 
+ /*
+@@ -1252,6 +1330,19 @@ void sun55i_de_quiesce(struct sun8i_mixer *mixer, struct drm_crtc *crtc)
+ 	regmap_read(mixer->detop_regs, SUN55I_DETOP_RESET, &val);
+ 	regmap_write(mixer->detop_regs, SUN55I_DETOP_RESET,
+ 		     (val & ~BIT(0)) | SUN55I_DETOP_CLK_KEY);
++
++	/*
++	 * BSP sunxi_de_disable(): hold the WHOLE DE in reset while the display
++	 * is off. This aborts any MBUS transaction a teardown fault left
++	 * unacknowledged (the wedge) at its source, instead of letting the
++	 * hung port sit there - or drag the interconnect down - until the
++	 * next enable. sun55i_de_enable() deasserts and reprograms everything.
++	 * Note the asymmetry vs the core gate above is deliberate: this line
++	 * resets the whole DE complex including the de33-clk/detop block, so
++	 * it can only be released by the full re-init of enable(), never by a
++	 * plane update.
++	 */
++	sun55i_de_bus_reset(de, true);
+ }
+ 
+ /*
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index 222017fa9..af1adb001 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -121,6 +121,19 @@ struct sun55i_de {
+ 	 */
+ 	void __iomem			*mmio;
+ 
++	/*
++	 * CCU DE_BGR (0x0200160c): bit16 = RST_BUS_DE, the reset line of the
++	 * whole DE complex. The BSP (sunxi_de_enable/disable) asserts it while
++	 * the display is off and deasserts + fully re-initializes on enable -
++	 * it is the only reset that clears a hung transaction on the DE's MBUS
++	 * port (a fault during teardown leaves the fetch engine wedged: regs
++	 * read back fine but nothing is fetched until this reset). Mapped raw
++	 * because the reset framework handle is owned (exclusive) by the
++	 * de33-clk node - and the de33-clk RST_MIXER0 (0x8008 bit0) is NOT a
++	 * reset at all on v35x: that register is the MBUS clock gate (v1 bug).
++	 */
++	void __iomem			*bus_reset;
++
+ 	/*
+ 	 * Beam-gated arm. The RCQ latches ~immediately when armed and is not
+ 	 * frame-gated by hardware, so the arm (RCQ_CTL=1) must be issued while
+@@ -162,6 +175,8 @@ bool sun55i_de_afbc_mod_supported(u32 drm_fmt, u64 modifier);
+ int sun55i_de_init(struct sun8i_mixer *mixer);
+ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 			const struct drm_display_mode *mode);
++void sun55i_de_enable(struct sun8i_mixer *mixer,
++		      const struct drm_display_mode *mode);
+ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer,
+ 			    struct drm_plane_state *state);
+ void sun55i_de_commit(struct sun8i_mixer *mixer);
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index a085f8c07..080e3416b 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -449,12 +449,23 @@ static void sun8i_mixer_quiesce(struct sunxi_engine *engine,
+ 		sun55i_de_quiesce(mixer, crtc);
+ }
+ 
++static void sun8i_mixer_enable(struct sunxi_engine *engine,
++			       const struct drm_display_mode *mode)
++{
++	struct sun8i_mixer *mixer = engine_to_sun8i_mixer(engine);
++
++	/* v35x DE: reset pulse + full top re-init before the TCON starts */
++	if (mixer->cfg->uses_rcq)
++		sun55i_de_enable(mixer, mode);
++}
++
+ static const struct sunxi_engine_ops sun8i_engine_ops = {
+ 	.commit		= sun8i_mixer_commit,
+ 	.layers_init	= sun8i_layers_init,
+ 	.mode_set	= sun8i_mixer_mode_set,
+ 	.vblank_quirk	= sun8i_mixer_vblank_quirk,
+ 	.quiesce	= sun8i_mixer_quiesce,
++	.enable		= sun8i_mixer_enable,
+ };
+ 
+ static const struct regmap_config sun8i_mixer_regmap_config = {
+diff --git a/drivers/gpu/drm/sun4i/sunxi_engine.h b/drivers/gpu/drm/sun4i/sunxi_engine.h
+index f0816aa59..5b1a564b7 100644
+--- a/drivers/gpu/drm/sun4i/sunxi_engine.h
++++ b/drivers/gpu/drm/sun4i/sunxi_engine.h
+@@ -138,10 +138,25 @@ struct sunxi_engine_ops {
+ 	 * cannot apply anything after the timing stops, and would resume
+ 	 * on the next enable scanning its stale (freed) framebuffer.
+ 	 *
+-	 * This function is optional. (Kept last: hot-deployed modules
+-	 * compiled against the older layout must keep their offsets.)
++	 * This function is optional. (New members go last: hot-deployed
++	 * modules compiled against the older layout must keep their offsets.)
+ 	 */
+ 	void (*quiesce)(struct sunxi_engine *engine, struct drm_crtc *crtc);
++
++	/**
++	 * @enable:
++	 *
++	 * This callback (re)initializes the engine hardware for scanout.
++	 * It runs on every CRTC enable, before the TCON is started - unlike
++	 * @mode_set, which the atomic helper only calls when the mode
++	 * changed. An active-only transition (DPMS off/on, session switch
++	 * re-lighting the same mode) reaches @enable but NOT @mode_set, so
++	 * any state that @quiesce tore down must be rebuilt here, not there.
++	 *
++	 * This function is optional.
++	 */
++	void (*enable)(struct sunxi_engine *engine,
++		       const struct drm_display_mode *mode);
+ };
+ 
+ /**
+@@ -248,4 +263,20 @@ sunxi_engine_quiesce(struct sunxi_engine *engine, struct drm_crtc *crtc)
+ 	if (engine->ops && engine->ops->quiesce)
+ 		engine->ops->quiesce(engine, crtc);
+ }
++
++/**
++ * sunxi_engine_enable - (Re)initialize the engine before the TCON starts
++ * @engine:	pointer to the engine
++ * @mode:	the mode about to be scanned out
++ *
++ * Runs on every CRTC enable (including active-only transitions that skip
++ * mode_set), with the TCON still stopped.
++ */
++static inline void
++sunxi_engine_enable(struct sunxi_engine *engine,
++		    const struct drm_display_mode *mode)
++{
++	if (engine->ops && engine->ops->enable)
++		engine->ops->enable(engine, mode);
++}
+ #endif /* _SUNXI_ENGINE_H_ */
+-- 
+2.47.3
+

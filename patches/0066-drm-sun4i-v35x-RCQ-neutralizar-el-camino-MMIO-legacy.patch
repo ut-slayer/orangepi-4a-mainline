@@ -1,0 +1,135 @@
+From 6c0b0f340bec40831f19502e13483efb1bfdb1ad Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 15:45:59 +0200
+Subject: [PATCH T527 66/66] drm/sun4i: v35x RCQ: neutralizar el camino MMIO
+ legacy de los planos
+
+kwin usa el plano VI/overlay para el cursor. El atomic_update legacy de
+sun8i_ui/vi_layer escribe registros por MMIO directo: en el v35x los
+bloques de canal no latchean (doble buffer, solo via RCQ) pero los del
+BLENDER son registros vivos, asi que el update del cursor pisaba por
+AHB la geometria del pipe 0 que sun55i_de habia stageado para el
+primario: escritorio invisible, solo un cuadrado de 32x32 siguiendo al
+raton (la esquina del wallpaper), y una carrera visible arm-RCQ vs
+MMIO (el escritorio aparecia tras un arm y se iba al mover el raton
+- confirmado en vivo por el usuario). Cinnamon no lo sufria: muffin
+nunca toca los overlays.
+
+Dos piezas:
+ - uses_rcq: atomic_update de ui/vi_layer = no-op (el engine commit
+   stagea todo el datapath).
+ - uses_rcq: registrar SOLO el plano primario (canal UI 1, el unico
+   que el backend stagea hoy). Un plano registrado pero no stageado es
+   peor que no tenerlo: el compositor lo usa y no se ve. Sin overlays,
+   kwin compone el cursor por software (visible). El multi-plano
+   llegara cuando sun55i_de stagee mas canales.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun8i_mixer.c    | 37 ++++++++++++++++++++++++++
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 11 ++++++++
+ drivers/gpu/drm/sun4i/sun8i_vi_layer.c |  4 +++
+ 3 files changed, 52 insertions(+)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index 38821df36..fb473e051 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -360,6 +360,9 @@ static void sun8i_mixer_commit(struct sunxi_engine *engine,
+ 			     SUN8I_MIXER_GLOBAL_DBUFF_ENABLE);
+ }
+ 
++static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
++					     struct sunxi_engine *engine);
++
+ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
+ 					    struct sunxi_engine *engine)
+ {
+@@ -367,6 +370,10 @@ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
+ 	struct sun8i_mixer *mixer = engine_to_sun8i_mixer(engine);
+ 	int i;
+ 
++	/* v35x RCQ: solo el plano primario (canal UI 1), ver sun55i_layers_init */
++	if (mixer->cfg->uses_rcq)
++		return sun55i_layers_init(drm, engine);
++
+ 	planes = devm_kcalloc(drm->dev,
+ 			      mixer->cfg->vi_num + mixer->cfg->ui_num + 1,
+ 			      sizeof(*planes), GFP_KERNEL);
+@@ -402,6 +409,36 @@ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
+ 	return planes;
+ }
+ 
++/*
++ * v35x RCQ: el backend sun55i_de solo stagea (de momento) el canal UI
++ * primario. Registrar los planos VI/overlay sin stagearlos era peor que
++ * no tenerlos: el compositor los usa (kwin pone ahi el cursor), su
++ * atomic_update legacy pisaba registros vivos del blender y el plano ni
++ * siquiera se veia. Con solo el primario, los compositores componen el
++ * cursor por software (visible). Los demas canales llegaran con el
++ * multi-plano real.
++ */
++static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
++					     struct sunxi_engine *engine)
++{
++	struct sun8i_mixer *mixer = engine_to_sun8i_mixer(engine);
++	struct drm_plane **planes;
++	struct sun8i_layer *layer;
++
++	planes = devm_kcalloc(drm->dev, 2, sizeof(*planes), GFP_KERNEL);
++	if (!planes)
++		return ERR_PTR(-ENOMEM);
++
++	layer = sun8i_ui_layer_init_one(drm, mixer, 0);
++	if (IS_ERR(layer)) {
++		dev_err(drm->dev, "Couldn't initialize primary plane\n");
++		return ERR_CAST(layer);
++	}
++	planes[0] = &layer->plane;
++
++	return planes;
++}
++
+ static void sun8i_mixer_mode_set(struct sunxi_engine *engine,
+ 				 const struct drm_display_mode *mode)
+ {
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index e9d114239..cdfa5a467 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -246,6 +246,17 @@ static void sun8i_ui_layer_atomic_update(struct drm_plane *plane,
+ 	unsigned int zpos = new_state->normalized_zpos;
+ 	struct sun8i_mixer *mixer = layer->mixer;
+ 
++	/*
++	 * v35x RCQ: el engine commit (sun55i_de) stagea TODO el datapath.
++	 * Estas escrituras MMIO no latchean en los bloques de canal (doble
++	 * buffer, solo aplican via RCQ) PERO las del blender SI son registros
++	 * vivos: el atomic_update de un plano overlay (el cursor de kwin)
++	 * pisaba por AHB la geometria del pipe 0 staged para el primario
++	 * (escritorio invisible: un cuadrado de 32x32 siguiendo al raton).
++	 */
++	if (mixer->cfg->uses_rcq)
++		return;
++
+ 	if (!new_state->crtc || !new_state->visible)
+ 		return;
+ 
+diff --git a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+index e59105afa..1e7edcf1d 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+@@ -358,6 +358,10 @@ static void sun8i_vi_layer_atomic_update(struct drm_plane *plane,
+ 	unsigned int zpos = new_state->normalized_zpos;
+ 	struct sun8i_mixer *mixer = layer->mixer;
+ 
++	/* v35x RCQ: el engine commit stagea todo; ver sun8i_ui_layer.c */
++	if (mixer->cfg->uses_rcq)
++		return;
++
+ 	if (!new_state->crtc || !new_state->visible)
+ 		return;
+ 
+-- 
+2.47.3
+

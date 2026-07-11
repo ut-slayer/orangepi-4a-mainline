@@ -1,0 +1,51 @@
+From 676894fb3faa0f37eb02193a7bd645f5759c256b Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 21:51:01 +0200
+Subject: [PATCH T527 44/66] dts: opi4a: CMA 64MB clavada en
+ 0x43000000-0x48000000 (apertura real del DE)
+
+El boot 2 dejo la placa medio muerta: con alloc-ranges hasta 0x70000000
+la CMA cayo en 0x60000000, fuera de la apertura del DE (el parche X96Q
+documenta 0x43000000 alcanzable y 0x4b100000 NO). Fetch fuera de
+apertura = interconnect colgado. Ventana estricta segun el layout
+probado, 64MB bastan para el bring-up sin IOMMU.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts     | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index f6685d1bd..48c7440d0 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -592,17 +592,20 @@ hdmi_con_in: endpoint {
+ };
+ 
+ /*
+- * El DMA del DE (scanout y pool RCQ) solo alcanza DRAM baja; la CMA por
+- * defecto cae alta (~0xb9e00000 aqui) y el scanout leeria ceros (negro).
+- * alloc-ranges explicito para forzarla abajo (el parche original confiaba
+- * en la colocacion por defecto de su placa).
++ * El DMA del DE (scanout y pool RCQ) solo alcanza DRAM MUY baja: el parche
++ * original (X96Q, mismo die) observa que 0x43000000 es alcanzable pero
++ * 0x4b100000 ya NO. Con la ventana anterior (hasta 0x70000000) la CMA cayo
++ * en 0x60000000 -> fetch fuera de apertura -> cuelgue del interconnect a
++ * mitad de boot (boot 2, placa medio muerta). Ventana estricta como el
++ * layout probado: 0x43000000-0x48000000 (tras el kernel, antes del bl31),
++ * 64MB (suficiente para dumb buffers/fbcon del bring-up).
+  */
+ &{/reserved-memory} {
+ 	linux,cma {
+ 		compatible = "shared-dma-pool";
+ 		reusable;
+-		size = <0x0 0x10000000>;
+-		alloc-ranges = <0x0 0x40000000 0x0 0x30000000>;
++		size = <0x0 0x04000000>;
++		alloc-ranges = <0x0 0x43000000 0x0 0x05000000>;
+ 		linux,cma-default;
+ 	};
+ };
+-- 
+2.47.3
+

@@ -1,0 +1,29 @@
+From 976b3367e150158a18c074956a55de80b8184f08 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:08:05 +0200
+Subject: [PATCH T527 24/66] drm/sun4i: compatible display-engine del H616
+ (minimyth2 2407)
+
+Origen: serie display A523 de Justin Suess empaquetada en minimyth2
+(warpme), backport a 6.18.36.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun4i_drv.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/gpu/drm/sun4i/sun4i_drv.c b/drivers/gpu/drm/sun4i/sun4i_drv.c
+index c11dfb273..6986b3292 100644
+--- a/drivers/gpu/drm/sun4i/sun4i_drv.c
++++ b/drivers/gpu/drm/sun4i/sun4i_drv.c
+@@ -436,6 +436,7 @@ static const struct of_device_id sun4i_drv_of_table[] = {
+ 	{ .compatible = "allwinner,sun20i-d1-display-engine" },
+ 	{ .compatible = "allwinner,sun50i-a64-display-engine" },
+ 	{ .compatible = "allwinner,sun50i-h6-display-engine" },
++	{ .compatible = "allwinner,sun50i-h616-display-engine" },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(of, sun4i_drv_of_table);
+-- 
+2.47.3
+

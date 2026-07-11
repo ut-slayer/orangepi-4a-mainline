@@ -1,0 +1,53 @@
+From 300ec86cb2c9d87dc28a91c6257e8f9655519f20 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 23 Jun 2026 12:57:24 +0200
+Subject: [PATCH T527 05/66] dts: opi4a: reservar BL31 @0x48000000 (16MB
+ no-map)
+
+El BSP reserva esa region para BL31 (ATF, monitor EL3/PSCI). El DTB mainline
+no reservaba nada y su /memory(2GB) la abarca -> el kernel la usa como RAM y
+machaca BL31 -> tras el 1er heartbeat, una llamada PSCI cae en codigo corrupto
+-> cuelgue con LED fijo. Reservar (igual que el BSP) lo evita.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 23 +++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index e81adbc17..6e07f2726 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -35,6 +35,29 @@ memory@40000000 {
+ 		reg = <0x0 0x40000000 0x0 0x80000000>;
+ 	};
+ 
++	/*
++	 * El BSP 5.15 reserva esta region para BL31 (ARM Trusted Firmware),
++	 * el monitor seguro EL3 que atiende TODAS las llamadas PSCI (arranque
++	 * de nucleos SMP, idle, reset). El DTB mainline NO reservaba nada y su
++	 * /memory (2GB desde 0x40000000) abarca 0x48000000 -> el kernel ve esos
++	 * 16 MB como RAM libre, asigna paginas ahi y MACHACA BL31. El SMP
++	 * arranca antes del heartbeat (BL31 aun intacto) -> 1 latido; justo
++	 * despues una llamada PSCI cae en codigo corrupto -> cuelgue con el LED
++	 * fijo. Reservar la region (igual que el BSP) lo evita. no-map = el
++	 * kernel ni siquiera la mapea. El U-Boot BSP v2018 no inyecta esta
++	 * reserva en un DTB ajeno, por eso hay que ponerla estatica aqui.
++	 */
++	reserved-memory {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
++		bl31@48000000 {
++			reg = <0x0 0x48000000 0x0 0x01000000>;
++			no-map;
++		};
++	};
++
+ 	/*
+ 	 * Stub nodes para el U-Boot BSP (v2018.05-t527): su bootm llama a
+ 	 * sunxi_drm_kernel_para_flush() que busca /soc/sunxi-drm y /soc/de en el
+-- 
+2.47.3
+

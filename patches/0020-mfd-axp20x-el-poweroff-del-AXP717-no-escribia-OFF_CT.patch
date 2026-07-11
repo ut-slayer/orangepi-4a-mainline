@@ -1,0 +1,41 @@
+From 76a5b304ec89981c496b8cee81244ba883c09df2 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:32:34 +0200
+Subject: [PATCH T527 20/66] mfd: axp20x: el poweroff del AXP717 no escribia
+ OFF_CTRL (rango no writeable)
+
+axp20x_power_off() escribe AXP20X_OFF_CTRL (0x32) para el AXP717 (rama
+default), pero axp717_writeable_ranges no incluia ese registro: el
+regmap_write fallaba en silencio, el handler devolvia NOTIFY_DONE y la
+cadena de poweroff caia al SYSTEM_OFF de PSCI (que en el ATF BSP del
+T527 se cuelga -> la placa nunca se apagaba). Con el rango, el PMIC corta
+la alimentacion de verdad; el BSP (axp2101.c) apaga el AXP2202/AXP717
+escribiendo ese mismo registro 0x32.
+
+Candidato a upstream.
+---
+ drivers/mfd/axp20x.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/mfd/axp20x.c b/drivers/mfd/axp20x.c
+index c5f0ebae3..3e51d135c 100644
+--- a/drivers/mfd/axp20x.c
++++ b/drivers/mfd/axp20x.c
+@@ -222,6 +222,14 @@ static const struct regmap_range axp717_writeable_ranges[] = {
+ 	regmap_reg_range(AXP717_PMU_FAULT, AXP717_MODULE_EN_CONTROL_1),
+ 	regmap_reg_range(AXP717_MIN_SYS_V_CONTROL, AXP717_BOOST_CONTROL),
+ 	regmap_reg_range(AXP717_VSYS_V_POWEROFF, AXP717_VSYS_V_POWEROFF),
++	/*
++	 * axp20x_power_off() escribe AXP20X_OFF_CTRL (0x32) tambien para el
++	 * AXP717 (rama default del switch), pero este rango no estaba en la
++	 * tabla -> el regmap_write fallaba en silencio y el poweroff caia al
++	 * SYSTEM_OFF de PSCI (que en el ATF BSP del T527 se cuelga). El BSP
++	 * (axp2101.c) apaga el AXP2202/AXP717 escribiendo ese mismo registro.
++	 */
++	regmap_reg_range(AXP20X_OFF_CTRL, AXP20X_OFF_CTRL),
+ 	regmap_reg_range(AXP717_IRQ0_EN, AXP717_IRQ4_EN),
+ 	regmap_reg_range(AXP717_IRQ0_STATE, AXP717_IRQ4_STATE),
+ 	regmap_reg_range(AXP717_TS_PIN_CFG, AXP717_TS_PIN_CFG),
+-- 
+2.47.3
+

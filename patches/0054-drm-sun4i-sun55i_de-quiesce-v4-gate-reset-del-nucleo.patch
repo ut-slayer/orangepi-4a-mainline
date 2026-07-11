@@ -1,0 +1,252 @@
+From 4c410dacadeed6b6ad7e0d5a5e4b03144db48087 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Thu, 9 Jul 2026 18:49:27 +0200
+Subject: [PATCH T527 54/66] drm/sun4i: sun55i_de: quiesce v4 = gate+reset del
+ nucleo disp (fix definitivo modeset)
+
+El quiesce por RCQ (commit anterior) no podia funcionar: cuando el
+atomic_disable del CRTC corre, el helper YA ha apagado el encoder/bridge
+y el TCON no da pulsos de frame (STS congelado en 0x000/0x010 100ms, ni
+FRAME_END re-latchea), asi que ninguna carga RCQ puede aplicarse ahi.
+Sintomas: 'quiesce timeout' intermitente, y bloques a medio aplicar al
+re-habilitar -> el color escalaba con los pasos nuevos pero la ruta de
+alpha del canal quedaba con el paso viejo -> franjas verticales de alpha
+(negro->transparente) SOBRE una imagen correcta en modos escalados
+(1360x768/1080p); 720p 1:1 no escalaba y se veia bien.
+
+v4 = el camino del vendor (de_top_display_config enable=0 ->
+__de_mod_clk_enable(disp,0)): en quiesce, clock-gate + reset del nucleo
+disp0 en de_top (MMIO directo, funciona con el TCON muerto). Un nucleo
+gateado no puede hacer fetch -> DRM libera framebuffers sin fault y el
+pipeline interno no arrastra estado entre modos. En mode_set: ungate
+(clk+reset con el bit16 'key' del vendor) + reprogramar los punteros del
+RCQ (el reset los limpia) + la recarga total ya existente.
+
+Validado en placa: ciclo 720p->1360x768->720p->1080p->720p con 0 page
+faults y 0 quiesce timeouts; escalado limpio en todos los modos
+(frontend 1280x720 escalado por el VSU) y sin franjas.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun4i_crtc.c   |  2 +-
+ drivers/gpu/drm/sun4i/sun55i_de.c    | 80 +++++++++++++++++-----------
+ drivers/gpu/drm/sun4i/sun55i_de.h    |  3 +-
+ drivers/gpu/drm/sun4i/sun8i_mixer.c  |  5 +-
+ drivers/gpu/drm/sun4i/sunxi_engine.h |  7 +--
+ 5 files changed, 58 insertions(+), 39 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun4i_crtc.c b/drivers/gpu/drm/sun4i/sun4i_crtc.c
+index 3438b613d..588a6c040 100644
+--- a/drivers/gpu/drm/sun4i/sun4i_crtc.c
++++ b/drivers/gpu/drm/sun4i/sun4i_crtc.c
+@@ -119,7 +119,7 @@ static void sun4i_crtc_atomic_disable(struct drm_crtc *crtc,
+ 	 * staged disable once the frame pulses stop, and would resume
+ 	 * on the next enable scanning a freed framebuffer.
+ 	 */
+-	sunxi_engine_quiesce(scrtc->engine);
++	sunxi_engine_quiesce(scrtc->engine, crtc);
+ 
+ 	drm_crtc_vblank_off(crtc);
+ 
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index b98f16d41..02227b20e 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -25,6 +25,7 @@
+ 
+ #include <drm/drm_atomic.h>
+ #include <drm/drm_fb_dma_helper.h>
++#include <drm/drm_vblank.h>
+ #include <drm/drm_fourcc.h>
+ #include <drm/drm_framebuffer.h>
+ #include <drm/drm_modes.h>
+@@ -39,6 +40,9 @@
+  * de_top control registers, relative to the "detop" regmap (DE base + 0x8000).
+  * de_top.c: de_top_set_de2tcon_mux / de_top_set_rtmx_enable.
+  */
++#define SUN55I_DETOP_RESET		0x00	/* bit N: disp N core un-reset */
++#define SUN55I_DETOP_CLK		0x04	/* bit N: disp N core clock */
++#define SUN55I_DETOP_CLK_KEY		BIT(16)	/* vendor ORs it on every write */
+ #define SUN55I_DETOP_MBUS_CLK		0x08	/* bit0: DE master-port (DRAM) clk */
+ #define SUN55I_DETOP_DE2TCON_MUX	0x10	/* disp N @ bits[N*4 +:4] = TCON */
+ #define SUN55I_DETOP_UCH2CORE_MUX	0x24	/* phys UI chn -> core/disp mux */
+@@ -585,6 +589,19 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 
+ 	/* --- de_top control registers: plain MMIO, latch immediately --- */
+ 
++	/*
++	 * Ungate the disp0 core (clock + reset release, vendor
++	 * __de_mod_clk_enable order). The quiesce() of the previous
++	 * disable gated it so the channel could not fetch a freed
++	 * framebuffer while the display was down.
++	 */
++	regmap_read(mixer->detop_regs, SUN55I_DETOP_CLK, &mux);
++	regmap_write(mixer->detop_regs, SUN55I_DETOP_CLK,
++		     mux | BIT(0) | SUN55I_DETOP_CLK_KEY);
++	regmap_read(mixer->detop_regs, SUN55I_DETOP_RESET, &mux);
++	regmap_write(mixer->detop_regs, SUN55I_DETOP_RESET,
++		     mux | BIT(0) | SUN55I_DETOP_CLK_KEY);
++
+ 	/*
+ 	 * Enable the DE master-port (MBUS/DRAM) clock. This internal gate is
+ 	 * not a CCU clock; the BSP sets it in de_top_set_clk_enable. Without it
+@@ -596,6 +613,17 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	regmap_write(mixer->detop_regs, SUN55I_DETOP_MBUS_CLK,
+ 		     mux | SUN55I_DETOP_MBUS_CLK_EN);
+ 
++	/*
++	 * Re-program the RCQ head array pointer: the disp core reset of
++	 * quiesce() may clear it, and it is otherwise only written at init.
++	 */
++	regmap_write(mixer->top_regs, SUN55I_MIXER_RCQ_HEAD_LADDR,
++		     lower_32_bits(de->heads_dma));
++	regmap_write(mixer->top_regs, SUN55I_MIXER_RCQ_HEAD_HADDR,
++		     upper_32_bits(de->heads_dma));
++	regmap_write(mixer->top_regs, SUN55I_MIXER_RCQ_HEAD_LEN,
++		     de->nheads * sizeof(struct sun55i_de_rcq_head));
++
+ 	/* bind disp0 -> tcon2 (HDMI); RMW just our nibble */
+ 	regmap_read(mixer->detop_regs, SUN55I_DETOP_DE2TCON_MUX, &mux);
+ 	mux &= ~0xf;
+@@ -1041,46 +1069,34 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+  * the framebuffer, and when the TCON restarts with the new mode the DE
+  * resumes fetching the stale, now-unmapped address -> IOMMU fault on master
+  * 5 -> the DE MBUS port wedges until a full reset (C4C).
++ *
++ * No RCQ dance can work here: by the time the CRTC disable runs, the helper
++ * has already disabled the encoder/bridge chain and the TCON no longer
++ * delivers frame pulses (observed live: STS frozen at 0x000/0x010 for 100ms,
++ * not even FRAME_END re-latches), so a staged disable can never be applied.
++ * Instead do what the vendor display_config(enable=0) does: clock-gate and
++ * hold in reset the disp core in de_top - plain MMIO that works with the
++ * timing dead. A gated core cannot fetch, so DRM can free the scanned
++ * framebuffer; mode_set() ungates and the full reload re-stages everything.
+  */
+-void sun55i_de_quiesce(struct sun8i_mixer *mixer)
++void sun55i_de_quiesce(struct sun8i_mixer *mixer, struct drm_crtc *crtc)
+ {
+ 	struct sun55i_de *de = mixer->de;
+-	unsigned long flags;
+-	unsigned int attempt;
+-	u32 status = 0;
+-	int ret = -ETIMEDOUT;
++	u32 val;
+ 
+ 	hrtimer_cancel(&de->arm_timer);
++	de->arm_pending = false;
+ 
++	/* stage the channel off: first config the reload applies on enable */
+ 	sun55i_de_layer_disable(mixer);
+-	sun55i_de_commit(mixer);
+ 
+-	/*
+-	 * Arm immediately instead of waiting for the blanking window: a
+-	 * mid-frame apply can only glitch the frame that is being turned
+-	 * off anyway. Retry: do_arm may skip the kick while a previous
+-	 * load is in flight (BUSY gate), and a load is only guaranteed to
+-	 * be consumed at the next frame start (~17ms).
+-	 */
+-	for (attempt = 0; attempt < 3 && ret; attempt++) {
+-		spin_lock_irqsave(&de->arm_lock, flags);
+-		regmap_write(mixer->top_regs, SUN55I_MIXER_RCQ_STATUS,
+-			     SUN55I_MIXER_RCQ_STATUS_W1C);
+-		de->arm_pending = true;
+-		sun55i_de_do_arm(de);
+-		spin_unlock_irqrestore(&de->arm_lock, flags);
+-
+-		ret = regmap_read_poll_timeout(mixer->top_regs,
+-					       SUN55I_MIXER_RCQ_STATUS,
+-					       status,
+-					       status & SUN55I_MIXER_RCQ_STATUS_FINISHED,
+-					       500, 40000);
+-	}
+-
+-	if (ret)
+-		dev_warn(mixer->dev,
+-			 "sun55i_de: quiesce timeout, RCQ never finished (sts=%03x)\n",
+-			 status);
++	/* vendor __de_mod_clk_enable(disp0, 0): clk gate, then reset assert */
++	regmap_read(mixer->detop_regs, SUN55I_DETOP_CLK, &val);
++	regmap_write(mixer->detop_regs, SUN55I_DETOP_CLK,
++		     (val & ~BIT(0)) | SUN55I_DETOP_CLK_KEY);
++	regmap_read(mixer->detop_regs, SUN55I_DETOP_RESET, &val);
++	regmap_write(mixer->detop_regs, SUN55I_DETOP_RESET,
++		     (val & ~BIT(0)) | SUN55I_DETOP_CLK_KEY);
+ }
+ 
+ /*
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index c9bff4065..64d8f1f40 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -26,6 +26,7 @@
+ 
+ struct sun8i_mixer;
+ struct sun8i_layer;
++struct drm_crtc;
+ struct drm_display_mode;
+ struct drm_plane_state;
+ 
+@@ -156,7 +157,7 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer,
+ 			    struct drm_plane_state *state);
+ void sun55i_de_commit(struct sun8i_mixer *mixer);
+-void sun55i_de_quiesce(struct sun8i_mixer *mixer);
++void sun55i_de_quiesce(struct sun8i_mixer *mixer, struct drm_crtc *crtc);
+ void sun55i_de_vblank_quirk(struct sun8i_mixer *mixer, unsigned int cur_line);
+ 
+ #endif /* _SUN55I_DE_H_ */
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index a95175385..9fb31ea4e 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -439,13 +439,14 @@ static void sun8i_mixer_vblank_quirk(struct sunxi_engine *engine,
+ 		sun55i_de_vblank_quirk(mixer, cur_line);
+ }
+ 
+-static void sun8i_mixer_quiesce(struct sunxi_engine *engine)
++static void sun8i_mixer_quiesce(struct sunxi_engine *engine,
++				struct drm_crtc *crtc)
+ {
+ 	struct sun8i_mixer *mixer = engine_to_sun8i_mixer(engine);
+ 
+ 	/* v35x DE: latch the channel off while the TCON still runs */
+ 	if (mixer->cfg->uses_rcq)
+-		sun55i_de_quiesce(mixer);
++		sun55i_de_quiesce(mixer, crtc);
+ }
+ 
+ static const struct sunxi_engine_ops sun8i_engine_ops = {
+diff --git a/drivers/gpu/drm/sun4i/sunxi_engine.h b/drivers/gpu/drm/sun4i/sunxi_engine.h
+index a61178bde..f0816aa59 100644
+--- a/drivers/gpu/drm/sun4i/sunxi_engine.h
++++ b/drivers/gpu/drm/sun4i/sunxi_engine.h
+@@ -141,7 +141,7 @@ struct sunxi_engine_ops {
+ 	 * This function is optional. (Kept last: hot-deployed modules
+ 	 * compiled against the older layout must keep their offsets.)
+ 	 */
+-	void (*quiesce)(struct sunxi_engine *engine);
++	void (*quiesce)(struct sunxi_engine *engine, struct drm_crtc *crtc);
+ };
+ 
+ /**
+@@ -238,13 +238,14 @@ sunxi_engine_mode_set(struct sunxi_engine *engine,
+ /**
+  * sunxi_engine_quiesce - Stop engine memory fetches before the timing stops
+  * @engine:	pointer to the engine
++ * @crtc:	the CRTC being disabled (still active: vblanks must run)
+  *
+  * Must be called before the TCON feeding the engine is disabled.
+  */
+ static inline void
+-sunxi_engine_quiesce(struct sunxi_engine *engine)
++sunxi_engine_quiesce(struct sunxi_engine *engine, struct drm_crtc *crtc)
+ {
+ 	if (engine->ops && engine->ops->quiesce)
+-		engine->ops->quiesce(engine);
++		engine->ops->quiesce(engine, crtc);
+ }
+ #endif /* _SUNXI_ENGINE_H_ */
+-- 
+2.47.3
+

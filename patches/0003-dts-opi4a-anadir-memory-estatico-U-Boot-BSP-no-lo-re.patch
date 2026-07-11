@@ -1,0 +1,41 @@
+From 462b6ff0bdf98c3d273cad936aa1593bca4f606c Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 21 Jun 2026 19:35:07 +0200
+Subject: [PATCH T527 03/66] dts: opi4a: anadir /memory estatico (U-Boot BSP no
+ lo rellena)
+
+El U-Boot v2018.05-t527 no rellena /memory en el FDT (asume DTB con memory
+estatico, como el del BSP). El DTB mainline lo dejaba vacio -> kernel sin RAM
+-> cuelgue mudo instantaneo sin heartbeat. base 0x40000000, size 4GB (igual BSP).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts   | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index d6cb2eed0..35b00b0cd 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -22,6 +22,18 @@ chosen {
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
++	/*
++	 * El U-Boot BSP (v2018.05-t527) NO rellena /memory (asume que el DTB ya
++	 * lo trae, como el del BSP). El DTB mainline lo dejaba vacio -> el kernel
++	 * arranca sin saber donde esta la RAM -> cuelgue mudo instantaneo, sin
++	 * heartbeat. Definimos /memory estatico igual que el BSP: base 0x40000000.
++	 * (Si la placa es de 2GB usar size 0x80000000 en vez de 0x1 0x0.)
++	 */
++	memory@40000000 {
++		device_type = "memory";
++		reg = <0x0 0x40000000 0x1 0x0>;
++	};
++
+ 	/*
+ 	 * Stub nodes para el U-Boot BSP (v2018.05-t527): su bootm llama a
+ 	 * sunxi_drm_kernel_para_flush() que busca /soc/sunxi-drm y /soc/de en el
+-- 
+2.47.3
+

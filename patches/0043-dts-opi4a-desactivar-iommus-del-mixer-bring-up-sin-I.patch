@@ -1,0 +1,38 @@
+From 2cb64c2739be0ce302b9cd3fbd03609ae2440061 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:39:09 +0200
+Subject: [PATCH T527 43/66] dts: opi4a: desactivar iommus del mixer (bring-up
+ sin IOMMU, CMA baja)
+
+sun50i_iommu_map Oops (96000005) con el backport 2732 sobre el
+sun50i-iommu de 6.18 al crear los GEM del fbcon y del prime import.
+Sin traduccion, scanout+RCQ van fisicos a la CMA baja. Pendiente
+depurar el iommu para buffers altos/4K.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts    | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 8025a1b72..f6685d1bd 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -644,3 +644,14 @@ &display_clocks {
+ 	assigned-clock-parents = <&ccu CLK_PLL_VIDEO3_4X>;
+ 	assigned-clock-rates = <600000000>;
+ };
++
++/*
++ * El backport del IOMMU A523 (2732) crashea en sun50i_iommu_map sobre el
++ * sun50i-iommu de 6.18 (Oops al crear GEM/fbcon). Para el bring-up se
++ * desactiva la traduccion del DE: todo (RCQ + scanout) va fisico a la CMA
++ * baja (< 0x70000000, dentro de la apertura del DE segun la serie).
++ * Reactivar cuando se depure el driver (necesario para buffers altos/4K).
++ */
++&mixer0 {
++	/delete-property/ iommus;
++};
+-- 
+2.47.3
+

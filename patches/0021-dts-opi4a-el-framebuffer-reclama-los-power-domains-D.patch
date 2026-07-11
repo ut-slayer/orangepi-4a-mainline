@@ -1,0 +1,43 @@
+From 847fd5c3ccc46ef46529b5079b8272a8137043ee Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:54:30 +0200
+Subject: [PATCH T527 21/66] dts: opi4a: el framebuffer reclama los power
+ domains DE y VO0 del pck600
+
+Al cargar panfrost como modulo, TODOS los consumidores del pck600 quedan
+probados y su sync_state() apaga los dominios sin consumidor: DE y VO0
+mueren -> el scanout del FB de U-Boot se para y la pantalla se queda
+negra a mitad de boot (confirmado en vivo: DE/VO0 'off-0' en
+pm_genpd_summary tras modprobe panfrost; hasta hoy sobrevivian solo
+porque sin modulos la GPU nunca probaba y el sync_state quedaba
+pendiente para siempre). El binding simple-framebuffer acepta
+power-domains y simpledrm los gestiona (multi-dominio via genpd).
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts    | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index fec24dc58..ed13857b3 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -45,6 +45,17 @@ framebuffer@bbea2000 {
+ 			height = <768>;
+ 			stride = <5440>;
+ 			format = "x8r8g8b8";
++			/*
++			 * Reclamar los dominios del pipeline de display que dejo
++			 * encendidos U-Boot. Sin esto, en cuanto TODOS los
++			 * consumidores del pck600 prueban (p.ej. panfrost via
++			 * modulo), su sync_state() barre los dominios sin
++			 * consumidor y apaga DE y VO0 -> pantalla negra a mitad
++			 * de boot (visto en vivo 2026-07-08: DE/VO0 off-0 en
++			 * pm_genpd_summary tras modprobe panfrost). simpledrm
++			 * soporta multiples power-domains y los mantiene on.
++			 */
++			power-domains = <&pck600 PD_DE>, <&pck600 PD_VO0>;
+ 		};
+ 	};
+ 
+-- 
+2.47.3
+

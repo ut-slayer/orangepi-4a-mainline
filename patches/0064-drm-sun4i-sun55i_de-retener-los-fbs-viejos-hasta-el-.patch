@@ -1,0 +1,222 @@
+From 9cc7656a7cef68db41644c1a074de0c20041eba7 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 15:13:36 +0200
+Subject: [PATCH T527 64/66] drm/sun4i: sun55i_de: retener los fbs viejos hasta
+ el arm RCQ (FINISH BSP)
+
+El helper atomico libera los framebuffers viejos justo tras el evento de
+vblank, pero en el v35x el cambio real de direcciones solo aterriza con
+el arm del RCQ, que puede ir diferido (hrtimer) o incluso perderse (por
+eso existe full_arms_left). En ese hueco el GEM se libera y el IOMMU
+desmapea la IOVA mientras el DE sigue haciendo fetch -> Page fault del
+master 5 -> puerto MBUS colgado (wedge). Los teardown de sesion (el
+compositor moribundo destruye sus buffers gbm) lo disparaban SIEMPRE
+(12 faults por transicion observados con kwin), y como los light-up de
+lightdm/muffin/kwin no hacen modeset, el pulso de recovery del enable
+no corria y la sesion siguiente heredaba el motor muerto (pantalla
+negra con registros perfectos).
+
+El BSP no libera un buffer hasta comprobar el RCQ FINISH
+(de_top_check_display_rcq_update_finish). Mismo modelo aqui: en el
+commit se toma una referencia de cada fb reemplazado y se suelta dos
+arms despues (pending -> armed1 -> armed2 -> release, un salto por arm;
+dos frames cubren un load perdido). El put corre en una work (el free
+del GEM puede dormir). En quiesce el DE queda en reset y no puede hacer
+fetch: se retira todo inmediatamente.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c   | 76 +++++++++++++++++++++++++++++
+ drivers/gpu/drm/sun4i/sun55i_de.h   | 21 ++++++++
+ drivers/gpu/drm/sun4i/sun8i_mixer.c | 14 ++++++
+ 3 files changed, 111 insertions(+)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 3cbc63b58..e19ae7425 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -376,6 +376,64 @@ static struct sun55i_de_block *de_blk(struct sun8i_mixer *mixer, unsigned int i)
+ 	return &mixer->de->blocks[i];
+ }
+ 
++/* an old framebuffer held until the RCQ arm that retires it (see the .h) */
++struct sun55i_de_fb_hold {
++	struct list_head	node;
++	struct drm_framebuffer	*fb;
++};
++
++/*
++ * Reference an fb a commit is replacing, so its GEM object (and its IOMMU
++ * mapping) outlives the deferred RCQ arm that stops the DE fetching it.
++ * BSP semantics: buffers retire on RCQ FINISH, not on the vblank event.
++ */
++void sun55i_de_hold_fb(struct sun8i_mixer *mixer, struct drm_framebuffer *fb)
++{
++	struct sun55i_de *de = mixer->de;
++	struct sun55i_de_fb_hold *hold;
++	unsigned long flags;
++
++	hold = kmalloc(sizeof(*hold), GFP_KERNEL);
++	if (!hold)
++		return;	/* best effort: behaves like the unpatched driver */
++
++	drm_framebuffer_get(fb);
++	hold->fb = fb;
++
++	spin_lock_irqsave(&de->arm_lock, flags);
++	list_add_tail(&hold->node, &de->fbs_pending);
++	spin_unlock_irqrestore(&de->arm_lock, flags);
++}
++
++/* put the retired fbs from work context (a final put can sleep in GEM) */
++static void sun55i_de_fb_release_work(struct work_struct *work)
++{
++	struct sun55i_de *de = container_of(work, struct sun55i_de,
++					    fb_release_work);
++	struct sun55i_de_fb_hold *hold, *tmp;
++	unsigned long flags;
++	LIST_HEAD(gone);
++
++	spin_lock_irqsave(&de->arm_lock, flags);
++	list_splice_init(&de->fbs_release, &gone);
++	spin_unlock_irqrestore(&de->arm_lock, flags);
++
++	list_for_each_entry_safe(hold, tmp, &gone, node) {
++		drm_framebuffer_put(hold->fb);
++		kfree(hold);
++	}
++}
++
++/* age the holds one arm; caller holds arm_lock */
++static void sun55i_de_age_fb_holds(struct sun55i_de *de)
++{
++	list_splice_tail_init(&de->fbs_armed2, &de->fbs_release);
++	list_splice_tail_init(&de->fbs_armed1, &de->fbs_armed2);
++	list_splice_tail_init(&de->fbs_pending, &de->fbs_armed1);
++	if (!list_empty(&de->fbs_release))
++		schedule_work(&de->fb_release_work);
++}
++
+ /* assert/deassert RST_BUS_DE (raw CCU MMIO; bit0 bus gate preserved) */
+ static void sun55i_de_bus_reset(struct sun55i_de *de, bool assert)
+ {
+@@ -482,6 +540,11 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 	spin_lock_init(&de->arm_lock);
+ 	hrtimer_setup(&de->arm_timer, sun55i_de_arm_timer, CLOCK_MONOTONIC,
+ 		      HRTIMER_MODE_REL);
++	INIT_LIST_HEAD(&de->fbs_pending);
++	INIT_LIST_HEAD(&de->fbs_armed1);
++	INIT_LIST_HEAD(&de->fbs_armed2);
++	INIT_LIST_HEAD(&de->fbs_release);
++	INIT_WORK(&de->fb_release_work, sun55i_de_fb_release_work);
+ 
+ 	/* TEMP: map the TCON current-scan reg for arm-line diagnostics */
+ 	tcon_curline_io = devm_ioremap(mixer->dev, tcon_curline_phys & ~0x3, 4);
+@@ -1291,6 +1354,9 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 		if (line > dbg_arm_line_max)
+ 			dbg_arm_line_max = line;
+ 	}
++
++	/* this arm retires fb holds two arms old (see sun55i_de.h) */
++	sun55i_de_age_fb_holds(de);
+ }
+ 
+ /*
+@@ -1315,6 +1381,7 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ void sun55i_de_quiesce(struct sun8i_mixer *mixer, struct drm_crtc *crtc)
+ {
+ 	struct sun55i_de *de = mixer->de;
++	unsigned long flags;
+ 	u32 val;
+ 
+ 	hrtimer_cancel(&de->arm_timer);
+@@ -1343,6 +1410,15 @@ void sun55i_de_quiesce(struct sun8i_mixer *mixer, struct drm_crtc *crtc)
+ 	 * plane update.
+ 	 */
+ 	sun55i_de_bus_reset(de, true);
++
++	/* in reset the DE cannot fetch: every held fb is retirable now */
++	spin_lock_irqsave(&de->arm_lock, flags);
++	list_splice_tail_init(&de->fbs_pending, &de->fbs_release);
++	list_splice_tail_init(&de->fbs_armed1, &de->fbs_release);
++	list_splice_tail_init(&de->fbs_armed2, &de->fbs_release);
++	if (!list_empty(&de->fbs_release))
++		schedule_work(&de->fb_release_work);
++	spin_unlock_irqrestore(&de->arm_lock, flags);
+ }
+ 
+ /*
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index af1adb001..dc120bdda 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -169,6 +169,26 @@ struct sun55i_de {
+ 	u32				arm_seq;	/* RCQ arms issued */
+ 	u32				coalesced;	/* stages overwritten pre-arm */
+ 	u32				arm_deferred;	/* arms pushed to the timer */
++
++	/*
++	 * Old-framebuffer holds: the BSP only releases a scanout buffer after
++	 * the RCQ FINISH that applied its replacement
++	 * (de_top_check_display_rcq_update_finish); mainline's atomic helper
++	 * instead frees old fbs right after the vblank event, which can precede
++	 * the (deferred, droppable) RCQ arm -> the DE keeps fetching a freed,
++	 * IOMMU-unmapped buffer -> fault -> the MBUS port wedges. Session
++	 * teardowns (the dying compositor destroys its GEM buffers) hit this
++	 * every time. We take a reference on every replaced fb at commit and
++	 * only drop it two arms later (pending -> armed1 -> armed2 -> release,
++	 * one hop per arm; two frames covers a dropped load, the reason
++	 * full_arms_left exists). All lists under arm_lock; the put runs in
++	 * work context (GEM free can sleep).
++	 */
++	struct list_head		fbs_pending;	/* staged, not armed */
++	struct list_head		fbs_armed1;	/* aged one arm */
++	struct list_head		fbs_armed2;	/* aged two arms */
++	struct list_head		fbs_release;	/* ready for the put */
++	struct work_struct		fb_release_work;
+ };
+ 
+ bool sun55i_de_afbc_mod_supported(u32 drm_fmt, u64 modifier);
+@@ -180,6 +200,7 @@ void sun55i_de_enable(struct sun8i_mixer *mixer,
+ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer,
+ 			    struct drm_plane_state *state);
+ void sun55i_de_commit(struct sun8i_mixer *mixer);
++void sun55i_de_hold_fb(struct sun8i_mixer *mixer, struct drm_framebuffer *fb);
+ void sun55i_de_quiesce(struct sun8i_mixer *mixer, struct drm_crtc *crtc);
+ void sun55i_de_vblank_quirk(struct sun8i_mixer *mixer, unsigned int cur_line);
+ 
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index 080e3416b..38821df36 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -290,6 +290,8 @@ static void sun8i_mixer_commit(struct sunxi_engine *engine,
+ 	 */
+ 	if (mixer->cfg->uses_rcq) {
+ 		drm_for_each_plane(plane, state->dev) {
++			struct drm_plane_state *old_state;
++
+ 			if (!(plane->possible_crtcs & drm_crtc_mask(crtc)))
+ 				continue;
+ 
+@@ -297,6 +299,18 @@ static void sun8i_mixer_commit(struct sunxi_engine *engine,
+ 			if (!plane_state)
+ 				plane_state = plane->state;
+ 
++			/*
++			 * Keep the replaced fb mapped until the RCQ arm that
++			 * retires it lands (BSP: release on RCQ FINISH). The
++			 * atomic helper frees old fbs after the vblank event,
++			 * which can precede the deferred arm -> the DE fetches
++			 * an unmapped buffer -> fault -> wedged MBUS port.
++			 */
++			old_state = drm_atomic_get_old_plane_state(state, plane);
++			if (old_state && old_state->fb &&
++			    old_state->fb != plane_state->fb)
++				sun55i_de_hold_fb(mixer, old_state->fb);
++
+ 			sun55i_de_layer_update(mixer, plane_to_sun8i_layer(plane),
+ 					       plane_state);
+ 		}
+-- 
+2.47.3
+

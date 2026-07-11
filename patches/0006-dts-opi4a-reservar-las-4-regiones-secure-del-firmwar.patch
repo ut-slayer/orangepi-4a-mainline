@@ -1,0 +1,52 @@
+From 595ad833b81ba4022c05c64f4539da0909973306 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 23 Jun 2026 15:04:55 +0200
+Subject: [PATCH T527 06/66] dts: opi4a: reservar las 4 regiones secure del
+ firmware BSP (bl31+optee+2 sram)
+
+El U-Boot BSP reserva BL31+OP-TEE+shmem en el FDT del 5.15 pero no en el DTB
+mainline. Sacadas de /proc/iomem del 5.15. Reservar solo bl31 daba 1->2 latidos;
+con las 4 el kernel ya no machaca el firmware. (Aun asi cuelga tras 2 latidos:
+pendiente UART para ver que driver builtin se cuelga en device_initcall.)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 20 ++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 6e07f2726..fc8e84140 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -52,9 +52,27 @@ reserved-memory {
+ 		#size-cells = <2>;
+ 		ranges;
+ 
++		/*
++		 * El firmware del BSP (BL31 + OP-TEE + shared memory) ocupa VARIAS
++		 * regiones que el U-Boot BSP reserva en el FDT del 5.15 pero NO en
++		 * nuestro DTB ajeno. Sacadas de /proc/iomem del 5.15 vivo. Reservar
++		 * SOLO bl31 dejaba que el kernel machacara OP-TEE/shm -> cuelgue tras
++		 * 2 latidos. Reservamos las 4 (igual que el BSP).
++		 */
++		sec-sram1@42350000 {
++			reg = <0x0 0x42350000 0x0 0x00230000>;
++		};
++
++		sec-sram2@43000000 {
++			reg = <0x0 0x43000000 0x0 0x00094000>;
++		};
++
+ 		bl31@48000000 {
+ 			reg = <0x0 0x48000000 0x0 0x01000000>;
+-			no-map;
++		};
++
++		optee@4941d000 {
++			reg = <0x0 0x4941d000 0x0 0x00be3000>;
+ 		};
+ 	};
+ 
+-- 
+2.47.3
+

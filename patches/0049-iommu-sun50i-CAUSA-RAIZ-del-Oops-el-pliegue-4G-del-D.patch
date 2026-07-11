@@ -1,0 +1,78 @@
+From 55c6d5410be76a443fcc1a0639b0d99b448dec98 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 23:41:03 +0200
+Subject: [PATCH T527 49/66] iommu/sun50i: CAUSA RAIZ del Oops: el pliegue +4G
+ del DTE comparaba contra PHYS_OFFSET
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reproducido en vivo (kernel g8e4ddb343612 + dtb con iommus, Oops
+sun50i_iommu_unmap+0x44, fault ffff000100debffc): page_table =
+phys_to_virt(0x140debc00) = 0x40debc00|4G — el pliegue aplicado a una
+direccion de tabla PERFECTAMENTE valida.
+
+Con CONFIG_ARM64_VA_BITS_52 en la A55 del T527 (sin LPA2) el kernel cae
+a 48 bits en runtime y arm64 ajusta memstart_addr a 0xFFF1000040000000;
+PHYS_OFFSET deja de ser la base de la DRAM y "dte_addr < PHYS_OFFSET"
+pasa a ser siempre cierto: TODA tabla releida de un DTE se plegaba +4G
+y su phys_to_virt caia fuera del mapa lineal. En el H728 de minimyth2
+(VA48 nativo) la comparacion es correcta y por eso no les mordia. El
+2732 ya uso la constante SUN50I_IOMMU_DRAM_BASE en la version PTE; la
+del DTE (2409) se habia quedado con PHYS_OFFSET.
+
+map+0x18c (boot 1) era el mismo bug por el otro camino: el segundo map
+sobre una PT existente relee el DTE.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/iommu/sun50i-iommu.c | 21 +++++++++++++++++----
+ 1 file changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/iommu/sun50i-iommu.c b/drivers/iommu/sun50i-iommu.c
+index 2378333ed..715581b1a 100644
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -221,12 +221,23 @@ static u32 sun50i_iova_get_page_offset(dma_addr_t iova)
+ #define SUN50I_DTE_PT_ATTRS		GENMASK(1, 0)
+ #define SUN50I_DTE_PT_VALID		1
+ 
++/*
++ * OJO: comparar contra SUN50I_IOMMU_DRAM_BASE (constante), NUNCA contra
++ * PHYS_OFFSET. Con CONFIG_ARM64_VA_BITS_52 en silicio sin LPA2 (A55 del
++ * T527) el kernel cae a 48 bits y ajusta memstart_addr a un valor enorme
++ * (0xFFF1000040000000), asi que "addr < PHYS_OFFSET" es SIEMPRE cierto y
++ * el pliegue +4G corrompia el puntero de CADA tabla releida de un DTE
++ * (Oops en map+0x18c / unmap+0x44). El 2732 ya cambio la version PTE a
++ * la constante; esta se habia quedado con PHYS_OFFSET (2409).
++ */
++#define SUN50I_IOMMU_DRAM_BASE		0x40000000UL
++
+ static phys_addr_t sun50i_dte_get_pt_address(u32 dte)
+ {
+ 	phys_addr_t dte_addr = dte & SUN50I_DTE_PT_ADDRESS_MASK;
+ 
+-	if (dte_addr < PHYS_OFFSET)
+-		dte_addr |= SZ_4G;
++	if (dte_addr < SUN50I_IOMMU_DRAM_BASE)
++		dte_addr += SZ_4G;
+ 
+ 	return dte_addr;
+ }
+@@ -294,9 +305,11 @@ enum sun50i_iommu_aci {
+  * lives there) onto that high gigabyte, so leaf page addresses must be
+  * folded into the alias window when mapping and unfolded when resolving.
+  * The vendor driver applies the same transformation for this whole IOMMU
+- * generation ("iommu phy" vs "cpu phy" in their pagetable code).
++ * generation ("iommu phy" vs "cpu phy" in their pagetable code:
++ * cpu_phy_to_iommu_phy / iommu_phy_to_cpu_phy, BSP
++ * sunxi-iommu-pgtable.h). SUN50I_IOMMU_DRAM_BASE se define arriba,
++ * junto al descodificador de DTEs, que usa el mismo pliegue.
+  */
+-#define SUN50I_IOMMU_DRAM_BASE		0x40000000UL
+ 
+ static phys_addr_t sun50i_pte_get_page_address(u32 pte)
+ {
+-- 
+2.47.3
+

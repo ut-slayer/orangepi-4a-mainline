@@ -1,0 +1,28 @@
+From 50b10cf996beb0fc895b7037e85477a6492333cd Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 21 Jun 2026 19:41:03 +0200
+Subject: [PATCH T527 04/66] dts: opi4a: /memory a 2GB (la placa es de 2GB, no
+ 4GB)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 35b00b0cd..e81adbc17 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -31,7 +31,8 @@ chosen {
+ 	 */
+ 	memory@40000000 {
+ 		device_type = "memory";
+-		reg = <0x0 0x40000000 0x1 0x0>;
++		/* OPi4A 2GB: base 0x40000000, size 0x80000000 (2 GiB) */
++		reg = <0x0 0x40000000 0x0 0x80000000>;
+ 	};
+ 
+ 	/*
+-- 
+2.47.3
+

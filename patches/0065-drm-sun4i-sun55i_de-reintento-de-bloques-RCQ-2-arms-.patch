@@ -1,0 +1,136 @@
+From 591431e5b0246f1bd1bc597f8308e7a82b26f476 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 15:25:57 +0200
+Subject: [PATCH T527 65/66] drm/sun4i: sun55i_de: reintento de bloques RCQ (2
+ arms por cambio staged)
+
+Un load del RCQ puede dropear bloques individuales (el motivo original
+de full_arms_left tras un mode_set). Con el dirty solo-en-cambios, un
+bloque dropeado fuera de la ventana de full-arms no se reintentaba
+JAMAS: la sombra ya coincidia con lo staged, asi que el siguiente
+commit escribia dirty=0 en su head y el hardware quedaba divergido para
+siempre. Visto en vivo tras ciclos de sesion de lightdm: BLD pipe_en=0
+en hardware con 0x101 en la sombra -> pantalla negra eterna (solo bg)
+con el OVL perfectamente programado y cero faults.
+
+Cada cambio staged se convierte ahora en un presupuesto arms_left=2 por
+bloque; do_arm escribe los head dirty desde ese presupuesto y mantiene
+arm_pending mientras quede budget, de modo que todo cambio viaja en 2
+loads consecutivos (re-aplicar la sombra es idempotente y son ~2KB).
+Los full-arms post-modeset siguen marcando todo dirty.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 53 +++++++++++++++++++++++++------
+ drivers/gpu/drm/sun4i/sun55i_de.h | 12 +++++++
+ 2 files changed, 56 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index e19ae7425..659a5e980 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -1210,27 +1210,30 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ 	unsigned int i;
+ 
+ 	/*
+-	 * Volcar el dirty ACUMULADO de cada bloque (solo cambios reales, ver
+-	 * de_blk_write) al head que consume el hardware. Reload completo hasta
+-	 * que el datapath se haya armado una vez / durante los full-arms de un
+-	 * mode_set. flip_min=N fuerza el comportamiento antiguo (todo dirty
+-	 * siempre). El flip_min antiguo pisaba el dirty de bloques con cambios
+-	 * reales (enable del blender sin mode_set no viajaba: negro C4).
++	 * Convertir el dirty ACUMULADO de cada bloque (solo cambios reales,
++	 * ver de_blk_write) en un presupuesto de 2 arms (arms_left). El head
++	 * dirty que consume el hardware se escribe en do_arm: un load RCQ
++	 * puede dropear bloques, y escribir el head aqui (y solo una vez)
++	 * dejaba el drop sin reintento para siempre (ver arms_left en el .h).
++	 * Reload completo hasta que el datapath se haya armado una vez /
++	 * durante los full-arms de un mode_set. flip_min=N fuerza el
++	 * comportamiento antiguo (todo dirty siempre).
+ 	 */
++	spin_lock_irqsave(&de->arm_lock, flags);
+ 	for (i = 0; i < SUN55I_DE_BLK_NUM; i++) {
+ 		struct sun55i_de_block *blk = &de->blocks[i];
+ 		bool dirty = !flip_min || !de->armed_once ||
+ 			     de->full_arms_left > 0 ||
+ 			     blk->stage_dirty;
+ 
+-		blk->head->dirty = cpu_to_le32(dirty);
++		if (dirty)
++			blk->arms_left = 2;
+ 		blk->stage_dirty = false;
+ 	}
+ 
+-	/* ensure shadow + heads are visible to the DMA before it is armed */
++	/* ensure the staged shadow is visible to the DMA before any arm */
+ 	wmb();
+ 
+-	spin_lock_irqsave(&de->arm_lock, flags);
+ 	/* TEMP: a stage landing while one is still pending = no vblank in between */
+ 	if (de->arm_pending) {
+ 		de->coalesced++;
+@@ -1304,6 +1307,38 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 	de->arm_pending = false;
+ 	de->armed_once = true;
+ 
++	/*
++	 * Write the head dirty flags the hardware consumes NOW, from the
++	 * per-block arms_left budget (2 arms per staged change, see the .h):
++	 * a dropped load gets one guaranteed retry, and re-applying the
++	 * idempotent shadow is harmless.
++	 */
++	{
++		/* a pending post-modeset full reload marks everything dirty */
++		bool full = de->full_arms_left > 0;
++		bool more = false;
++		unsigned int i;
++
++		for (i = 0; i < SUN55I_DE_BLK_NUM; i++) {
++			struct sun55i_de_block *blk = &de->blocks[i];
++
++			if (full || blk->arms_left) {
++				blk->head->dirty = cpu_to_le32(1);
++				if (blk->arms_left) {
++					blk->arms_left--;
++					if (blk->arms_left)
++						more = true;
++				}
++			} else {
++				blk->head->dirty = cpu_to_le32(0);
++			}
++		}
++		/* heads visible to the RCQ DMA before the load triggers */
++		wmb();
++		if (more)
++			de->arm_pending = true;
++	}
++
+ 	/*
+ 	 * Post-modeset full reloads: one load does not reliably latch every
+ 	 * block, so keep re-arming the (still fully-dirty) list on subsequent
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index dc120bdda..f6ec1624e 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -53,6 +53,18 @@ struct sun55i_de_block {
+ 	 * viajaba nunca sin un mode_set de por medio: pantalla negra C4).
+ 	 */
+ 	bool				stage_dirty;
++	/*
++	 * Arms que le quedan por consumir a este bloque. Un load RCQ puede
++	 * DROPEAR bloques (por eso full_arms_left re-arma tras un mode_set);
++	 * con dirty-solo-en-cambios un bloque dropeado no se reintentaba
++	 * NUNCA: la sombra ya coincide con lo staged, el hardware no, y el
++	 * siguiente commit escribia dirty=0 en el head -> divergencia
++	 * permanente (visto en vivo: BLD pipe_en=0 en HW con 0x101 en la
++	 * sombra = pantalla negra eterna con OVL bien programado). Cada
++	 * cambio staged se aplica ahora en 2 arms consecutivos; re-aplicar
++	 * la sombra es idempotente.
++	 */
++	u8				arms_left;
+ };
+ 
+ enum {
+-- 
+2.47.3
+

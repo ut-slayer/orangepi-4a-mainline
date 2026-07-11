@@ -1,0 +1,63 @@
+From 6c409267f1af413611904808c362c99f4528b0a9 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 23:29:17 +0200
+Subject: [PATCH T527 48/66] dts: opi4a: IOMMU del DE activo en mixer0 y
+ display-engine (modelo BSP todo-traducido)
+
+Se quita el /delete-property/ iommus del mixer (el dtsi ya trae
+iommus = <&iommu 5>) y el display-engine hereda el mismo master 5:
+equivalente en DT del of_dma_configure(drm->dev, nodo_DE) del BSP
+(sunxi_de.c:1262). Con el bypass del master 5 quitado TODO el trafico
+del DE va traducido, asi que el scanout GEM (drm->dev) tiene que
+alojarse como IOVA igual que el pool RCQ del mixer; ademas los PRIME
+imports de kbase (paginas no contiguas) pasan a colapsarse en un IOVA
+contiguo via dma_map_sgtable, que es lo que el swapchain de sway/blob
+necesita (gbm_bo_create EINVAL de C3b).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 21 ++++++++++++-------
+ 1 file changed, 13 insertions(+), 8 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 1f83f2e62..05e49c4c0 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -622,8 +622,17 @@ &mixer0 {
+ 	memory-region = <&cma_low>;
+ };
+ 
++/*
++ * SESION C4: el display-engine (drm->dev) hereda el master 5 del IOMMU
++ * para que los GEM de scanout y los PRIME imports (kbase, no contiguos)
++ * se alojen/mapeen como IOVAs traducidas. Es el equivalente en DT del
++ * of_dma_configure(drm->dev, nodo_DE) del BSP (sunxi_de.c:1262): con el
++ * bypass del master 5 quitado TODO el trafico del DE se traduce, asi que
++ * el scanout fisico sin mapear dejaria de verse.
++ */
+ &de {
+ 	status = "okay";
++	iommus = <&iommu 5>;
+ };
+ 
+ &hdmi {
+@@ -661,12 +670,8 @@ &display_clocks {
+ };
+ 
+ /*
+- * El backport del IOMMU A523 (2732) crashea en sun50i_iommu_map sobre el
+- * sun50i-iommu de 6.18 (Oops al crear GEM/fbcon). Para el bring-up se
+- * desactiva la traduccion del DE: todo (RCQ + scanout) va fisico a la CMA
+- * baja (< 0x70000000, dentro de la apertura del DE segun la serie).
+- * Reactivar cuando se depure el driver (necesario para buffers altos/4K).
++ * SESION C4: iommus del mixer reactivado (el dtsi ya trae
++ * iommus = <&iommu 5>). El driver lleva ahora la receta v15 del BSP
++ * (invalidacion por rango + prefetch vendor) y guardas de diagnostico
++ * contra el DTE corrupto del Oops de boot 1.
+  */
+-&mixer0 {
+-	/delete-property/ iommus;
+-};
+-- 
+2.47.3
+

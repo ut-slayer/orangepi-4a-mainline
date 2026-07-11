@@ -1,0 +1,35 @@
+From 9a79e38ef82457a77c0c868b44d519fb072274dd Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 01:56:42 +0200
+Subject: [PATCH T527 10/66] dts: opi4a: activar RXC_DLY_EN (1.9ns) en la PHY
+ YT8531
+
+El delay de la PHY se pide EN EL NODO DE LA PHY (motorcomm lo lee de ahi),
+no en el del MAC. rx-internal-delay-ps=1900 cae en la 2a mitad de la tabla
+ytphy_rgmii_delays -> enciende el bit base RXC_DLY_EN (~1.9ns de delay del
+reloj de RX). Sin el, mainline deja el RXC sin delay y rx_packets=0. El BSP
+5.15 mantiene ese bit activo por defecto, por eso su red va directa.
+---
+ arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 48dad8056..cdc678c37 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -509,6 +509,12 @@ &mdio1 {
+ 	ext_rgmii_phy: ethernet-phy@1 {
+ 		compatible = "ethernet-phy-ieee802.3-c22";
+ 		reg = <1>;
++		/* Enciende el delay de reloj de RX (RXC_DLY_EN, ~1.9ns) en la
++		 * propia PHY YT8531. El driver motorcomm lee esta propiedad DEL
++		 * NODO DE LA PHY; el valor 1900 cae en la 2a mitad de la tabla
++		 * ytphy_rgmii_delays -> activa el bit base de 1.9ns. Sin esto,
++		 * rgmii/rgmii-rxid dejan el RXC sin delay y rx_packets=0. */
++		rx-internal-delay-ps = <1900>;
+ 		interrupts-extended = <&pio 8 16 IRQ_TYPE_LEVEL_LOW>; /* PI16 */
+ 		reset-gpios = <&pio 8 15 GPIO_ACTIVE_LOW>; /* PI15 */
+ 		reset-assert-us = <10000>;
+-- 
+2.47.3
+

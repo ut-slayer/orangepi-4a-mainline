@@ -1,0 +1,126 @@
+From 553b1fb1bafaca03dafaafc0bef9905df2848075 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 04:04:05 +0200
+Subject: [PATCH T527 14/66] pinctrl: sun55i-a523: corregir withstand de bancos
+ PIO desde la deteccion hw
+
+CAUSA RAIZ del RX muerto del GMAC1 en la OPi4A: el banco PJ (RGMII)
+tiene el rail VCC-PJ a 1.8V pero POW_MOD_SEL lo dejaba en modo 3.3V
+-> umbrales de entrada erroneos -> el MAC no veia RXC/RXD (TX ok,
+link 1G, rx_packets=0, 0 crc_errors). Verificado en vivo: limpiar el
+bit9 de 0x0200_0380 revive el RX al instante (ping 0% loss).
+
+En el A523/T527 el hw detecta el voltaje real de cada rail en
+POW_MOD_VAL (0x388, bit=1 -> 1.8V) y el modo se elige en POW_MOD_SEL
+(0x380) con polaridad INVERTIDA respecto a SoCs anteriores (bit=1 ->
+modo 3.3V; 'power_mode_reverse' en el BSP). El BSP sincroniza SEL con
+VAL en runtime (sun55iw3_pinctrl_fix_over_voltage / set_io_bias_cfg
+con power_mode_detect); ni U-Boot BSP ni mainline lo hacian, y de
+fabrica venian 5 bancos mal (C,E,G,J,K en modo 3.3V con rail 1.8V).
+
+Replicamos la logica del BSP una vez en el probe: bancos con bit
+propio C,D,E,G,I,J,K (indice de puerto, A=0); PB/PH cuelgan de VCCIO
+(bit16 VAL -> bit12 SEL); PF se salta (conmutacion UHS del SD).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c | 69 +++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+index 7d2308c37..537043dba 100644
+--- a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+@@ -5,6 +5,7 @@
+  * Copyright (C) 2023 Arm Ltd.
+  */
+ 
++#include <linux/io.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/of.h>
+@@ -13,6 +14,72 @@
+ 
+ #include "pinctrl-sunxi.h"
+ 
++/*
++ * Withstand (modo de voltaje) por banco del PIO del A523/T527.
++ *
++ * El hardware detecta el voltaje real del rail de cada banco en
++ * POW_MOD_VAL (bit=1: rail a 1.8V, bit=0: 3.3V) y el modo del receptor
++ * de entrada se elige en POW_MOD_SEL con polaridad INVERTIDA respecto a
++ * SoCs anteriores (bit=1: modo 3.3V, bit=0: modo 1.8V; "power_mode_reverse"
++ * en el BSP). Si no casan, las entradas del banco quedan con umbrales
++ * erroneos: con rail 1.8V y modo 3.3V el banco queda practicamente sordo
++ * (asi estaba PJ = RGMII de gmac1: TX ok, RX muerto).
++ *
++ * El BSP (sun55iw3_pinctrl_fix_over_voltage + set_io_bias_cfg con
++ * power_mode_detect) programa SEL a partir de VAL en runtime; U-Boot BSP
++ * no lo deja bien para todos los bancos. Replicamos aqui esa logica una
++ * vez en el probe.
++ */
++#define A523_POW_MOD_SEL_REG	0x380
++#define A523_POW_MOD_VAL_REG	0x388
++#define A523_POW_VCCIO_SEL_BIT	12
++#define A523_POW_VCCIO_VAL_BIT	16
++
++static void a523_pio_fix_withstand(struct platform_device *pdev)
++{
++	/* Bancos con bit propio (indice de puerto, A=0): C D E G I J K.
++	 * PB y PH cuelgan del rail VCCIO (bit 12 en SEL, 16 en VAL).
++	 * PF se salta: su modo lo conmuta el controlador SD (UHS), igual
++	 * que hace el BSP. */
++	static const u8 banks[] = { 2, 3, 4, 6, 8, 9, 10 };
++	u32 val, sel, old;
++	void __iomem *base;
++	struct resource *res;
++	int i;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res)
++		return;
++
++	base = ioremap(res->start, 0x400);
++	if (!base)
++		return;
++
++	val = readl(base + A523_POW_MOD_VAL_REG);
++	old = sel = readl(base + A523_POW_MOD_SEL_REG);
++
++	for (i = 0; i < ARRAY_SIZE(banks); i++) {
++		if (val & BIT(banks[i]))
++			sel &= ~BIT(banks[i]);	/* rail 1.8V -> modo 1.8V */
++		else
++			sel |= BIT(banks[i]);	/* rail 3.3V -> modo 3.3V */
++	}
++
++	if (val & BIT(A523_POW_VCCIO_VAL_BIT))
++		sel &= ~BIT(A523_POW_VCCIO_SEL_BIT);
++	else
++		sel |= BIT(A523_POW_VCCIO_SEL_BIT);
++
++	if (sel != old) {
++		writel(sel, base + A523_POW_MOD_SEL_REG);
++		dev_info(&pdev->dev,
++			 "PIO withstand corregido: SEL 0x%04x -> 0x%04x (VAL 0x%05x)\n",
++			 old, sel, val);
++	}
++
++	iounmap(base);
++}
++
+ static const u8 a523_nr_bank_pins[SUNXI_PINCTRL_MAX_BANKS] =
+ /*	  PA  PB  PC  PD  PE  PF  PG  PH  PI  PJ  PK */
+ 	{  0, 15, 17, 24, 16,  7, 15, 20, 17, 28, 24 };
+@@ -32,6 +99,8 @@ static struct sunxi_pinctrl_desc a523_pinctrl_data = {
+ 
+ static int a523_pinctrl_probe(struct platform_device *pdev)
+ {
++	a523_pio_fix_withstand(pdev);
++
+ 	return sunxi_pinctrl_dt_table_init(pdev, a523_nr_bank_pins,
+ 					   a523_irq_bank_muxes,
+ 					   &a523_pinctrl_data,
+-- 
+2.47.3
+

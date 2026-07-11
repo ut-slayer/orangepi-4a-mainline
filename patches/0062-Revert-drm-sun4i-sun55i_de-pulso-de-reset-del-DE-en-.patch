@@ -1,0 +1,46 @@
+From ae314b7ce38d73584d3fe2fd7aeea7f21a75a95b Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 14:28:10 +0200
+Subject: [PATCH T527 62/66] Revert "drm/sun4i: sun55i_de: pulso de reset del
+ DE en mode_set (fix wedge MBUS)"
+
+This reverts commit 8ffd879ddd0df838fc49333b70714d0602e8be97.
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 6b8495b1f..e053a1d5e 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -20,7 +20,6 @@
+ #include <linux/math64.h>
+ #include <linux/moduleparam.h>
+ #include <linux/of_reserved_mem.h>
+-#include <linux/reset.h>
+ #include <linux/preempt.h>	/* in_hardirq() — TEMP instrumentation */
+ #include <linux/spinlock.h>
+ 
+@@ -566,19 +565,6 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	u32 w = mode->hdisplay, h = mode->vdisplay;
+ 	u32 size = SUN55I_DE_OUT_SIZE(w, h);
+ 	u32 vtotal = mode->crtc_vtotal, clock = mode->crtc_clock;
+-
+-	/*
+-	 * Pulso de reset del nucleo DE (bit en DE_RESET 0x8000, el reset del
+-	 * mixer via display_clocks) ANTES de reprogramar: si una transaccion
+-	 * del puerto MBUS quedo colgada por un fault en el teardown anterior
+-	 * (cambio de sesion, SDDM), solo el reset la aborta; sin esto el DE
+-	 * queda wedged (registros correctos, fetch muerto -> fondo fijo)
+-	 * hasta un reboot. Equivale al pulso manual del de-bringup.service
+-	 * de C4C, hecho en el sitio correcto: cada (re)enable del CRTC.
+-	 * Seguro aqui: todo el estado se rescribe a continuacion (top por
+-	 * MMIO + full RCQ reload de los full_arms).
+-	 */
+-	reset_control_reset(mixer->reset);
+ 	u32 vbp;
+ 	u32 mux;
+ 
+-- 
+2.47.3
+

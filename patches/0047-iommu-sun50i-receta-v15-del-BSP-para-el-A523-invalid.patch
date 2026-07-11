@@ -1,0 +1,316 @@
+From 59316bd6781cfe2fdde86ab7721c6ac7b6656008 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 23:29:06 +0200
+Subject: [PATCH T527 47/66] iommu/sun50i: receta v15 del BSP para el A523
+ (invalidacion por rango + prefetch vendor) y guardas anti DTE corrupto
+
+Extraido de la fuente de verdad (BSP 5.15, sunxi-iommu-v1.c/pgtable,
+iommu_v15_sun55iw3_data):
+- El v15 invalida TLB/PTW por RANGO (MODE_SEL=1, regs START/END 0x88/8C
+  y 0xA4/AC); mainline hablaba el modo 0 addr+mask del H6 sin fijar el
+  MODE_SEL. Secuencia de zap calcada de sunxi_zap_tlb (v14+).
+- tlb_prefetch = 0x30000 como el vendor: prefetch de masters APAGADO
+  ("disable preftech to test display rcq bug" y nuestro pipeline usa
+  RCQ); solo quedan los bits only-prefetch-valid.
+- El formato de tablas y el pliegue +-4G de minimyth2 SI coinciden con
+  el BSP (cpu_phy_to_iommu_phy / iommu_phy_to_cpu_phy); no se toca.
+
+Ademas, guardas de diagnostico para el Oops de boot 1
+(sun50i_iommu_map+0x18c): el desensamblado situa el fallo en la primera
+deref de la tabla L2 derivada de un DTE, o sea un DTE corrupto que pasa
+el check de validez y cuyo phys plegado cae fuera de la RAM. Ahora cada
+phys_to_virt de un DTE valida con pfn_valid y avisa con contexto en vez
+de matar el kernel.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/iommu/sun50i-iommu.c | 147 +++++++++++++++++++++++++----------
+ 1 file changed, 104 insertions(+), 43 deletions(-)
+
+diff --git a/drivers/iommu/sun50i-iommu.c b/drivers/iommu/sun50i-iommu.c
+index 5473c4b7d..2378333ed 100644
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -57,14 +57,26 @@
+ #define IOMMU_TLB_FLUSH_MACRO_TLB		BIT(16)
+ #define IOMMU_TLB_FLUSH_MICRO_TLB(i)		(BIT(i) & GENMASK(5, 0))
+ 
++/*
++ * Invalidacion por rango (BSP "invalid mode 1"): TLB desde iommu v12,
++ * PTW desde v14. El vendor la usa SIEMPRE en el v15 del A523/T527
++ * (sunxi-iommu-v1.c: tlb_invalid_mode=1/ptw_invalid_mode=1); el modo 0
++ * addr+mask es el legado de H6/H616.
++ */
++#define IOMMU_TLB_IVLD_MODE_SEL_REG	0x084
++#define IOMMU_TLB_IVLD_START_ADDR_REG	0x088
++#define IOMMU_TLB_IVLD_END_ADDR_REG	0x08c
+ #define IOMMU_TLB_IVLD_ADDR_REG		0x090
+ #define IOMMU_TLB_IVLD_ADDR_MASK_REG	0x094
+ #define IOMMU_TLB_IVLD_ENABLE_REG	0x098
+ #define IOMMU_TLB_IVLD_ENABLE_ENABLE		BIT(0)
+ 
++#define IOMMU_PC_IVLD_MODE_SEL_REG	0x09c
+ #define IOMMU_PC_IVLD_ADDR_REG		0x0a0
++#define IOMMU_PC_IVLD_START_ADDR_REG	0x0a4
+ #define IOMMU_PC_IVLD_ENABLE_REG	0x0a8
+ #define IOMMU_PC_IVLD_ENABLE_ENABLE		BIT(0)
++#define IOMMU_PC_IVLD_END_ADDR_REG	0x0ac
+ 
+ #define IOMMU_DM_AUT_CTRL_REG(d)	(0x0b0 + ((d) / 2) * 4)
+ #define IOMMU_DM_AUT_CTRL_RD_UNAVAIL(d, m)	(1 << (((d & 1) * 16) + ((m) * 2)))
+@@ -106,6 +118,8 @@
+ 
+ struct sun50i_iommu_variant {
+ 	u32 tlb_prefetch;
++	/* usar invalidacion por rango (START/END + MODE_SEL=1, BSP v14+) */
++	bool has_ivld_range;
+ };
+ 
+ struct sun50i_iommu {
+@@ -335,14 +349,23 @@ static void sun50i_table_flush(struct sun50i_iommu_domain *sun50i_domain,
+ 	dma_sync_single_for_device(iommu->dev, dma, size, DMA_TO_DEVICE);
+ }
+ 
++/*
++ * Con has_ivld_range (v15/A523) se usa el modo rango del BSP: START/END
++ * y ENABLE; iova_end se ignora en el modo legado addr+mask.
++ */
+ static void sun50i_iommu_zap_iova(struct sun50i_iommu *iommu,
+-				  unsigned long iova)
++				  unsigned long iova, unsigned long iova_end)
+ {
+ 	u32 reg;
+ 	int ret;
+ 
+-	iommu_write(iommu, IOMMU_TLB_IVLD_ADDR_REG, iova);
+-	iommu_write(iommu, IOMMU_TLB_IVLD_ADDR_MASK_REG, GENMASK(31, 12));
++	if (iommu->variant->has_ivld_range) {
++		iommu_write(iommu, IOMMU_TLB_IVLD_START_ADDR_REG, iova);
++		iommu_write(iommu, IOMMU_TLB_IVLD_END_ADDR_REG, iova_end);
++	} else {
++		iommu_write(iommu, IOMMU_TLB_IVLD_ADDR_REG, iova);
++		iommu_write(iommu, IOMMU_TLB_IVLD_ADDR_MASK_REG, GENMASK(31, 12));
++	}
+ 	iommu_write(iommu, IOMMU_TLB_IVLD_ENABLE_REG,
+ 		    IOMMU_TLB_IVLD_ENABLE_ENABLE);
+ 
+@@ -353,12 +376,17 @@ static void sun50i_iommu_zap_iova(struct sun50i_iommu *iommu,
+ }
+ 
+ static void sun50i_iommu_zap_ptw_cache(struct sun50i_iommu *iommu,
+-				       unsigned long iova)
++				       unsigned long iova, unsigned long iova_end)
+ {
+ 	u32 reg;
+ 	int ret;
+ 
+-	iommu_write(iommu, IOMMU_PC_IVLD_ADDR_REG, iova);
++	if (iommu->variant->has_ivld_range) {
++		iommu_write(iommu, IOMMU_PC_IVLD_START_ADDR_REG, iova);
++		iommu_write(iommu, IOMMU_PC_IVLD_END_ADDR_REG, iova_end);
++	} else {
++		iommu_write(iommu, IOMMU_PC_IVLD_ADDR_REG, iova);
++	}
+ 	iommu_write(iommu, IOMMU_PC_IVLD_ENABLE_REG,
+ 		    IOMMU_PC_IVLD_ENABLE_ENABLE);
+ 
+@@ -375,17 +403,27 @@ static void sun50i_iommu_zap_range(struct sun50i_iommu *iommu,
+ 
+ 	iommu_write(iommu, IOMMU_AUTO_GATING_REG, 0);
+ 
+-	sun50i_iommu_zap_iova(iommu, iova);
+-	sun50i_iommu_zap_iova(iommu, iova + SPAGE_SIZE);
+-	if (size > SPAGE_SIZE) {
+-		sun50i_iommu_zap_iova(iommu, iova + size);
+-		sun50i_iommu_zap_iova(iommu, iova + size + SPAGE_SIZE);
+-	}
+-	sun50i_iommu_zap_ptw_cache(iommu, iova);
+-	sun50i_iommu_zap_ptw_cache(iommu, iova + SZ_1M);
+-	if (size > SZ_1M) {
+-		sun50i_iommu_zap_ptw_cache(iommu, iova + size);
+-		sun50i_iommu_zap_ptw_cache(iommu, iova + size + SZ_1M);
++	if (iommu->variant->has_ivld_range) {
++		/* secuencia sunxi_zap_tlb del BSP para v14+ (rangos con margen) */
++		sun50i_iommu_zap_iova(iommu, iova, iova + 2 * SPAGE_SIZE);
++		sun50i_iommu_zap_iova(iommu, iova + size - SPAGE_SIZE,
++				      iova + size + 8 * SPAGE_SIZE);
++		sun50i_iommu_zap_ptw_cache(iommu, iova, iova + SZ_1M);
++		sun50i_iommu_zap_ptw_cache(iommu, iova + size - SZ_1M,
++					   iova + size);
++	} else {
++		sun50i_iommu_zap_iova(iommu, iova, 0);
++		sun50i_iommu_zap_iova(iommu, iova + SPAGE_SIZE, 0);
++		if (size > SPAGE_SIZE) {
++			sun50i_iommu_zap_iova(iommu, iova + size, 0);
++			sun50i_iommu_zap_iova(iommu, iova + size + SPAGE_SIZE, 0);
++		}
++		sun50i_iommu_zap_ptw_cache(iommu, iova, 0);
++		sun50i_iommu_zap_ptw_cache(iommu, iova + SZ_1M, 0);
++		if (size > SZ_1M) {
++			sun50i_iommu_zap_ptw_cache(iommu, iova + size, 0);
++			sun50i_iommu_zap_ptw_cache(iommu, iova + size + SZ_1M, 0);
++		}
+ 	}
+ 
+ 	iommu_write(iommu, IOMMU_AUTO_GATING_REG, IOMMU_AUTO_GATING_ENABLE);
+@@ -484,6 +522,11 @@ static int sun50i_iommu_enable(struct sun50i_iommu *iommu)
+ 	iommu_write(iommu, IOMMU_TTB_REG, sun50i_domain->dt_dma);
+ 	iommu_write(iommu, IOMMU_TLB_PREFETCH_REG,
+ 		    iommu->variant->tlb_prefetch);
++	if (iommu->variant->has_ivld_range) {
++		/* BSP hw_init: invalidacion por rango (mode 1) en TLB y PTW */
++		iommu_write(iommu, IOMMU_TLB_IVLD_MODE_SEL_REG, 1);
++		iommu_write(iommu, IOMMU_PC_IVLD_MODE_SEL_REG, 1);
++	}
+ 	iommu_write(iommu, IOMMU_BYPASS_REG, 0);
+ 	iommu_write(iommu, IOMMU_INT_ENABLE_REG, IOMMU_INT_MASK);
+ 	iommu_write(iommu, IOMMU_DM_AUT_CTRL_REG(SUN50I_IOMMU_ACI_NONE),
+@@ -585,6 +628,25 @@ static void sun50i_iommu_free_page_table(struct sun50i_iommu *iommu,
+ 	kmem_cache_free(iommu->pt_pool, page_table);
+ }
+ 
++/*
++ * TEMP diagnostico C4: el Oops de boot 1 (sun50i_iommu_map+0x18c) fue la
++ * deref de una tabla L2 derivada de un DTE corrupto. Validar que el phys
++ * del DTE sea RAM real antes de phys_to_virt; si no, chillar con todo el
++ * contexto y devolver NULL en vez de matar el kernel.
++ */
++static u32 *sun50i_dte_to_pt(u32 dte, dma_addr_t iova, const char *who)
++{
++	phys_addr_t pt_phys = sun50i_dte_get_pt_address(dte);
++
++	if (WARN_ONCE(!pfn_valid(PHYS_PFN(pt_phys)),
++		      "sun50i-iommu %s: DTE corrupto 0x%08x -> pt_phys %pa (iova %pad, dte idx %u)\n",
++		      who, dte, &pt_phys, &iova,
++		      sun50i_iova_get_dte_index(iova)))
++		return NULL;
++
++	return (u32 *)phys_to_virt(pt_phys);
++}
++
+ static u32 *sun50i_dte_get_page_table(struct sun50i_iommu_domain *sun50i_domain,
+ 				      dma_addr_t iova, gfp_t gfp)
+ {
+@@ -597,8 +659,8 @@ static u32 *sun50i_dte_get_page_table(struct sun50i_iommu_domain *sun50i_domain,
+ 	dte_addr = &sun50i_domain->dt[sun50i_iova_get_dte_index(iova)];
+ 	dte = *dte_addr;
+ 	if (sun50i_dte_is_pt_valid(dte)) {
+-		phys_addr_t pt_phys = sun50i_dte_get_pt_address(dte);
+-		return (u32 *)phys_to_virt(pt_phys);
++		page_table = sun50i_dte_to_pt(dte, iova, "map");
++		return page_table ?: ERR_PTR(-EIO);
+ 	}
+ 
+ 	page_table = sun50i_iommu_alloc_page_table(iommu, gfp);
+@@ -608,11 +670,13 @@ static u32 *sun50i_dte_get_page_table(struct sun50i_iommu_domain *sun50i_domain,
+ 	dte = sun50i_mk_dte(virt_to_phys(page_table));
+ 	old_dte = cmpxchg(dte_addr, 0, dte);
+ 	if (old_dte) {
+-		phys_addr_t installed_pt_phys =
+-			sun50i_dte_get_pt_address(old_dte);
+-		u32 *installed_pt = phys_to_virt(installed_pt_phys);
++		u32 *installed_pt = sun50i_dte_to_pt(old_dte, iova, "map/race");
+ 		u32 *drop_pt = page_table;
+ 
++		if (!installed_pt) {
++			sun50i_iommu_free_page_table(iommu, drop_pt);
++			return ERR_PTR(-EIO);
++		}
+ 		page_table = installed_pt;
+ 		dte = old_dte;
+ 		sun50i_iommu_free_page_table(iommu, drop_pt);
+@@ -663,7 +727,6 @@ static size_t sun50i_iommu_unmap(struct iommu_domain *domain, unsigned long iova
+ 				 size_t size, size_t count, struct iommu_iotlb_gather *gather)
+ {
+ 	struct sun50i_iommu_domain *sun50i_domain = to_sun50i_domain(domain);
+-	phys_addr_t pt_phys;
+ 	u32 *pte_addr;
+ 	u32 dte;
+ 
+@@ -671,8 +734,10 @@ static size_t sun50i_iommu_unmap(struct iommu_domain *domain, unsigned long iova
+ 	if (!sun50i_dte_is_pt_valid(dte))
+ 		return 0;
+ 
+-	pt_phys = sun50i_dte_get_pt_address(dte);
+-	pte_addr = (u32 *)phys_to_virt(pt_phys) + sun50i_iova_get_pte_index(iova);
++	pte_addr = sun50i_dte_to_pt(dte, iova, "unmap");
++	if (!pte_addr)
++		return 0;
++	pte_addr += sun50i_iova_get_pte_index(iova);
+ 
+ 	if (!sun50i_pte_is_page_valid(*pte_addr))
+ 		return 0;
+@@ -687,7 +752,6 @@ static phys_addr_t sun50i_iommu_iova_to_phys(struct iommu_domain *domain,
+ 					     dma_addr_t iova)
+ {
+ 	struct sun50i_iommu_domain *sun50i_domain = to_sun50i_domain(domain);
+-	phys_addr_t pt_phys;
+ 	u32 *page_table;
+ 	u32 dte, pte;
+ 
+@@ -695,8 +759,9 @@ static phys_addr_t sun50i_iommu_iova_to_phys(struct iommu_domain *domain,
+ 	if (!sun50i_dte_is_pt_valid(dte))
+ 		return 0;
+ 
+-	pt_phys = sun50i_dte_get_pt_address(dte);
+-	page_table = (u32 *)phys_to_virt(pt_phys);
++	page_table = sun50i_dte_to_pt(dte, iova, "iova_to_phys");
++	if (!page_table)
++		return 0;
+ 	pte = page_table[sun50i_iova_get_pte_index(iova)];
+ 	if (!sun50i_pte_is_page_valid(pte))
+ 		return 0;
+@@ -767,7 +832,6 @@ static void sun50i_iommu_detach_domain(struct sun50i_iommu *iommu,
+ 	unsigned int i;
+ 
+ 	for (i = 0; i < NUM_DT_ENTRIES; i++) {
+-		phys_addr_t pt_phys;
+ 		u32 *page_table;
+ 		u32 *dte_addr;
+ 		u32 dte;
+@@ -780,8 +844,10 @@ static void sun50i_iommu_detach_domain(struct sun50i_iommu *iommu,
+ 		memset(dte_addr, 0, sizeof(*dte_addr));
+ 		sun50i_table_flush(sun50i_domain, dte_addr, 1);
+ 
+-		pt_phys = sun50i_dte_get_pt_address(dte);
+-		page_table = phys_to_virt(pt_phys);
++		page_table = sun50i_dte_to_pt(dte, (dma_addr_t)i << 20,
++					      "detach");
++		if (!page_table)
++			continue;
+ 		sun50i_iommu_free_page_table(iommu, page_table);
+ 	}
+ 
+@@ -1103,21 +1169,16 @@ static const struct sun50i_iommu_variant sun50i_h6_variant = {
+ };
+ 
+ /*
+- * The vendor driver ships the A523 with master prefetch disabled, citing a
+- * display-RCQ-related bug. Without prefetch, though, every micro-TLB miss
+- * stalls the DE fetch pipe and 4K scanout underruns to a dead screen (1080p
+- * survives). Enable prefetch together with the "only prefetch valid pages"
+- * bits new in this revision, which defuse prefetches of unmapped pages -
+- * the likely subject of the vendor's debugging.
++ * Receta del BSP para el v15 del T527 (iommu_v15_sun55iw3_data):
++ * tlb_prefetch = 0x30000 - prefetch de masters DESACTIVADO ("disable
++ * preftech to test display rcq bug", y nuestro pipeline usa RCQ) y solo
++ * los bits "only prefetch valid pages". Invalidacion por rango (mode 1)
++ * como el vendor. Si 4K sufre underruns sin prefetch, revisar la
++ * variante minimyth2 (masters + only-valid), probada en H728.
+  */
+ static const struct sun50i_iommu_variant sun55i_a523_variant = {
+-	.tlb_prefetch = IOMMU_TLB_PREFETCH_MASTER_ENABLE(0) |
+-			IOMMU_TLB_PREFETCH_MASTER_ENABLE(1) |
+-			IOMMU_TLB_PREFETCH_MASTER_ENABLE(2) |
+-			IOMMU_TLB_PREFETCH_MASTER_ENABLE(3) |
+-			IOMMU_TLB_PREFETCH_MASTER_ENABLE(4) |
+-			IOMMU_TLB_PREFETCH_MASTER_ENABLE(5) |
+-			IOMMU_TLB_PREFETCH_ONLY_VALID,
++	.tlb_prefetch = IOMMU_TLB_PREFETCH_ONLY_VALID,
++	.has_ivld_range = true,
+ };
+ 
+ static const struct of_device_id sun50i_iommu_dt[] = {
+-- 
+2.47.3
+

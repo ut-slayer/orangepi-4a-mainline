@@ -1,0 +1,32 @@
+From 2d13f17dfcb6ade6486ecbb0bc091dbc60028eac Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 03:37:17 +0200
+Subject: [PATCH T527 60/66] drm/sun4i: sun55i_de: fondo del blender negro (fin
+ del verde de debug)
+
+El verde chillon 0xff00ff00 era el marcador de diagnostico del bring-up
+(verde visible = ningun plano aplicado). Con el pipeline validado, negro
+como el BSP (0xFF000000): los arranques de sesion Wayland muestran negro
+en vez de verde mientras el compositor pinta su primer frame.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun8i_mixer.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index 9fb31ea4e..a085f8c07 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -527,7 +527,7 @@ static void sun8i_mixer_init(struct sun8i_mixer *mixer)
+ 	 * Green by default so first-light is unambiguous vs the blank screen.
+ 	 */
+ 	if (mixer->cfg->uses_rcq) {
+-		mixer->de_bg_color = 0xff00ff00;
++		mixer->de_bg_color = 0xff000000;
+ 		return;
+ 	}
+ 
+-- 
+2.47.3
+

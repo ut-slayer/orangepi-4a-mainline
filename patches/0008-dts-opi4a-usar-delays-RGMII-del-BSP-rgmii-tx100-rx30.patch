@@ -1,0 +1,37 @@
+From 32ab9d35f9fe9992a5331531b5d86003a185267b Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 01:39:34 +0200
+Subject: [PATCH T527 08/66] dts: opi4a: usar delays RGMII del BSP (rgmii +
+ tx100/rx300ps)
+
+Los valores de mainline (rgmii-id, tx0/rx300) daban link 1Gbps pero 0
+trafico (ARP ok, ping ko) = doble delay (PHY interno + syscon). El BSP usa
+phy-mode rgmii (sin delay de PHY) con tx-delay=1/rx-delay=3 en el syscon
+del MAC. Mapeado: tx-internal-delay-ps=100, rx-internal-delay-ps=300.
+---
+ arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 369529183..0f3e715c2 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -493,10 +493,13 @@ &usbphy {
+ };
+ 
+ &gmac1 {
+-	phy-mode = "rgmii-id";
++	/* delays del BSP (probados en esta placa): phy-mode rgmii, sin
++	 * delay interno de PHY; el retardo lo pone el syscon del MAC
++	 * (BSP tx-delay=1 -> 100ps, rx-delay=3 -> 300ps). */
++	phy-mode = "rgmii";
+ 	phy-handle = <&ext_rgmii_phy>;
+ 	phy-supply = <&reg_cldo4>;
+-	tx-internal-delay-ps = <0>;
++	tx-internal-delay-ps = <100>;
+ 	rx-internal-delay-ps = <300>;
+ 	status = "okay";
+ };
+-- 
+2.47.3
+

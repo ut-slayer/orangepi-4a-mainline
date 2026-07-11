@@ -1,0 +1,43 @@
+From a8938a549f7b73304df765c4ca36b67313f290b3 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 10 Jul 2026 17:28:40 +0200
+Subject: [PATCH T527 58/66] arm64: dts: allwinner: opi4a: slots TDM de 32 bits
+ en el audio HDMI
+
+Sin esto solo sonaba S32: dw-hdmi-i2s-audio hardcodea INPUTCLKFS=64fs
+pero con S16 el sun4i-i2s generaba tramas de 32fs (slot de 16 bits) y
+el DW-HDMI muestreaba mal -> silencio con la config por defecto de
+PulseAudio. El BSP siempre fija slot-width 32 (soundcard-mach). Con
+dai-tdm-slot-width=32 la trama es 64fs para todos los formatos.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts     | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index dc70a09bd..8d1051d24 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -700,8 +700,18 @@ hdmi_sound: hdmi-sound {
+ 		simple-audio-card,format = "i2s";
+ 		simple-audio-card,mclk-fs = <128>;
+ 
++		/*
++		 * Slots de 32 bits SIEMPRE (como el BSP: soundcard-mach,
++		 * slot-width = <32>): dw-hdmi-i2s-audio hardcodea
++		 * AUD_INPUTCLKFS=64fs, y sin esto con S16 el sun4i-i2s
++		 * genera tramas de 32fs (slot de 16) -> el DW-HDMI muestrea
++		 * mal la trama y el sink recibe SILENCIO (verificado en la
++		 * placa: S32 sonaba, S16 no; TXCNT avanzaba en ambos).
++		 */
+ 		simple-audio-card,cpu {
+ 			sound-dai = <&i2s2>;
++			dai-tdm-slot-num = <2>;
++			dai-tdm-slot-width = <32>;
+ 		};
+ 
+ 		simple-audio-card,codec {
+-- 
+2.47.3
+

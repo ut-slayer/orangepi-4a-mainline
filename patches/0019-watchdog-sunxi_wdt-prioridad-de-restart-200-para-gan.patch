@@ -1,0 +1,40 @@
+From 58a24f848f30f7f32a697628956da1ac4a965364 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:32:33 +0200
+Subject: [PATCH T527 19/66] watchdog: sunxi_wdt: prioridad de restart 200 para
+ ganar a PSCI (reboot colgado en T527)
+
+El SYSTEM_RESET del ATF/BL31 del BSP no resetea: la llamada PSCI se queda
+colgada sin retornar. Con la prioridad estandar del driver (128) el handler
+de PSCI (129) corre primero -> 'reboot' congelaba la placa para siempre
+(ni con SUNXI_WATCHDOG=y funcionaba; el usuario siempre tuvo que cortar
+corriente). Prioridad 200 hace que el reset vaya por el watchdog, igual
+que el BSP 5.15. Workaround local para el firmware BSP; revisar si se
+migra a ATF mainline.
+---
+ drivers/watchdog/sunxi_wdt.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/watchdog/sunxi_wdt.c b/drivers/watchdog/sunxi_wdt.c
+index b6c761acc..ce209563c 100644
+--- a/drivers/watchdog/sunxi_wdt.c
++++ b/drivers/watchdog/sunxi_wdt.c
+@@ -282,7 +282,14 @@ static int sunxi_wdt_probe(struct platform_device *pdev)
+ 
+ 	watchdog_init_timeout(&sunxi_wdt->wdt_dev, timeout, dev);
+ 	watchdog_set_nowayout(&sunxi_wdt->wdt_dev, nowayout);
+-	watchdog_set_restart_priority(&sunxi_wdt->wdt_dev, 128);
++	/*
++	 * Prioridad > 129 (la del handler PSCI): en el T527/OPi4A el
++	 * SYSTEM_RESET del ATF BSP se cuelga sin retornar, y con la
++	 * prioridad estandar (128 < 129) este handler nunca llegaba a
++	 * ejecutarse -> `reboot` congelaba la placa. El BSP 5.15 tambien
++	 * resetea via watchdog. Revisar si algun dia se pasa a ATF mainline.
++	 */
++	watchdog_set_restart_priority(&sunxi_wdt->wdt_dev, 200);
+ 
+ 	watchdog_set_drvdata(&sunxi_wdt->wdt_dev, sunxi_wdt);
+ 
+-- 
+2.47.3
+

@@ -1,0 +1,158 @@
+From f48bfaefa37b529137750c5ff67f1a1ae0963b14 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Thu, 9 Jul 2026 03:35:45 +0200
+Subject: [PATCH T527 51/66] drm/sun4i: sun55i_de: dirty por cambios reales
+ (stage_dirty) + instrumentacion rcqdbg [WIP C4]
+
+- de_blk_write solo marca dirty si el valor CAMBIA (stage_dirty sw) y
+  commit() lo vuelca al head en vez de pisarlo: el flip_min antiguo
+  machacaba el dirty de bloques con cambios reales y un enable del
+  blender sin mode_set de por medio no viajaba nunca. Es ademas el
+  modelo del BSP (los setters marcan block->dirty y el update consume).
+- TEMP dump_arms: volcado de cabeceras RCQ + sombras (BLD_ATTR/CTL,
+  OVL_LAY0) en cada arm, activable por modparam.
+
+NO RESUELVE la pantalla negra: con d=1, sombras perfectas y FINISH del
+motor, los bloques con destino BLD (0x281xxx) siguen sin aterrizar en
+el registro, mientras los del OVL (0x1c1xxx) si (la direccion cambia
+por flip). Por MMIO/AHB los registros del BLD se escriben bien: la via
+de escritura interna del RCQ hacia esas particiones parece gated.
+Diagnostico completo y siguientes pasos en PROMPT-ETAPA-C4B.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 67 ++++++++++++++++++++++++++-----
+ drivers/gpu/drm/sun4i/sun55i_de.h |  8 ++++
+ 2 files changed, 65 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 4f2619be0..c83f8b695 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -327,13 +327,20 @@ static struct sun55i_de_block *de_blk(struct sun8i_mixer *mixer, unsigned int i)
+ 	return &mixer->de->blocks[i];
+ }
+ 
+-/* write a u32 into a block's shadow and mark its RCQ head dirty */
++/*
++ * write a u32 into a block's shadow; only a real CHANGE marks the block
++ * stage-dirty (asi un flip puro solo ensucia los bloques de direccion y
++ * el resto no se recopia cada frame - lo que flip_min intentaba a mano)
++ */
+ static void de_blk_write(struct sun55i_de_block *blk, u32 off, u32 val)
+ {
+ 	__le32 *p = (__le32 *)((u8 *)blk->shadow + off);
+ 
++	if (*p == cpu_to_le32(val))
++		return;
++
+ 	*p = cpu_to_le32(val);
+-	blk->head->dirty = cpu_to_le32(1);
++	blk->stage_dirty = true;
+ }
+ 
+ static void de_blk_set_head(struct sun55i_de_block *blk)
+@@ -851,19 +858,21 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ 	unsigned int i;
+ 
+ 	/*
+-	 * Set the authoritative dirty mask for this arm (overriding the per-block
+-	 * dirty that de_blk_write set while staging). Full reload until the
+-	 * datapath has been armed once; after that, a minimal flip reloads only
+-	 * the fb-address blocks and explicitly leaves the rest un-dirty so the
+-	 * blender/scaler/formatter are not re-copied every frame.
++	 * Volcar el dirty ACUMULADO de cada bloque (solo cambios reales, ver
++	 * de_blk_write) al head que consume el hardware. Reload completo hasta
++	 * que el datapath se haya armado una vez / durante los full-arms de un
++	 * mode_set. flip_min=N fuerza el comportamiento antiguo (todo dirty
++	 * siempre). El flip_min antiguo pisaba el dirty de bloques con cambios
++	 * reales (enable del blender sin mode_set no viajaba: negro C4).
+ 	 */
+ 	for (i = 0; i < SUN55I_DE_BLK_NUM; i++) {
++		struct sun55i_de_block *blk = &de->blocks[i];
+ 		bool dirty = !flip_min || !de->armed_once ||
+ 			     de->full_arms_left > 0 ||
+-			     i == SUN55I_DE_BLK_OVL_LAY0 ||
+-			     i == SUN55I_DE_BLK_OVL_PARA;
++			     blk->stage_dirty;
+ 
+-		de->blocks[i].head->dirty = cpu_to_le32(dirty);
++		blk->head->dirty = cpu_to_le32(dirty);
++		blk->stage_dirty = false;
+ 	}
+ 
+ 	/* ensure shadow + heads are visible to the DMA before it is armed */
+@@ -886,6 +895,39 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+  * blocks ~immediately. Caller must hold arm_lock and have confirmed the beam is
+  * in a blanking window. Mirrors de_top_set_rcq_update(disp, 1).
+  */
++/*
++ * TEMP diagnostico C4 pantalla-negra: volcar cabecera RCQ + sombra de los
++ * bloques clave en cada arm. Activar con
++ * /sys/module/sun8i_mixer/parameters/dump_arms = N.
++ */
++static unsigned int dbg_dump_arms;
++module_param_named(dump_arms, dbg_dump_arms, uint, 0644);
++
++static void sun55i_de_dump_blocks(struct sun55i_de *de, const char *tag,
++				  u32 status)
++{
++	static const unsigned int ids[] = {
++		SUN55I_DE_BLK_BLD_ATTR, SUN55I_DE_BLK_BLD_CTL,
++		SUN55I_DE_BLK_OVL_LAY0,
++	};
++	unsigned int k;
++
++	pr_info("rcqdbg %s seq=%u sts=%03x\n", tag, de->arm_seq, status);
++	for (k = 0; k < ARRAY_SIZE(ids); k++) {
++		struct sun55i_de_block *b = &de->blocks[ids[k]];
++		const __le32 *sh = b->shadow;
++
++		pr_info("rcqdbg  blk%u head={a=%08x dw0=%08x d=%u off=%06x} sh={%08x %08x %08x %08x %08x}\n",
++			ids[k], le32_to_cpu(b->head->low_addr),
++			le32_to_cpu(b->head->dw0),
++			le32_to_cpu(b->head->dirty),
++			le32_to_cpu(b->head->reg_offset),
++			le32_to_cpu(sh[0]), le32_to_cpu(sh[1]),
++			le32_to_cpu(sh[2]), le32_to_cpu(sh[3]),
++			le32_to_cpu(sh[4]));
++	}
++}
++
+ static void sun55i_de_do_arm(struct sun55i_de *de)
+ {
+ 	u32 status = 0;
+@@ -893,6 +935,11 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 	regmap_read(de->mixer->top_regs, SUN55I_MIXER_RCQ_STATUS, &status);
+ 	dbg_status = status;
+ 
++	if (dbg_dump_arms) {
++		dbg_dump_arms--;
++		sun55i_de_dump_blocks(de, "pre-arm", status);
++	}
++
+ 	/*
+ 	 * A previous load is still in flight: don't stomp it. Leave arm_pending
+ 	 * set and retry on the next vblank (BUSY clears well within one frame).
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index 4917531eb..f3ac33e08 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -44,6 +44,14 @@ struct sun55i_de_block {
+ 	void				*shadow;	/* CPU view in DMA pool */
+ 	dma_addr_t			phys;		/* DMA phys of @shadow */
+ 	struct sun55i_de_rcq_head	*head;		/* its head in the array */
++	/*
++	 * dirty SOFTWARE acumulado desde el ultimo commit: lo pone
++	 * de_blk_write solo si el valor CAMBIA y commit() lo vuelca al
++	 * head en vez de pisarlo (el flip_min antiguo machacaba el dirty
++	 * de bloques con cambios reales -> el enable del blender no
++	 * viajaba nunca sin un mode_set de por medio: pantalla negra C4).
++	 */
++	bool				stage_dirty;
+ };
+ 
+ enum {
+-- 
+2.47.3
+

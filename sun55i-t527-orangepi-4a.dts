@@ -1,0 +1,721 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR MIT)
+/*
+ * Copyright (C) 2025 Chen-Yu Tsai <wens@csie.org>
+ */
+
+/dts-v1/;
+
+#include "sun55i-a523.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+	model = "OrangePi 4A";
+	compatible = "xunlong,orangepi-4a", "allwinner,sun55i-t527";
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		stdout-path = "serial0:115200n8";
+
+		/*
+		 * ETAPA A display: consola HDMI via SIMPLEDRM usando el FB que el
+		 * U-Boot BSP deja pintado (logo) y con el DE aun escaneando tras
+		 * bootm. Direccion/tamano VERIFICADOS EN VIVO 2026-07-08: es el
+		 * memreserve que sunxi_drm_kernel_para_flush() anade al FDT
+		 * (/sys/firmware/fdt del 6.18 corriendo): 0xbbea2000 + 0x3fc000
+		 * = 5440 (stride) x 768 -> 1360x768 32bpp. OJO: el modo lo elige
+		 * U-Boot segun el monitor conectado; si se cambia de monitor,
+		 * revalidar contra el memreserve del FDT vivo. El formato real es
+		 * ARGB8888 (fb0 del 5.15); declaramos x8r8g8b8 (mismo layout)
+		 * para que DRM no asuma blending por alpha.
+		 */
+		framebuffer@bbea2000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0xbbea2000 0x0 0x003fc000>;
+			memory-region = <&uboot_fb>;
+			width = <1360>;
+			height = <768>;
+			stride = <5440>;
+			format = "x8r8g8b8";
+			/*
+			 * Reclamar los dominios del pipeline de display que dejo
+			 * encendidos U-Boot. Sin esto, en cuanto TODOS los
+			 * consumidores del pck600 prueban (p.ej. panfrost via
+			 * modulo), su sync_state() barre los dominios sin
+			 * consumidor y apaga DE y VO0 -> pantalla negra a mitad
+			 * de boot (visto en vivo 2026-07-08: DE/VO0 off-0 en
+			 * pm_genpd_summary tras modprobe panfrost). simpledrm
+			 * soporta multiples power-domains y los mantiene on.
+			 */
+			power-domains = <&pck600 PD_DE>, <&pck600 PD_VO0>;
+		};
+	};
+
+	/*
+	 * El U-Boot BSP (v2018.05-t527) NO rellena /memory (asume que el DTB ya
+	 * lo trae, como el del BSP). El DTB mainline lo dejaba vacio -> el kernel
+	 * arranca sin saber donde esta la RAM -> cuelgue mudo instantaneo, sin
+	 * heartbeat. Definimos /memory estatico igual que el BSP: base 0x40000000.
+	 * (Si la placa es de 2GB usar size 0x80000000 en vez de 0x1 0x0.)
+	 */
+	memory@40000000 {
+		device_type = "memory";
+		/* OPi4A 2GB: base 0x40000000, size 0x80000000 (2 GiB) */
+		reg = <0x0 0x40000000 0x0 0x80000000>;
+	};
+
+	/*
+	 * El BSP 5.15 reserva esta region para BL31 (ARM Trusted Firmware),
+	 * el monitor seguro EL3 que atiende TODAS las llamadas PSCI (arranque
+	 * de nucleos SMP, idle, reset). El DTB mainline NO reservaba nada y su
+	 * /memory (2GB desde 0x40000000) abarca 0x48000000 -> el kernel ve esos
+	 * 16 MB como RAM libre, asigna paginas ahi y MACHACA BL31. El SMP
+	 * arranca antes del heartbeat (BL31 aun intacto) -> 1 latido; justo
+	 * despues una llamada PSCI cae en codigo corrupto -> cuelgue con el LED
+	 * fijo. Reservar la region (igual que el BSP) lo evita. no-map = el
+	 * kernel ni siquiera la mapea. El U-Boot BSP v2018 no inyecta esta
+	 * reserva en un DTB ajeno, por eso hay que ponerla estatica aqui.
+	 */
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/*
+		 * El firmware del BSP (BL31 + OP-TEE + shared memory) ocupa VARIAS
+		 * regiones que el U-Boot BSP reserva en el FDT del 5.15 pero NO en
+		 * nuestro DTB ajeno. Sacadas de /proc/iomem del 5.15 vivo. Reservar
+		 * SOLO bl31 dejaba que el kernel machacara OP-TEE/shm -> cuelgue tras
+		 * 2 latidos. Reservamos las 4 (igual que el BSP).
+		 */
+		sec-sram1@42350000 {
+			reg = <0x0 0x42350000 0x0 0x00230000>;
+		};
+
+		sec-sram2@43000000 {
+			reg = <0x0 0x43000000 0x0 0x00094000>;
+		};
+
+		bl31@48000000 {
+			reg = <0x0 0x48000000 0x0 0x01000000>;
+		};
+
+		optee@4941d000 {
+			reg = <0x0 0x4941d000 0x0 0x00be3000>;
+		};
+
+		/*
+		 * FB de U-Boot para el nodo simple-framebuffer de /chosen (ver
+		 * comentario alli). U-Boot ya mete un memreserve plano de esta
+		 * region, pero eso la deja en el linear map y en arm64 tanto
+		 * memremap(WC) como ioremap_wc FALLAN sobre RAM mapeada ->
+		 * simpledrm no podria mapearla. no-map es OBLIGATORIO.
+		 */
+		uboot_fb: framebuffer@bbea2000 {
+			reg = <0x0 0xbbea2000 0x0 0x003fc000>;
+			no-map;
+		};
+	};
+
+	/*
+	 * Stub nodes para el U-Boot BSP (v2018.05-t527): su bootm llama a
+	 * sunxi_drm_kernel_para_flush() que busca /soc/sunxi-drm y /soc/de en el
+	 * FDT para inyectar los parametros de su display. El DTB mainline no los
+	 * tiene -> el fixup falla a medias y corrompe el FDT -> el kernel cuelga.
+	 * Con estos nodos vacios el fixup completa sin error; el kernel mainline
+	 * los ignora (sin compatible). NO tocar el U-Boot: el 5.15 BSP necesita
+	 * esas inyecciones.
+	 */
+	soc {
+		sunxi-drm {
+		};
+
+		de {
+		};
+	};
+
+	ext_osc32k: ext-osc32k-clk {
+		#clock-cells = <0>;
+		compatible = "fixed-clock";
+		clock-frequency = <32768>;
+		clock-output-names = "ext_osc32k";
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		/* PWM capable pin, but PWM isn't supported yet. */
+		led {
+			function = LED_FUNCTION_STATUS;
+			color = <LED_COLOR_ID_GREEN>;
+			gpios = <&pio 3 20 GPIO_ACTIVE_HIGH>; /* PD20 */
+			linux,default-trigger = "heartbeat";
+		};
+	};
+
+	iio-hwmon {
+		compatible = "iio-hwmon";
+		io-channels = <&axp717_adc 3>, /* vsys_v */
+			      <&axp717_adc 4>, /* pmic_temp */
+			      <&axp717_adc 7>; /* bkup_batt_v */
+	};
+
+	wifi_pwrseq: pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&r_pio 1 1 GPIO_ACTIVE_LOW>; /* PM1 */
+		clocks = <&rtc CLK_OSC32K_FANOUT>;
+		clock-names = "ext_clock";
+	};
+
+	reg_otg_vbus: regulator-otg-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "otg-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&reg_vcc5v>;
+		gpio = <&r_pio 0 4 GPIO_ACTIVE_HIGH>;	/* PL4 */
+		enable-active-high;
+	};
+
+	reg_pcie_vcc3v3: regulator-pcie-vcc3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-pcie-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&reg_vcc5v>;
+		gpio = <&r_pio 0 8 GPIO_ACTIVE_HIGH>;	/* PL8 */
+		enable-active-high;
+	};
+
+	reg_usb_vbus: regulator-usb-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usb-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&reg_vcc5v>;
+		gpio = <&r_pio 0 12 GPIO_ACTIVE_HIGH>;	/* PL12 */
+		enable-active-high;
+	};
+
+	reg_vcc5v: regulator-vcc5v {
+		/* board wide 5V supply from USB type-C port */
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-5v";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		regulator-always-on;
+	};
+};
+
+&ehci0 {
+	status = "okay";
+};
+
+&ehci1 {
+	status = "okay";
+};
+
+&gpu {
+	mali-supply = <&reg_dcdc2>;
+	status = "okay";
+};
+
+&mmc0 {
+	vmmc-supply = <&reg_cldo3>;
+	cd-gpios = <&pio 5 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; /* PF6 */
+	bus-width = <4>;
+	status = "okay";
+};
+
+&mmc1 {
+	bus-width = <4>;
+	mmc-pwrseq = <&wifi_pwrseq>;
+	non-removable;
+	vmmc-supply = <&reg_dldo1_323>;
+	vqmmc-supply = <&reg_bldo1>;
+	status = "okay";
+
+	brcmf: wifi@1 {
+		compatible = "brcm,bcm4329-fmac";
+		reg = <1>;
+		interrupt-parent = <&r_pio>;
+		interrupts = <1 0 IRQ_TYPE_LEVEL_LOW>; /* PM0 */
+		interrupt-names = "host-wake";
+	};
+};
+
+&mmc2 {
+	bus-width = <8>;
+	cap-mmc-hw-reset;
+	mmc-ddr-1_8v;
+	mmc-hs200-1_8v;
+	non-removable;
+	vmmc-supply = <&reg_cldo3>;
+	vqmmc-supply = <&reg_cldo1>;
+	status = "okay";
+};
+
+&ohci0 {
+	status = "okay";
+};
+
+&ohci1 {
+	status = "okay";
+};
+
+&pio {
+	vcc-pb-supply = <&reg_cldo3>;	/* via VCC-IO */
+	vcc-pc-supply = <&reg_cldo1>;
+	vcc-pd-supply = <&reg_cldo3>;
+	vcc-pe-supply = <&reg_aldo2>;
+	vcc-pf-supply = <&reg_cldo3>;	/* VCC-IO for 3.3v; VCC-MCSI for 1.8v */
+	vcc-pg-supply = <&reg_bldo1>;
+	vcc-ph-supply = <&reg_cldo3>;	/* via VCC-IO */
+	vcc-pi-supply = <&reg_cldo3>;
+	vcc-pj-supply = <&reg_cldo1>;
+	vcc-pk-supply = <&reg_cldo1>;
+};
+
+&r_i2c0 {
+	status = "okay";
+
+	axp717: pmic@35 {
+		compatible = "x-powers,axp717";
+		reg = <0x35>;
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		interrupts-extended = <&nmi_intc 0 IRQ_TYPE_LEVEL_LOW>;
+
+		vin1-supply = <&reg_vcc5v>;
+		vin2-supply = <&reg_vcc5v>;
+		vin3-supply = <&reg_vcc5v>;
+		vin4-supply = <&reg_vcc5v>;
+		aldoin-supply = <&reg_vcc5v>;
+		bldoin-supply = <&reg_vcc5v>;
+		cldoin-supply = <&reg_vcc5v>;
+
+		axp717_adc: adc {
+			compatible = "x-powers,axp717-adc";
+			#io-channel-cells = <1>;
+		};
+
+		battery-power {
+			compatible = "x-powers,axp717-battery-power-supply";
+			/* no battery; output used for dcdc4 instead */
+			status = "disabled";
+		};
+
+		regulators {
+			/* Supplies the "little" cluster (1.4 GHz cores) */
+			reg_dcdc1: dcdc1 {
+				regulator-always-on;
+				regulator-min-microvolt = <900000>;
+				regulator-max-microvolt = <1160000>;
+				regulator-name = "vdd-cpul";
+			};
+
+			reg_dcdc2: dcdc2 {
+				regulator-always-on;
+				regulator-min-microvolt = <920000>;
+				regulator-max-microvolt = <920000>;
+				regulator-name = "vdd-gpu-sys";
+			};
+
+			reg_dcdc3: dcdc3 {
+				regulator-always-on;
+				regulator-min-microvolt = <1160000>;
+				regulator-max-microvolt = <1160000>;
+				regulator-name = "vcc-dram";
+			};
+
+			reg_dcdc4: dcdc4 {
+				/* feeds 3.3V pin on GPIO header */
+				regulator-always-on;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vdd-io";
+			};
+
+			aldo1 {
+				/* not actually connected */
+				regulator-name = "avdd-csi";
+			};
+
+			reg_aldo2: aldo2 {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcc-pe";
+			};
+
+			reg_aldo3: aldo3 {
+				/* supplies the I2C pins for this PMIC */
+				regulator-always-on;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcc-pl-usb";
+			};
+
+			reg_aldo4: aldo4 {
+				regulator-always-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcc-pll-dxco-avcc";
+			};
+
+			reg_bldo1: bldo1 {
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcc-pg-wifi";
+			};
+
+			reg_bldo2: bldo2 {
+				regulator-always-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcc-pm-lpddr";
+			};
+
+			bldo3 {
+				/* not actually connected */
+				regulator-name = "afvcc-csi";
+			};
+
+			bldo4 {
+				/* not actually connected */
+				regulator-name = "dvdd-csi";
+			};
+
+			reg_cldo1: cldo1 {
+				regulator-always-on;
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
+				regulator-name = "vcc-cvp-pc-lvds-mcsi-pk-efuse-pcie-edp-1v8";
+			};
+
+			reg_cldo2: cldo2 {
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcc3v3-csi";
+			};
+
+			reg_cldo3: cldo3 {
+				regulator-always-on;
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcc-io-mmc-nand-pd-pi-usb";
+			};
+
+			reg_cldo4: cldo4 {
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcc-3v3-phy1-lcd";
+			};
+
+			reg_cpusldo: cpusldo {
+				/* supplies the management core */
+				regulator-always-on;
+				regulator-min-microvolt = <900000>;
+				regulator-max-microvolt = <900000>;
+				regulator-name = "vdd-cpus-usb-0v9";
+			};
+		};
+
+		usb-power {
+			compatible = "x-powers,axp717-usb-power-supply";
+			input-current-limit-microamp = <3000000>;
+		};
+	};
+
+	axp323: pmic@36 {
+		compatible = "x-powers,axp323";
+		reg = <0x36>;
+		#interrupt-cells = <1>;
+		interrupt-controller;
+		status = "okay";
+
+		vin1-supply = <&reg_vcc5v>;
+		vin2-supply = <&reg_vcc5v>;
+		vin3-supply = <&reg_vcc5v>;
+
+		regulators {
+			reg_aldo1_323: aldo1 {
+				/* less capable and shares load with dldo1 */
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcc-wifi";
+			};
+
+			reg_dldo1_323: dldo1 {
+				/* more capable and shares load with aldo1 */
+				regulator-min-microvolt = <3300000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-name = "vcc-wifi2";
+			};
+
+			/* Supplies the "big" cluster (1.8 GHz cores) */
+			reg_dcdc1_323: dcdc1 {
+				regulator-always-on;
+				regulator-min-microvolt = <900000>;
+				regulator-max-microvolt = <1150000>;
+				regulator-name = "vdd-cpub";
+			};
+
+			/* DCDC2 is polyphased with DCDC1 */
+
+			/* Some RISC-V management core related voltage */
+			reg_dcdc3_323: dcdc3 {
+				regulator-always-on;
+				regulator-min-microvolt = <900000>;
+				regulator-max-microvolt = <900000>;
+				regulator-name = "vdd-dnr";
+			};
+		};
+	};
+};
+
+&r_pio {
+/*
+ * Specifying the supply would create a circular dependency.
+ *
+ *	vcc-pl-supply = <&reg_aldo3>;
+ */
+	vcc-pm-supply = <&reg_bldo2>;
+};
+
+&rtc {
+	clocks = <&r_ccu CLK_BUS_R_RTC>, <&osc24M>,
+		 <&r_ccu CLK_R_AHB>, <&ext_osc32k>;
+	clock-names = "bus", "hosc", "ahb", "ext-osc32k";
+	assigned-clocks = <&rtc CLK_OSC32K>;
+	assigned-clock-rates = <32768>;
+};
+
+&uart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart0_pb_pins>;
+	status = "okay";
+};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart1_pins>, <&uart1_rts_cts_pins>;
+	uart-has-rtscts;
+	status = "okay";
+
+	bluetooth {
+		compatible = "brcm,bcm4345c5";
+		clocks = <&rtc CLK_OSC32K_FANOUT>;
+		clock-names = "lpo";
+		vbat-supply = <&reg_aldo1_323>;
+		vddio-supply = <&reg_bldo1>;
+		device-wakeup-gpios = <&r_pio 1 3 GPIO_ACTIVE_HIGH>; /* PM3 */
+		host-wakeup-gpios = <&r_pio 1 4 GPIO_ACTIVE_HIGH>; /* PM4 */
+		shutdown-gpios = <&r_pio 1 2 GPIO_ACTIVE_HIGH>; /* PM2 */
+	};
+};
+
+&usb_otg {
+	/*
+	 * The OTG controller is connected to one of the type-A ports.
+	 * There is a regulator, controlled by a GPIO, to provide VBUS power
+	 * to the port, and a VBUSDET GPIO, to detect externally provided
+	 * power. But without ID or CC pins there is no real way to do a
+	 * runtime role detection.
+	 */
+	dr_mode = "host";
+	status = "okay";
+};
+
+&usbphy {
+	usb0_vbus-supply = <&reg_otg_vbus>;
+	usb0_vbus_det-gpios = <&r_pio 0 7 GPIO_ACTIVE_HIGH>; /* PL7 */
+	usb1_vbus-supply = <&reg_usb_vbus>;
+	status = "okay";
+};
+
+&gmac1 {
+	/* Config RGMII validada en vivo (2026-07-08) tras corregir el
+	 * withstand del banco PJ (rail 1.8V, receptor en modo 3.3V = RX
+	 * sordo; ver a523_pio_fix_withstand en pinctrl-sun55i-a523.c).
+	 * La PHY pone ~1.9ns de delay en RXC (rgmii-rxid + prop del nodo
+	 * PHY); el syscon del MAC solo aporta 100ps de TX (BSP: tx-delay=1).
+	 * Resultado: 1Gbps/Full, ping 0% loss. */
+	phy-mode = "rgmii-rxid";
+	phy-handle = <&ext_rgmii_phy>;
+	phy-supply = <&reg_cldo4>;
+	tx-internal-delay-ps = <100>;
+	rx-internal-delay-ps = <0>;
+	status = "okay";
+};
+
+&mdio1 {
+	ext_rgmii_phy: ethernet-phy@1 {
+		compatible = "ethernet-phy-ieee802.3-c22";
+		reg = <1>;
+		/* Delay de reloj de RX en la propia PHY YT8531 (RXC_DLY_EN,
+		 * ~1.9ns). El driver motorcomm lee esta propiedad DEL NODO DE
+		 * LA PHY y solo la aplica con phy-mode rgmii-rxid/id. */
+		rx-internal-delay-ps = <1900>;
+		/* El BSP desactiva el auto-sleep incondicionalmente. */
+		motorcomm,auto-sleep-disabled;
+		interrupts-extended = <&pio 8 16 IRQ_TYPE_LEVEL_LOW>; /* PI16 */
+		reset-gpios = <&pio 8 15 GPIO_ACTIVE_LOW>; /* PI15 */
+		reset-assert-us = <10000>;
+		reset-deassert-us = <150000>;
+	};
+};
+
+/*
+ * ETAPA C display: pipeline KMS real (DE3.5 RCQ -> TCON-TV -> DW-HDMI+PHY Inno).
+ * Adaptacion del enable de minimyth2 2903 a este dts (que ya tiene
+ * reserved-memory con bl31+uboot_fb y el framebuffer simpledrm de arranque).
+ */
+/ {
+	hdmi-connector {
+		compatible = "hdmi-connector";
+		type = "a";
+
+		port {
+			hdmi_con_in: endpoint {
+				remote-endpoint = <&hdmi_out_con>;
+			};
+		};
+	};
+};
+
+/*
+ * El DMA del DE (scanout y pool RCQ) solo alcanza DRAM MUY baja: el parche
+ * original (X96Q, mismo die) observa que 0x43000000 es alcanzable pero
+ * 0x4b100000 ya NO. Con la ventana anterior (hasta 0x70000000) la CMA cayo
+ * en 0x60000000 -> fetch fuera de apertura -> cuelgue del interconnect a
+ * mitad de boot (boot 2, placa medio muerta). Ventana estricta como el
+ * layout probado: 0x43000000-0x48000000 (tras el kernel, antes del bl31),
+ * 64MB (suficiente para dumb buffers/fbcon del bring-up).
+ */
+&{/reserved-memory} {
+	cma_low: linux,cma {
+		compatible = "shared-dma-pool";
+		reusable;
+		size = <0x0 0x04000000>;
+		alloc-ranges = <0x0 0x43000000 0x0 0x05000000>;
+		linux,cma-default;
+	};
+};
+
+/*
+ * El pool RCQ del DE se aloja con dma_alloc_coherent sobre el device del
+ * mixer; al ser pequeno no tira de la CMA global y caia en paginas altas
+ * fuera de la apertura del DE (RCQ_HEAD 0x52100000 observado -> el DMA
+ * del RCQ leia basura y el datapath nunca se configuraba: pantalla verde).
+ * memory-region ata las reservas coherentes del mixer a la CMA baja
+ * (sun55i_de hace of_reserved_mem_device_init si uses_rcq).
+ */
+&mixer0 {
+	memory-region = <&cma_low>;
+};
+
+/*
+ * SESION C4: el display-engine (drm->dev) hereda el master 5 del IOMMU
+ * para que los GEM de scanout y los PRIME imports (kbase, no contiguos)
+ * se alojen/mapeen como IOVAs traducidas. Es el equivalente en DT del
+ * of_dma_configure(drm->dev, nodo_DE) del BSP (sunxi_de.c:1262): con el
+ * bypass del master 5 quitado TODO el trafico del DE se traduce, asi que
+ * el scanout fisico sin mapear dejaria de verse.
+ */
+&de {
+	status = "okay";
+	iommus = <&iommu 5>;
+};
+
+&hdmi {
+	status = "okay";
+};
+
+&hdmi_out {
+	hdmi_out_con: endpoint {
+		remote-endpoint = <&hdmi_con_in>;
+	};
+};
+
+/*
+ * Adaptaciones de la auditoria contra el BSP 5.15 (fuente de verdad):
+ * - El BSP cuelga vo0/tcon de la isla VO0 (A523_PCK_VO0); el dtsi del
+ *   parche solo la reclama desde el nodo hdmi. Reclamarla tambien en
+ *   tcon-top y tcon-tv evita tocar registros con la isla apagada y
+ *   protege del barrido de sync_state (ya mordio con simpledrm).
+ * - El BSP fija CLK_DE a 600 MHz colgado de PLL_VIDEO3_4X
+ *   (assigned-clocks del nodo de@5000000 del BSP); el dtsi del parche
+ *   no fijaba rate y el mux podia quedarse en el padre de reset.
+ */
+&tcon_top {
+	power-domains = <&pck600 PD_VO0>;
+};
+
+&tcon_tv0 {
+	power-domains = <&pck600 PD_VO0>;
+};
+
+&display_clocks {
+	assigned-clocks = <&ccu CLK_DE>;
+	assigned-clock-parents = <&ccu CLK_PLL_VIDEO3_4X>;
+	assigned-clock-rates = <600000000>;
+};
+
+/*
+ * SESION C4: iommus del mixer reactivado (el dtsi ya trae
+ * iommus = <&iommu 5>). El driver lleva ahora la receta v15 del BSP
+ * (invalidacion por rango + prefetch vendor) y guardas de diagnostico
+ * contra el DTE corrupto del Oops de boot 1.
+ */
+
+/*
+ * AUDIO HDMI (receta del BSP 5.15, fuente de verdad): el BSP saca el audio
+ * HDMI por I2S2 (i2s2_plat@7114000, dma1 req 5, tarjeta "sndhdmi",
+ * formato i2s, 2 slots de 32 bits, CPU master, sin MCLK) hacia la entrada
+ * I2S del DW-HDMI (cableado interno del SoC, sin pinctrl). En mainline el
+ * equivalente es sun4i-i2s (fallback r329, mismo layout de registros) +
+ * dw-hdmi-i2s-audio (el core ya registra el codec: CONFIG3 trae GPAUD,
+ * verificado en vivo) + simple-audio-card, patron rk3328. Los nodos i2s2 y
+ * mcu_dma son los de upstream master (serie I2S A523 de Chen-Yu Tsai),
+ * salvo dma-channels=8 que es lo que dice el dts del BSP (upstream pone 16).
+ * mclk-fs=128: el DW-HDMI no consume MCLK pero sun4i-i2s deriva de el los
+ * divisores de BCLK.
+ */
+&i2s2 {
+	status = "okay";
+};
+
+/ {
+	hdmi_sound: hdmi-sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "sndhdmi";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,mclk-fs = <128>;
+
+		/*
+		 * Slots de 32 bits SIEMPRE (como el BSP: soundcard-mach,
+		 * slot-width = <32>): dw-hdmi-i2s-audio hardcodea
+		 * AUD_INPUTCLKFS=64fs, y sin esto con S16 el sun4i-i2s
+		 * genera tramas de 32fs (slot de 16) -> el DW-HDMI muestrea
+		 * mal la trama y el sink recibe SILENCIO (verificado en la
+		 * placa: S32 sonaba, S16 no; TXCNT avanzaba en ambos).
+		 */
+		simple-audio-card,cpu {
+			sound-dai = <&i2s2>;
+			dai-tdm-slot-num = <2>;
+			dai-tdm-slot-width = <32>;
+		};
+
+		simple-audio-card,codec {
+			sound-dai = <&hdmi>;
+		};
+	};
+};

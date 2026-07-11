@@ -1,0 +1,55 @@
+From 8ffd879ddd0df838fc49333b70714d0602e8be97 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 13:50:08 +0200
+Subject: [PATCH T527 61/66] drm/sun4i: sun55i_de: pulso de reset del DE en
+ mode_set (fix wedge MBUS)
+
+Un fault del puerto MBUS del DE durante el teardown de una sesion (fb
+liberado con fetch en vuelo) deja una transaccion sin ack que cuelga el
+puerto: los registros se leen correctos pero el fetch esta muerto (solo
+se ve el color de fondo) y en el peor caso arrastra el interconnect.
+SDDM lo disparaba en cada arranque. reset_control_reset del nucleo DE
+al entrar en mode_set aborta la transaccion colgada; todo el estado se
+rescribe justo despues (top MMIO + full RCQ reload). Sustituye al pulso
+manual del de-bringup.service (C4C) en el punto correcto del driver.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index e053a1d5e..6b8495b1f 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -20,6 +20,7 @@
+ #include <linux/math64.h>
+ #include <linux/moduleparam.h>
+ #include <linux/of_reserved_mem.h>
++#include <linux/reset.h>
+ #include <linux/preempt.h>	/* in_hardirq() — TEMP instrumentation */
+ #include <linux/spinlock.h>
+ 
+@@ -565,6 +566,19 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	u32 w = mode->hdisplay, h = mode->vdisplay;
+ 	u32 size = SUN55I_DE_OUT_SIZE(w, h);
+ 	u32 vtotal = mode->crtc_vtotal, clock = mode->crtc_clock;
++
++	/*
++	 * Pulso de reset del nucleo DE (bit en DE_RESET 0x8000, el reset del
++	 * mixer via display_clocks) ANTES de reprogramar: si una transaccion
++	 * del puerto MBUS quedo colgada por un fault en el teardown anterior
++	 * (cambio de sesion, SDDM), solo el reset la aborta; sin esto el DE
++	 * queda wedged (registros correctos, fetch muerto -> fondo fijo)
++	 * hasta un reboot. Equivale al pulso manual del de-bringup.service
++	 * de C4C, hecho en el sitio correcto: cada (re)enable del CRTC.
++	 * Seguro aqui: todo el estado se rescribe a continuacion (top por
++	 * MMIO + full RCQ reload de los full_arms).
++	 */
++	reset_control_reset(mixer->reset);
+ 	u32 vbp;
+ 	u32 mux;
+ 
+-- 
+2.47.3
+

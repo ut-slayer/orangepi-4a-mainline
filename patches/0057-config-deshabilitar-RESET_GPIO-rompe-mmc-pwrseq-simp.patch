@@ -1,0 +1,37 @@
+From ded463c362bd4f463f6acd45899a8a7dfa74d96a Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 10 Jul 2026 02:43:18 +0200
+Subject: [PATCH T527 57/66] =?UTF-8?q?config:=20deshabilitar=20RESET=5FGPI?=
+ =?UTF-8?q?O=20=E2=80=94=20rompe=20mmc-pwrseq-simple=20con=20#gpio-cells?=
+ =?UTF-8?q?=3D3=20(WiFi=20AP6256=20en=20mmc1)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+El fallback reset-GPIO del core de reset solo soporta #gpio-cells=2
+(__reset_add_reset_gpio_device devuelve -ENOENT con 3 celdas de sunxi),
+y con RESET_GPIO habilitado IS_ENABLED activa esa ruta en pwrseq_simple
+-> probe -2 -> mmc1 nunca prueba. Sin RESET_GPIO, pwrseq usa el camino
+clasico devm_gpiod_get_array (equivalente al BSP 5.15).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .config | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.config b/.config
+index 28091ecf1..7bd92f1a7 100644
+--- a/.config
++++ b/.config
+@@ -8078,7 +8078,7 @@ CONFIG_PARTITION_PERCPU=y
+ # CONFIG_IPACK_BUS is not set
+ CONFIG_ARCH_HAS_RESET_CONTROLLER=y
+ CONFIG_RESET_CONTROLLER=y
+-CONFIG_RESET_GPIO=m
++# CONFIG_RESET_GPIO is not set
+ # CONFIG_RESET_MCHP_SPARX5 is not set
+ CONFIG_RESET_NUVOTON_MA35D1=y
+ CONFIG_RESET_SCMI=y
+-- 
+2.47.3
+

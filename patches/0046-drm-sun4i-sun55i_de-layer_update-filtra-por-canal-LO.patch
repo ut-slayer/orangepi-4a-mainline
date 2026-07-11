@@ -1,0 +1,43 @@
+From 8e4ddb3436123942920d9b32ca21d3b2ccbd72b3 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 22:38:44 +0200
+Subject: [PATCH T527 46/66] drm/sun4i: sun55i_de: layer_update filtra por
+ canal LOGICO (drift 7.1 vs 6.18)
+
+En 6.18 los sun8i_layer llevan canal logico (vi_num+index; UI primario=1)
+y el mapeo a fisico lo hace map[] al calcular bases. El parche (escrito
+contra 7.1, donde el canal ya es fisico) comparaba contra el fisico 6,
+asi que layer_update retornaba temprano para TODOS los planos: el pool
+RCQ nunca contenia el OVL/BLD del plano y cada carga RCQ machacaba con
+ceros lo que el path MMIO habia pintado (los pinguinos del fbcon se
+veian hasta que el primer arm los borraba -> pantalla verde de fondo).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index ff2776c74..4f2619be0 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -749,9 +749,14 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 	dma_addr_t addr;
+ 	u32 fmt, attctl;
+ 
+-	/* this milestone only drives the first UI channel (phys 6) */
++	/*
++	 * this milestone only drives the first UI channel (logic 1 = phys 6).
++	 * En 6.18 layer->channel es el canal LOGICO (vi_num + index); la
++	 * comparacion contra el fisico (semantica de 7.1) hacia que TODOS los
++	 * planos retornaran aqui y el pool RCQ quedara sin OVL/BLD (verde).
++	 */
+ 	if (layer->type != SUN8I_LAYER_TYPE_UI ||
+-	    layer->channel != SUN55I_DE_OVL_UI_PHYS_CHN)
++	    layer->channel != SUN55I_DE_OVL_UI_LOGIC_CHN)
+ 		return;
+ 
+ 	if (!state->crtc || !state->visible || !fb) {
+-- 
+2.47.3
+

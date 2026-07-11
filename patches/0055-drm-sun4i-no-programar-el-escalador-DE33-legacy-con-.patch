@@ -1,0 +1,73 @@
+From 17d7a1560af959ee23930b9e6e7810afdc1f92c6 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Thu, 9 Jul 2026 19:42:33 +0200
+Subject: [PATCH T527 55/66] drm/sun4i: no programar el escalador DE33 legacy
+ con el backend RCQ (fix franjas verticales)
+
+Con el sun55i_de activo (A523 v35x), sun8i_ui/vi_layer_update_coord seguia
+llamando a sun8i_vi_scaler_setup por AHB en cada atomic_update: escribia las
+tablas de coeficientes del VSU10 de DE3 (lan3 left/right, 8 taps en dos
+mitades) en la SRAM de 4 taps del VSU8 (uch0 + 0x3000 = 0x1C4000). La suma
+por fase de media tabla de 8 taps != 64 -> franjas verticales oscuro/
+transparente en todo modo escalado (el filtro vertical recibia lan2 de
+4 taps por casualidad, por eso solo bandas VERTICALES sobre una imagen bien
+escalada). La SRAM no esta protegida por el latch de frame del RCQ y los
+bloques VSU del RCQ solo se rearman en mode_set, asi que el valor legacy
+ganaba en regimen (huella: hstep vivo 0xAAAA0 -16.16<<4 mainline- en vez de
+0xAAAAA -formula BSP 19bit<<1-). A 720p (1:1) el path legacy no programa el
+escalador: por eso era perfecto.
+
+Fix: con mixer->de (backend RCQ) el escalador es EXCLUSIVO de
+sun55i_de_vsu_setup (tablas lan2 del BSP via RCQ), como hace el vendor.
+Validado en placa: steps vivos 0xAAAAA a 1080p, 5 ciclos 720p/1360/1080
+con 0 faults y 0 timeouts.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 13 ++++++++++++-
+ drivers/gpu/drm/sun4i/sun8i_vi_layer.c |  5 ++++-
+ 2 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index f97be0040..d0200d02c 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -86,7 +86,18 @@ static int sun8i_ui_layer_update_coord(struct sun8i_mixer *mixer, int channel,
+ 		     SUN8I_MIXER_CHAN_UI_OVL_SIZE(ch_base),
+ 		     insize);
+ 
+-	if (insize != outsize || hphase || vphase) {
++	/*
++	 * Con el backend RCQ (A523 v35x) el escalador del canal es un VSU8
++	 * que programa sun55i_de_vsu_setup por el shadow RCQ con las tablas
++	 * lan2 de 4 taps del BSP. Esta ruta DE33 escribe por AHB encima del
++	 * mismo bloque las tablas del VSU10 (lan3 left/right, 8 taps) cuya
++	 * suma por fase != 64: franjas verticales en cualquier modo escalado.
++	 * La SRAM de coeficientes no esta protegida por el latch de frame del
++	 * RCQ, asi que estas escrituras directas ganan. No tocar el escalador.
++	 */
++	if (mixer->de) {
++		/* sun55i_de_vsu_setup ya ha programado (o bypasseado) el VSU8 */
++	} else if (insize != outsize || hphase || vphase) {
+ 		u32 hscale, vscale;
+ 
+ 		DRM_DEBUG_DRIVER("HW scaling is enabled\n");
+diff --git a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+index a09ee4097..e59105afa 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+@@ -118,7 +118,10 @@ static int sun8i_vi_layer_update_coord(struct sun8i_mixer *mixer, int channel,
+ 	 */
+ 	subsampled = format->hsub > 1 || format->vsub > 1;
+ 
+-	if (insize != outsize || subsampled || hphase || vphase) {
++	/* con el backend RCQ el VSU es del sun55i_de: ver sun8i_ui_layer.c */
++	if (mixer->de) {
++		/* nada: el escalador lo programa sun55i_de por RCQ */
++	} else if (insize != outsize || subsampled || hphase || vphase) {
+ 		unsigned int scanline, required;
+ 		struct drm_display_mode *mode;
+ 		u32 hscale, vscale, fps;
+-- 
+2.47.3
+
