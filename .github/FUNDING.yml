@@ -1,7 +1,5 @@
-# Botón "Sponsor" del repo. Rellena solo las plataformas que uses y borra el resto.
+# Botón "Sponsor" del repo.
 # Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
 
-buy_me_a_coffee: TU-USUARIO-BMC        # https://www.buymeacoffee.com/<esto>
-ko_fi: TU-USUARIO-KOFI                  # https://ko-fi.com/<esto>
-# github: [ut_slayer]                   # requiere darse de alta en GitHub Sponsors
-# custom: ["https://paypal.me/tu-usuario"]
+ko_fi: aurealnix
+# github: [ut-slayer]   # descoméntalo cuando actives GitHub Sponsors

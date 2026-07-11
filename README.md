@@ -1,6 +1,6 @@
 # Orange Pi 4A (Allwinner T527 / A523) — mainline Linux 6.18.36
 
-[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-☕-FFDD00?logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/TU-USUARIO-BMC)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Inv%C3%ADtame%20a%20un%20caf%C3%A9%20%E2%98%95-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/aurealnix)
 
 Soporte **mainline** para la Orange Pi 4A (SoC Allwinner **T527**, familia A523 /
 `sun55iw3`), sobre un kernel **6.18.36 vanilla**. Serie de 66 parches +
@@ -76,11 +76,8 @@ arranque tal cual, no como propuesta upstream.
 Esto es trabajo de ingeniería inversa en tiempo libre (bring-up de display, GPU,
 audio, red…). Si te ha servido para tu Orange Pi 4A, puedes invitarme a un café:
 
-- **Buy me a Coffee:** https://www.buymeacoffee.com/TU-USUARIO-BMC
-- **Ko-fi:** https://ko-fi.com/TU-USUARIO-KOFI
-- **GitHub Sponsors:** botón *Sponsor* arriba en el repo
-
-*(Sustituye los `TU-USUARIO-*` por tus handles reales; ver `.github/FUNDING.yml`.)*
+- **Ko-fi:** https://ko-fi.com/aurealnix
+- **GitHub Sponsors:** botón *Sponsor* arriba en el repo (cuando esté activo)
 
 ## Créditos
 
