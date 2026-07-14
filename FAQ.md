@@ -30,10 +30,10 @@ Yes, from the first boot. SSH host keys are regenerated on first boot, so your
 board's keys are unique. The board gets its address via DHCP.
 
 **The first boot takes long / the screen stays on the boot logo — is it dead?**
-No. On first boot the system resizes the filesystem and generates SSH keys.
-Also, the display driver loads as a kernel module, so the desktop appears
-<!-- TODO: measure --> **~XX seconds** after the boot logo. Be patient, don't
-pull the power.
+No. The desktop comes up in roughly **half a minute** from power-on. The very
+first boot is longer — it resizes the filesystem to fill your card and
+generates fresh SSH keys — so give it a minute the first time and don't pull
+the power.
 
 **The desktop appears with everything huge (wrong scale).**
 KDE may auto-pick a display scale on the very first session. Fix in one click:
@@ -42,13 +42,20 @@ System Settings → Display → set Scale to 100% (keep the native resolution).
 ## Display
 
 **Which resolutions/monitors are known to work?**
-Tested on real hardware: <!-- TODO: fill exact list --> 1280x720, 1920x1080,
-1360x768. VSU scaling is clean on these modes.
+Tested on real hardware: 1280x720, 1360x768 (native panel of my test monitor),
+and 1920x1080. VSU scaling is clean on these modes. Other standard modes should
+work via the monitor's EDID.
 
 HDMI hotplug detection works natively: the connector reports "connected" at
 boot and follows the cable when you plug/unplug it (no force needed). If your
 monitor still shows nothing, try a different HDMI cable/input first, then open
 an issue with the monitor model.
+
+**Does Vulkan work?**
+Not yet. OpenGL / OpenGL ES are accelerated through Panfrost (Mesa); Vulkan
+falls back to llvmpipe (software) — the Panfrost Vulkan driver (panvk) doesn't
+support the Mali-G57 well enough yet. GL ES is what the desktop and most apps
+use, so day-to-day this isn't a problem.
 
 **Hardware video decode (VPU)?**
 Not available — there is no VPU driver in mainline 6.18 for this SoC, and
@@ -57,8 +64,11 @@ which works fine for typical desktop use. If mainline (cedrus) gains support
 for this SoC family someday, I'll integrate it.
 
 **YouTube?**
-Works with software decoding. <!-- TODO: state what you verified, e.g.
-"720p is smooth in Chromium; 1080p depends on the video" -->
+Works with software decoding (there's no hardware VPU). 720p is watchable,
+including fullscreen — it holds up but software decode isn't free, so you'll
+see some dropped frames (~6% on a 25 fps video in my testing, fullscreen). Fine
+for casual viewing; not flawless. Higher resolutions lean harder on the CPU.
+The board stays cool doing it (~55–60 °C, half the CPU still idle).
 
 ## Hardware support
 
@@ -92,10 +102,8 @@ reboot/poweroff, AFBC scanout.
 
 **How fast is it?**
 It's an octa-core Cortex-A55 with a Mali-G57 — a modest but honest desktop.
-glmark2-es2 (Wayland) scores ~531 with Panfrost <!-- TODO: re-measure with GPU
-devfreq — 531 was at the old fixed 432 MHz clock, peak is now 600 MHz -->. The
-Plasma Wayland desktop is smooth at 1080p; Chromium runs with GPU acceleration
-including WebGL.
+glmark2-es2 (Wayland) scores in the ~500s with Panfrost. The Plasma Wayland
+desktop is smooth at 1080p; Chromium runs with GPU acceleration including WebGL.
 
 **Does it need a heatsink? Does it throttle?**
 CPU frequency scaling (cpufreq/DVFS) works: OPPs from 480 MHz up to
@@ -104,10 +112,11 @@ cluster (cpu4-7), schedutil governor, with the A523 thermal sensors (THS) and
 CPU cooling maps wired — under sustained load the chip throttles itself
 gracefully instead of cooking. The GPU scales too (Panfrost devfreq,
 150–600 MHz, simple_ondemand): it idles at 150 MHz and has its own cooling
-map on the GPU thermal zone. In normal desktop use it runs cool;
-development was done <!-- TODO: confirm --> without active cooling.
-Measured temperatures: <!-- TODO: idle XX°C / sustained load XX°C
-(cat /sys/class/thermal/thermal_zone*/temp, stress-ng 10 min) -->
+map on the GPU thermal zone. In normal desktop use it runs cool, and
+development was done with no heatsink and no fan.
+Measured (bare board, no cooling): ~47 °C idle, ~60 °C under a full 8-core CPU
+load — nowhere near the 90 °C throttle trip. You don't need a heatsink for
+desktop use; add one only if you plan to hammer all cores for long stretches.
 
 **Is there swap / zram?**
 No — both are disabled by default. The board ships in different RAM sizes
