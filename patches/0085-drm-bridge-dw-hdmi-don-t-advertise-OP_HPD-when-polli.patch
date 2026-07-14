@@ -1,5 +1,5 @@
-From 2248ba57674e39384c41729dd12c515c96ceb175 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From bff94f97ef37981bed3cfad4d4556ff1b0021557 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 00:27:34 +0200
 Subject: [PATCH 085/106] drm/bridge: dw-hdmi: don't advertise OP_HPD when
  polling the connector

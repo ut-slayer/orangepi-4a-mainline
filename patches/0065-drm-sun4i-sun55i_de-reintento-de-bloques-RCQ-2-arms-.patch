@@ -1,5 +1,5 @@
-From ae7446984c36c09a96e9ae3b40db77bb149e56e2 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From f25067eca07c4ca506df7f26e5659ec0fb851be1 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 15:25:57 +0200
 Subject: [PATCH 065/106] drm/sun4i: sun55i_de: reintento de bloques RCQ (2
  arms por cambio staged)

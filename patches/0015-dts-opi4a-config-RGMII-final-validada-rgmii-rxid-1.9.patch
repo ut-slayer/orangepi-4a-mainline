@@ -1,5 +1,5 @@
-From d4b2bf4c2094aae5b6df212510343b8e91549dda Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 6d77bce1ef1f07b74dab6ae3dba57bbe45a4de4b Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 04:04:05 +0200
 Subject: [PATCH 015/106] dts: opi4a: config RGMII final validada (rgmii-rxid +
  1.9ns PHY + syscon tx100)

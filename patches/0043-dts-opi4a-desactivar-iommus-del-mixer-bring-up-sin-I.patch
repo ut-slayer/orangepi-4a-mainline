@@ -1,5 +1,5 @@
-From 6402dca384d0a989864756fa730239b8cceda7c9 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From f62fcb91d1c8805fc5b75f6d2f763dc74848f687 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:39:09 +0200
 Subject: [PATCH 043/106] dts: opi4a: desactivar iommus del mixer (bring-up sin
  IOMMU, CMA baja)

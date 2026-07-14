@@ -1,5 +1,5 @@
-From 107310e497c07ef090eb9da6c5e38404fb3f494f Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From e7d7f5e4a5d31fcd1a19c7459e46fa6b3dac51e8 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 04:04:05 +0200
 Subject: [PATCH 014/106] pinctrl: sun55i-a523: corregir withstand de bancos
  PIO desde la deteccion hw

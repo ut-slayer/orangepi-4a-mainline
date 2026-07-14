@@ -1,5 +1,5 @@
-From c3389781f01e5c086998d23b9117bcc9fdaa5f30 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From cf867226d3658d682eaade99e5e090a90a08b26e Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 13:50:08 +0200
 Subject: [PATCH 061/106] drm/sun4i: sun55i_de: pulso de reset del DE en
  mode_set (fix wedge MBUS)

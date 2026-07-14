@@ -1,4 +1,4 @@
-From 55d855de244d9d968155a0aa028ad558ac1b99fc Mon Sep 17 00:00:00 2001
+From 512d50a142001b3edd6355b215e6cf66b2cdc8ea Mon Sep 17 00:00:00 2001
 From: Jernej Skrabec <jernej.skrabec@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:05 +0200
 Subject: [PATCH 023/106] drm/sun4i: soporte HDMI PHY del H616 (minimyth2 2406)
@@ -10,7 +10,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c | 71 ++++++++++++++++++++++++++
  1 file changed, 71 insertions(+)

@@ -1,4 +1,4 @@
-From e4461bd3412f6a3671128c7ed8b6b31026ec465c Mon Sep 17 00:00:00 2001
+From d3e5e0cb7a71898b44f484ed31087192d173627d Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:54 +0200
 Subject: [PATCH 030/106] drm/sun4i: backend RCQ del DE v35x del A523
@@ -17,7 +17,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/Makefile      |   3 +-
  drivers/gpu/drm/sun4i/sun55i_de.c   | 602 ++++++++++++++++++++++++++++

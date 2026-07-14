@@ -1,5 +1,5 @@
-From 8cb413758843d65bf7bf57fb20e7d84013f1a711 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 566178daecfbbffbb455244596bc20bf0005210a Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 10 Jul 2026 02:43:18 +0200
 Subject: [PATCH 057/106] =?UTF-8?q?config:=20deshabilitar=20RESET=5FGPIO?=
  =?UTF-8?q?=20=E2=80=94=20rompe=20mmc-pwrseq-simple=20con=20#gpio-cells=3D?=

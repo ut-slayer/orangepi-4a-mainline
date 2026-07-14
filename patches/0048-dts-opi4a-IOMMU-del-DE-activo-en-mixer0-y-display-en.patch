@@ -1,5 +1,5 @@
-From 5100e02d64bf7105ba290735ca6cf4c29115e45d Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 387aa8ef31d957d94a0622f814e53de6bdd274c8 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 23:29:17 +0200
 Subject: [PATCH 048/106] dts: opi4a: IOMMU del DE activo en mixer0 y
  display-engine (modelo BSP todo-traducido)

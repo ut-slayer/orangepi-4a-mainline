@@ -1,5 +1,5 @@
-From 1555d68563be885aa863ba93a8c58931e1721aad Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From cfafa4127a4f3553948999262f3a479b6a58a0e8 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 03:12:14 +0200
 Subject: [PATCH 098/106] clk: sunxi-ng: a523 cpu: commit BIT(26) en los PLL +
  init de probe del BSP

@@ -1,5 +1,5 @@
-From 0386581dff13701f91374b47e05599ec28cd507b Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From b45a5826c6404727cfafc1045aea4307e045b76a Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:33:22 +0200
 Subject: [PATCH 076/106] dts: opi4a: no-map en las 4 regiones de firmware
  (auditoria M10)

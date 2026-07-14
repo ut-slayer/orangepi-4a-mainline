@@ -1,5 +1,5 @@
-From 838f6f459547c5352837c5cc17300ad7288e0136 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 77a1c20d8385b627a7018c5689e87b70e82944e4 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:32:34 +0200
 Subject: [PATCH 020/106] mfd: axp20x: el poweroff del AXP717 no escribia
  OFF_CTRL (rango no writeable)

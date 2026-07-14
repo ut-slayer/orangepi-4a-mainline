@@ -1,5 +1,5 @@
-From c2b847a3b3b0b7d12b7e5f7a6a956e07d5fe9c13 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 217ca4bd109291af061303c699e2d5f1e01007bf Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 19:35:07 +0200
 Subject: [PATCH 003/106] dts: opi4a: anadir /memory estatico (U-Boot BSP no lo
  rellena)

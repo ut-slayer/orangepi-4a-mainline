@@ -1,5 +1,5 @@
-From 1d5ffebc59a27f0eea75b4fa6ca99e557e115636 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 8feef3918201cb692ce602f9061c339613852e39 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 03:35:45 +0200
 Subject: [PATCH 051/106] drm/sun4i: sun55i_de: dirty por cambios reales
  (stage_dirty) + instrumentacion rcqdbg [WIP C4]

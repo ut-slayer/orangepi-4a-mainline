@@ -1,5 +1,5 @@
-From edc03ee5a3605b001fdb9710f24fad42cb13c4db Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 4f5c49460775fe286a2f1734aa86d858de95551b Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 10 Jul 2026 02:16:35 +0200
 Subject: [PATCH 056/106] arm64: dts: allwinner: audio HDMI en OPi4A (i2s2 +
  mcu_dma + simple-card)

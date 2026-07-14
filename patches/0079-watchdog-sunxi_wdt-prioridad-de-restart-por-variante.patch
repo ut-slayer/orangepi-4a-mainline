@@ -1,5 +1,5 @@
-From 16a75104b21fb862f54045fc6208b047874d861b Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From f12ef26c256fc79c90986181cecdb52c4e55c166 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:51:29 +0200
 Subject: [PATCH 079/106] watchdog: sunxi_wdt: prioridad de restart por
  variante (auditoria M12)

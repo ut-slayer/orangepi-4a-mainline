@@ -1,4 +1,4 @@
-From 8c79f9eb30d287f5af4a66c52d50daa2863f9918 Mon Sep 17 00:00:00 2001
+From 7624a5cdff6785ebbd93c0b72580512bfba8229c Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:55 +0200
 Subject: [PATCH 035/106] drm/sun4i: sun8i_hdmi_phy: baja a debug el dump de
@@ -11,7 +11,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)

@@ -1,5 +1,5 @@
-From 0793eb3fcb84c2d8cdc7da24ff419fa9725b25d6 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 380e7f2bb5a83ab00bb3556ffb41b2ca04a490d8 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:31:47 +0200
 Subject: [PATCH 074/106] pinctrl: sun55i-a523: garantizar el clock APB antes
  de leer el withstand (auditoria M9)

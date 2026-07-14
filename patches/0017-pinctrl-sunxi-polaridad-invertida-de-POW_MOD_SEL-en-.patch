@@ -1,5 +1,5 @@
-From f81e3c6ea90f9d50a1f83bd1486c05557ffd44a6 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 28294563fd449e9d20134c1384d3553d9d91902c Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 10:53:54 +0200
 Subject: [PATCH 017/106] pinctrl: sunxi: polaridad invertida de POW_MOD_SEL en
  A523/T527 (io_bias_reverse)

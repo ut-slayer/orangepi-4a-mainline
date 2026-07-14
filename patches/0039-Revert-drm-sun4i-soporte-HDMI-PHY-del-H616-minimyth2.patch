@@ -1,5 +1,5 @@
-From ab313605cbc479d4184c26610d54c35ce2a71681 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From f10f582a9ba57d20a152b7f1f3452258f60efd2f Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:12:35 +0200
 Subject: [PATCH 039/106] Revert "drm/sun4i: soporte HDMI PHY del H616
  (minimyth2 2406)"

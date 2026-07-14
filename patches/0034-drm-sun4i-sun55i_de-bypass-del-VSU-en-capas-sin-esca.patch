@@ -1,4 +1,4 @@
-From a93b46ba7057af7e7e7fa418b4f8891af1d46669 Mon Sep 17 00:00:00 2001
+From 0c066807dac85b72652b4f079db6ce4b4d84709c Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:55 +0200
 Subject: [PATCH 034/106] drm/sun4i: sun55i_de: bypass del VSU en capas sin
@@ -11,7 +11,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun55i_de.c | 21 ++++++++++++++++-----
  1 file changed, 16 insertions(+), 5 deletions(-)

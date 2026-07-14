@@ -1,5 +1,5 @@
-From 3abf1b5ffa2036fe3910597c755c0ef3f5aaeeb9 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 4fe54fc4a91c2f662fc044da1e23a1ea64ae4cca Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:32:33 +0200
 Subject: [PATCH 019/106] watchdog: sunxi_wdt: prioridad de restart 200 para
  ganar a PSCI (reboot colgado en T527)

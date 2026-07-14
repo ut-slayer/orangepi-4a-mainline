@@ -1,5 +1,5 @@
-From 598978931a66acf0b0319228c4ea7fb5925e82b8 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 1be6b9ffed7ea5028ea907081d1d011c1859ec0c Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 01:08:59 +0200
 Subject: [PATCH 086/106] =?UTF-8?q?thermal:=20sun8i:=20a=C3=B1adir=20sopor?=
  =?UTF-8?q?te=20del=20THS=20del=20A523=20(T527)?=

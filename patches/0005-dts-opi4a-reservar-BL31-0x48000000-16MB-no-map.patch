@@ -1,5 +1,5 @@
-From 17bca5d7b9530bf0f7ee94a40a1d0907e2bb3ba5 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 2281838e87ac7565dac037441668c790cf24d626 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 23 Jun 2026 12:57:24 +0200
 Subject: [PATCH 005/106] dts: opi4a: reservar BL31 @0x48000000 (16MB no-map)
 

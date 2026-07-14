@@ -1,5 +1,5 @@
-From 5e516cb4c64ea3f8772aa66568d03a39615c9877 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 258badcee23bf28611840b976bad08efb7cc230e Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 04:04:05 +0200
 Subject: [PATCH 016/106] config: SUNXI_WATCHDOG=y (builtin) para que 'reboot'
  funcione

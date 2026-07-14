@@ -1,5 +1,5 @@
-From f704e4b526842c65d9757593fe4d6d19dd7ccc10 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 0babadaeba997c3d53f196457fad19854500b8ee Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 23 Jun 2026 15:04:55 +0200
 Subject: [PATCH 006/106] dts: opi4a: reservar las 4 regiones secure del
  firmware BSP (bl31+optee+2 sram)

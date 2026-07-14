@@ -1,5 +1,5 @@
-From 1f5efc4f9fb79ecf9ed329efae7c08b7acdeb77e Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 4cf691ba7fa85204f8ae144f011d53b2e1279b08 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:09:42 +0200
 Subject: [PATCH 038/106] dts: opi4a: habilitar el pipeline HDMI KMS + CMA en
  DRAM baja

@@ -1,5 +1,5 @@
-From 5b11377e345256d6d0bc5544fab22019703b37a3 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 9389f9e4bed18d0ca27b6424268c0a54ffdcbcf4 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:13:44 +0200
 Subject: [PATCH 040/106] drm/sun4i: aplanar sun55i_a523_mixer0_cfg para la
  struct de 6.18

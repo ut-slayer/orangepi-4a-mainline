@@ -1,5 +1,5 @@
-From f4391698761c5178861921c848f99e0f5210202d Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 835902bc4e77aba65c9b15cacb31f297a38d0233 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:21:08 +0200
 Subject: [PATCH 071/106] drm/sun4i: PHY Inno A523: lookup MPLL nearest del BSP
  + mode_valid atado a la tabla (auditoria A3)

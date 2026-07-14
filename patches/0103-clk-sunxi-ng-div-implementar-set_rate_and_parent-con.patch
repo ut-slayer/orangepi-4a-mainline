@@ -1,5 +1,5 @@
-From 4e5c7ed86dfebbcfcb0d202067df3e066630de61 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 85a1dadba403b9a8eb5ed50626f553bb5cb80f34 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 05:08:46 +0200
 Subject: [PATCH 103/106] clk: sunxi-ng: div: implementar set_rate_and_parent
  con orden seguro

@@ -1,4 +1,4 @@
-From f5a7689e20e89ef3e3cc003812c4569a850fe3cc Mon Sep 17 00:00:00 2001
+From 2610092d7ff575535e00c2653a8941f5c107f989 Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:54 +0200
 Subject: [PATCH 032/106] drm/sun4i: sun55i_de: fix tearing del page-flip (RCQ
@@ -11,7 +11,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun4i_backend.c    |   3 +-
  drivers/gpu/drm/sun4i/sun4i_tcon.c       |  80 +++-

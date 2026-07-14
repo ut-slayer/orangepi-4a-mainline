@@ -1,5 +1,5 @@
-From 28567dcf71738469fd676eb8c901254293486b73 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 3a2f4088a13dcd206640677e024000520b02d6a6 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 19:42:33 +0200
 Subject: [PATCH 055/106] drm/sun4i: no programar el escalador DE33 legacy con
  el backend RCQ (fix franjas verticales)

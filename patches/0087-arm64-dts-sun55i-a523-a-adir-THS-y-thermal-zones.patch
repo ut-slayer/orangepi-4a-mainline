@@ -1,5 +1,5 @@
-From 3a1d328f4ffd9e49e40a59171c5fe5c80e06abc7 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 7bce05fce5f2d5b8047020ac86a43a0c8c01ba3b Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 01:08:59 +0200
 Subject: [PATCH 087/106] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20a=C3=B1a?=
  =?UTF-8?q?dir=20THS=20y=20thermal-zones?=

@@ -1,5 +1,5 @@
-From 30fb927efd356a7a26098a88964d9991ab7c58eb Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 4d384405b478b0da7a54b9b336440c9e3379947c Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 03:11:30 +0200
 Subject: [PATCH 059/106] drm/sun4i: sun55i_de: scanout AFBC via el
  decodificador AFBD del v350

@@ -1,5 +1,5 @@
-From 9d4e12ca7c9bf0224715fa1ef8227ee6c75c19dd Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 0f60da8a3118cd0a4e6e123a14694f7c93d8b6dd Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 04:32:33 +0200
 Subject: [PATCH 102/106] thermal: sun8i: a523: no fabricar 183C si el canal
  NPU aun no tiene dato

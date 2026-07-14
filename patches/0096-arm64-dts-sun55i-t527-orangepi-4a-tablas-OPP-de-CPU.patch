@@ -1,5 +1,5 @@
-From 19bc3a4942f8fb2b09f6e45060a6dea0dbb69290 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From e0ba634f4f099da3de154423d68ef98a612b0b47 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 02:36:33 +0200
 Subject: [PATCH 096/106] arm64: dts: sun55i-t527-orangepi-4a: tablas OPP de
  CPU

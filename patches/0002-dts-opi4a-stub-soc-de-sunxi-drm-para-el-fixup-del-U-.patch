@@ -1,5 +1,5 @@
-From 2069210e5dd81e0d05ce6197069644bfa45f38b8 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 631c1c7e57c5600ff19a19d51408536a7bed37e4 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 19:12:48 +0200
 Subject: [PATCH 002/106] dts: opi4a: stub /soc/{de,sunxi-drm} para el fixup
  del U-Boot BSP

@@ -1,5 +1,5 @@
-From 607cf3277a7f9efa2a5daa4664857c59e7df5f27 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 7e11235e6e774dcb5d9294c92bbf40736ff363ee Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 23:54:28 +0200
 Subject: [PATCH 083/106] drm/sun4i: a523: enable HPD/RX_SENSE sensing on the
  Inno PHY

@@ -1,5 +1,5 @@
-From b4a94ecee87ee4b3dbfc651a161a8718a0e9995c Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 44430055b0724fe7b7525da7a016f99ee9badb13 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 02:13:25 +0200
 Subject: [PATCH 094/106] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20cablear?=
  =?UTF-8?q?=20los=20relojes=20y=20ra=C3=ADles=20de=20la=20CPU?=

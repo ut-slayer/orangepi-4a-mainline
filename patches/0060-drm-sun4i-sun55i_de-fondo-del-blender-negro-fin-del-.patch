@@ -1,5 +1,5 @@
-From c520922d2490ae3c0da715eb199899514d8d6296 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 4416280f516f02442771b6e21df4c358c8ca3738 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 03:37:17 +0200
 Subject: [PATCH 060/106] drm/sun4i: sun55i_de: fondo del blender negro (fin
  del verde de debug)

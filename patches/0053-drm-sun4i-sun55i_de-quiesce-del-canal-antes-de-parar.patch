@@ -1,5 +1,5 @@
-From 5de0c012eec2da5488a9d0616541c73da6bd0dd2 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From ebe405bdcdfaf8d8dbe43b097a1bc5a0a6ee63b7 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 18:29:06 +0200
 Subject: [PATCH 053/106] drm/sun4i: sun55i_de: quiesce del canal antes de
  parar el TCON (fix fault/wedge en modeset)

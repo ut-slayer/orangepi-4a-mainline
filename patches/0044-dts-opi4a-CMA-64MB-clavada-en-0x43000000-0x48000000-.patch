@@ -1,5 +1,5 @@
-From 465dfd819e779d2fcc8b44797d7dc43edcb9a914 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From c0ec821e0aa336fd178eda4e41bf01cdb95d744d Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 21:51:01 +0200
 Subject: [PATCH 044/106] dts: opi4a: CMA 64MB clavada en 0x43000000-0x48000000
  (apertura real del DE)

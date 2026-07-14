@@ -1,4 +1,4 @@
-From d965689ebe4195373af0abae4239711315b51cd8 Mon Sep 17 00:00:00 2001
+From 6cc6b4a072195aa10301950eb515a7fdc75ddbcc Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:54 +0200
 Subject: [PATCH 031/106] drm/sun4i: PHY HDMI del H616 y A523 (Inno) en
@@ -11,7 +11,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun8i_dw_hdmi.h  |   1 +
  drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c | 515 ++++++++++++++++++++++++-

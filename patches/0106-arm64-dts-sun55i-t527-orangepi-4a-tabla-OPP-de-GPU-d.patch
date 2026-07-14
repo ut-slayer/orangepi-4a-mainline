@@ -1,5 +1,5 @@
-From a7c15a3f3f588b70883f3acb7c19c546a6dbd4ca Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From de959a70cc36515878497703a0a4b2561bbd65c8 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 05:09:01 +0200
 Subject: [PATCH 106/106] arm64: dts: sun55i-t527-orangepi-4a: tabla OPP de GPU
  (devfreq 150-600 MHz)

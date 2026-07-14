@@ -1,5 +1,5 @@
-From ff305ee45d37a2ca8f72b174a6253f4dc6de1c99 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From c0d818b8439c46713af294776e889134e5d008c8 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 18:12:25 +0200
 Subject: [PATCH 001/106] =?UTF-8?q?dts:=20opi4a:=20LED=20PD20=20default-tr?=
  =?UTF-8?q?igger=3Dheartbeat=20(se=C3=B1al=20de=20vida=20sin=20UART)?=

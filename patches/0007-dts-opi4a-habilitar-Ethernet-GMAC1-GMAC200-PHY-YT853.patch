@@ -1,5 +1,5 @@
-From 4a5351542694e236d3328da2d933734afd457e65 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From ddbedd4335835021e0ca2aa4fb9ecc57b94a7f51 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 01:24:07 +0200
 Subject: [PATCH 007/106] dts: opi4a: habilitar Ethernet GMAC1/GMAC200 (PHY
  YT8531, rgmii-id)

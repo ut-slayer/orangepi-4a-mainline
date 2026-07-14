@@ -1,5 +1,5 @@
-From e2fa2677e83813cb4019be5363a009c7cf50ed5a Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 40b5a37cdafd55f2c38a09cf9d7fb2b39db67e67 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 22:26:03 +0200
 Subject: [PATCH 045/106] drm/sun4i: sun55i_de: pool RCQ desde la CMA baja via
  memory-region

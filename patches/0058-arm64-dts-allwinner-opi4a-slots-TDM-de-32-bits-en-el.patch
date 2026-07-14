@@ -1,5 +1,5 @@
-From 74fa54c4264eecd202c3e94aaf97d6c29f6e680c Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 086778626780b05d10545b7e9ba0870f8116ed3e Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 10 Jul 2026 17:28:40 +0200
 Subject: [PATCH 058/106] arm64: dts: allwinner: opi4a: slots TDM de 32 bits en
  el audio HDMI

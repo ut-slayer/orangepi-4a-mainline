@@ -1,5 +1,5 @@
-From b627de3ba0ef5e69d37eb375c8e87c798aedae62 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From dfd066ecd08e6e30d340c4294917fdca225671cb Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:51:29 +0200
 Subject: [PATCH 080/106] iommu/sun50i: guardas defensivas menores (auditoria
  B9)

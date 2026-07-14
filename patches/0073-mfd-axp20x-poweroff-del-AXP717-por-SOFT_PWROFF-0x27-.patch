@@ -1,5 +1,5 @@
-From 1b0cbe583664a8245ba2970788da4afe5e4d8168 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From c5a776c226a62e40b8a3aa18b23ee2103f3eda20 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:30:23 +0200
 Subject: [PATCH 073/106] mfd: axp20x: poweroff del AXP717 por SOFT_PWROFF 0x27
  (el 0x32 no existe en este chip)

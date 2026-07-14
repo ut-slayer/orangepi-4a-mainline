@@ -1,5 +1,5 @@
-From c7018af5a07d90742000b8e9877fa8004d88275e Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From b25f32e088c7c8ae4b69d5fbd748ac69feae999f Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:34:54 +0200
 Subject: [PATCH 077/106] config: regenerar opi4a_blindboot_defconfig desde el
  .config validado (auditoria A5)

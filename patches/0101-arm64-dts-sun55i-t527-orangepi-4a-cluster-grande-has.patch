@@ -1,5 +1,5 @@
-From f2c1ec59ad435ff9e9fc348713aec867e89c971b Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 137354d867b83d64082414505bae393ced33a471 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 04:25:21 +0200
 Subject: [PATCH 101/106] arm64: dts: sun55i-t527-orangepi-4a: cluster grande
  hasta 1.8 GHz

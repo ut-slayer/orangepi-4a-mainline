@@ -1,5 +1,5 @@
-From c907764fdd2ea63cfc745c85f5d4d72ed99399a2 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 7aad6b373488785e419dc1d51c0ef0a2589a7ab3 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:22:09 +0200
 Subject: [PATCH 042/106] dts: opi4a: PD_VO0 en tcon-top/tcon-tv y CLK_DE a
  600MHz como el BSP

@@ -1,5 +1,5 @@
-From 53631bc050adccc107965b60ec0af1f04a55cb6d Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 0c8107d078dc7c767bf0942fe7b9cf3b70de8812 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 02:34:10 +0200
 Subject: [PATCH 013/106] dts: opi4a: rgmii puro (PHY sin delay) para barrer
  syscon RX en vivo

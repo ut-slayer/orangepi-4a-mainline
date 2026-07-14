@@ -1,4 +1,4 @@
-From 4f2cdb7fd05b660e8b3d8bdcc950eb4b52c6eefa Mon Sep 17 00:00:00 2001
+From c8a7035dcf75770b24525a83e26310963e929c9c Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:06 +0200
 Subject: [PATCH 028/106] clk: sunxi-ng: a523: reset de bus del IOMMU
@@ -11,7 +11,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/clk/sunxi-ng/ccu-sun55i-a523.c      | 6 ++++++
  include/dt-bindings/reset/sun55i-a523-ccu.h | 1 +

@@ -1,5 +1,5 @@
-From ce79288895dc401ea8db14ace1e05413b0579ed6 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From ef253f4036931ecd167f70f7bd40d782b17524da Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:16:55 +0200
 Subject: [PATCH 018/106] dts: opi4a: consola HDMI via simple-framebuffer sobre
  el FB de U-Boot (ETAPA A display)

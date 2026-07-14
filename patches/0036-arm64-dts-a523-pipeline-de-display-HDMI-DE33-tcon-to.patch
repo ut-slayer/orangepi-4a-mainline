@@ -1,4 +1,4 @@
-From 9e70c8fae7d11d68ff9283960c955d80140fb062 Mon Sep 17 00:00:00 2001
+From 8399073660450b013cfe9d789a93e0cadbfd19f6 Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:55 +0200
 Subject: [PATCH 036/106] arm64: dts: a523: pipeline de display HDMI
@@ -11,7 +11,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  .../arm64/boot/dts/allwinner/sun55i-a523.dtsi | 211 ++++++++++++++++++
  1 file changed, 211 insertions(+)

@@ -1,5 +1,5 @@
-From dcae8e7976e89f2270d06d19ec0391e6e3d18ab9 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From ba9fe77458e847bb0aedc0b75e3ff4bbdfb2200b Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 23:29:06 +0200
 Subject: [PATCH 047/106] iommu/sun50i: receta v15 del BSP para el A523
  (invalidacion por rango + prefetch vendor) y guardas anti DTE corrupto

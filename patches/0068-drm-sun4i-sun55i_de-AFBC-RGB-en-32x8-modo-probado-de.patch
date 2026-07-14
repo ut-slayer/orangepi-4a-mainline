@@ -1,5 +1,5 @@
-From a9fcb2774f083136aa43b295abaeaac43a17f803 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From d2eb661025b44df4f32e54a4069b172a5f302421 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 12 Jul 2026 15:19:23 +0200
 Subject: [PATCH 068/106] drm/sun4i: sun55i_de: AFBC RGB en 32x8 (modo probado
  del vendor)

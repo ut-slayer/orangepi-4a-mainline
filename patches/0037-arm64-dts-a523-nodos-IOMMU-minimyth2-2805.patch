@@ -1,4 +1,4 @@
-From 17f1fcef622b2930d6c3c8c974cac8bd9fced7d7 Mon Sep 17 00:00:00 2001
+From cff193ed361b760a6f004de4e71bb932d6f1ae20 Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:56 +0200
 Subject: [PATCH 037/106] arm64: dts: a523: nodos IOMMU (minimyth2 2805)
@@ -10,7 +10,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 
 Parche original de la serie A523/H616 recopilada en minimyth2
 (autoria git = autor original). Port y adaptacion a 6.18/T527:
-AurealNix <juanmanuellopezcarrillo@gmail.com>.
+Juan Manuel Lopez Carrillo (AurealNix) <juanmanuellopezcarrillo@gmail.com>.
 ---
  arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi | 12 ++++++++++++
  1 file changed, 12 insertions(+)

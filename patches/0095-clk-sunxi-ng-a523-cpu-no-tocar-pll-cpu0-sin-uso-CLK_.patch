@@ -1,5 +1,5 @@
-From 3a2a8fd65de6e48fcb8f162bb3a1b759b57ad9e7 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 1e57c7e1c0b99468f9456959dd7cabbb44ef1d08 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 02:29:47 +0200
 Subject: [PATCH 095/106] clk: sunxi-ng: a523 cpu: no tocar pll-cpu0 sin uso
  (CLK_IGNORE_UNUSED)

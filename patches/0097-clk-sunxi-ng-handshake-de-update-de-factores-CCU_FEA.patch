@@ -1,5 +1,5 @@
-From e58099fe186bba764bd659be271a423fdad09ab9 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From b3578f91aa6255cfe66b140b02ca6605e91998e0 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 03:12:13 +0200
 Subject: [PATCH 097/106] clk: sunxi-ng: handshake de update de factores
  (CCU_FEATURE_CLEAR_MOD)

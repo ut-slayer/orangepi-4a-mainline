@@ -1,5 +1,5 @@
-From 7bff47b42079c89b306a28592c0cc028505a9680 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 9a88554bf4f1e25d3945a1ead303fff297d0e47c Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 00:34:48 +0200
 Subject: [PATCH 050/106] iommu/sun50i: PTE con bits READABLE/WRITABLE del BSP
  en el v15 (pantalla negra sin faults)

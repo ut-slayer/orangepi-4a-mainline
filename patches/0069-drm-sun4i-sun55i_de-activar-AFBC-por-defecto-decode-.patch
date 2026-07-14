@@ -1,5 +1,5 @@
-From 2e441b8f995cee8a9539c7593e75707e3884eb20 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 169f981228f93c879fc3d60cdb29d1a693cc5153 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 12 Jul 2026 15:26:26 +0200
 Subject: [PATCH 069/106] drm/sun4i: sun55i_de: activar AFBC por defecto
  (decode 32x8 confirmado)

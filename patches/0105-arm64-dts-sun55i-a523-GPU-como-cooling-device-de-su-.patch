@@ -1,5 +1,5 @@
-From 23bd111c326751bc175d559a3648a483a49d64d7 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 40dd9044819fad6924a129206bf051418518229f Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 05:09:01 +0200
 Subject: [PATCH 105/106] arm64: dts: sun55i-a523: GPU como cooling device de
  su zona termica
