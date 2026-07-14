@@ -1,0 +1,102 @@
+From 1b0cbe583664a8245ba2970788da4afe5e4d8168 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:30:23 +0200
+Subject: [PATCH 073/106] mfd: axp20x: poweroff del AXP717 por SOFT_PWROFF 0x27
+ (el 0x32 no existe en este chip)
+
+La auditoria destapo que el parche anterior (rango writeable de 0x32)
+se apoyaba en un registro que NO EXISTE en el AXP717/AXP2202: su mapa
+salta de 0x30 (I2C_CFG) a 0x3e (BUS_MODE_SEL). El soft-poweroff real es
+SOFT_PWROFF (0x27) bit 0, confirmado por tres fuentes:
+- BSP 5.15: bsp/include/power/axp2101.h AXP2202_SOFT_PWROFF (0x27)
+- U-Boot mainline: axp_spl.c AXP717 AXP_SHUTDOWN_REG 0x27 / MASK BIT(0)
+- el propio hueco del mapa en el datasheet
+
+Caso AXP717_ID en axp20x_power_off() con update_bits (bits 2-3 del
+mismo registro llevan config de power-on, y U-Boot tambien hace RMW);
+el rango writeable abre 0x27 y se retira el 0x32 fantasma.
+
+Nota: el axp_power_off() comun del ATF tambien escribe 0x32 BIT(7) --
+probablemente LA causa de que el SYSTEM_OFF de PSCI se cuelgue en el
+T527. Con este fix el kernel apaga el PMIC directamente (prioridad
+firmware del sys_off handler) sin pasar por PSCI.
+
+PENDIENTE: probar en placa (poweroff real).
+---
+ drivers/mfd/axp20x.c       | 30 +++++++++++++++++++++++-------
+ include/linux/mfd/axp20x.h |  2 ++
+ 2 files changed, 25 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/mfd/axp20x.c b/drivers/mfd/axp20x.c
+index 3e51d135c..2e9912055 100644
+--- a/drivers/mfd/axp20x.c
++++ b/drivers/mfd/axp20x.c
+@@ -221,15 +221,16 @@ static const struct regmap_access_table axp313a_volatile_table = {
+ static const struct regmap_range axp717_writeable_ranges[] = {
+ 	regmap_reg_range(AXP717_PMU_FAULT, AXP717_MODULE_EN_CONTROL_1),
+ 	regmap_reg_range(AXP717_MIN_SYS_V_CONTROL, AXP717_BOOST_CONTROL),
+-	regmap_reg_range(AXP717_VSYS_V_POWEROFF, AXP717_VSYS_V_POWEROFF),
+ 	/*
+-	 * axp20x_power_off() escribe AXP20X_OFF_CTRL (0x32) tambien para el
+-	 * AXP717 (rama default del switch), pero este rango no estaba en la
+-	 * tabla -> el regmap_write fallaba en silencio y el poweroff caia al
+-	 * SYSTEM_OFF de PSCI (que en el ATF BSP del T527 se cuelga). El BSP
+-	 * (axp2101.c) apaga el AXP2202/AXP717 escribiendo ese mismo registro.
++	 * SOFT_PWROFF (0x27, bit0) es el soft-poweroff REAL del AXP717/
++	 * AXP2202: BSP axp2101.h (AXP2202_SOFT_PWROFF) y U-Boot axp_spl
++	 * (AXP_SHUTDOWN_REG 0x27 / MASK BIT(0)). El 0x32 generico de
++	 * axp20x_power_off() no existe en el mapa de este chip (salta de
++	 * 0x30 I2C_CFG a 0x3e BUS_MODE_SEL), y el fallback PSCI SYSTEM_OFF
++	 * se cuelga en el ATF del T527.
+ 	 */
+-	regmap_reg_range(AXP20X_OFF_CTRL, AXP20X_OFF_CTRL),
++	regmap_reg_range(AXP717_VSYS_V_POWEROFF, AXP717_VSYS_V_POWEROFF),
++	regmap_reg_range(AXP717_SOFT_PWROFF, AXP717_SOFT_PWROFF),
+ 	regmap_reg_range(AXP717_IRQ0_EN, AXP717_IRQ4_EN),
+ 	regmap_reg_range(AXP717_IRQ0_STATE, AXP717_IRQ4_STATE),
+ 	regmap_reg_range(AXP717_TS_PIN_CFG, AXP717_TS_PIN_CFG),
+@@ -1253,6 +1254,19 @@ static int axp20x_power_off(struct sys_off_data *data)
+ 	case AXP313A_ID:
+ 		shutdown_reg = AXP313A_SHUTDOWN_CTRL;
+ 		break;
++	case AXP717_ID:
++		/*
++		 * The AXP717/AXP2202 register map has no 0x32 (it jumps from
++		 * 0x30 I2C_CFG to 0x3e BUS_MODE_SEL); its soft power-off is
++		 * SOFT_PWROFF (0x27) bit 0 - per the vendor BSP header
++		 * (AXP2202_SOFT_PWROFF) and U-Boot's axp_spl AXP717 support
++		 * (AXP_SHUTDOWN_REG 0x27 / AXP_SHUTDOWN_MASK BIT(0)). RMW:
++		 * bits 2-3 of the same register hold power-on configuration.
++		 */
++		regmap_update_bits(axp20x->regmap, AXP717_SOFT_PWROFF,
++				   AXP717_SOFT_PWROFF_EN,
++				   AXP717_SOFT_PWROFF_EN);
++		goto wait;
+ 	default:
+ 		shutdown_reg = AXP20X_OFF_CTRL;
+ 		break;
+@@ -1260,6 +1274,8 @@ static int axp20x_power_off(struct sys_off_data *data)
+ 
+ 	regmap_write(axp20x->regmap, shutdown_reg, AXP20X_OFF);
+ 
++wait:
++
+ 	/* Give capacitors etc. time to drain to avoid kernel panic msg. */
+ 	mdelay(500);
+ 
+diff --git a/include/linux/mfd/axp20x.h b/include/linux/mfd/axp20x.h
+index 3c5aecf1d..c430f03d4 100644
+--- a/include/linux/mfd/axp20x.h
++++ b/include/linux/mfd/axp20x.h
+@@ -127,6 +127,8 @@ enum axp20x_variants {
+ #define AXP717_MODULE_EN_CONTROL_2	0x19
+ #define AXP717_BOOST_CONTROL		0x1e
+ #define AXP717_VSYS_V_POWEROFF		0x24
++#define AXP717_SOFT_PWROFF		0x27
++#define AXP717_SOFT_PWROFF_EN		BIT(0)
+ #define AXP717_IRQ0_EN			0x40
+ #define AXP717_IRQ1_EN			0x41
+ #define AXP717_IRQ2_EN			0x42
+-- 
+2.47.3
+

@@ -1,0 +1,148 @@
+From 19bc3a4942f8fb2b09f6e45060a6dea0dbb69290 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 02:36:33 +0200
+Subject: [PATCH 096/106] arm64: dts: sun55i-t527-orangepi-4a: tablas OPP de
+ CPU
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Dos tablas operating-points-v2 (una por cluster), voltajes literales del
+BSP tomando el peor caso entre speed-bins por frecuencia (así una cpufreq-dt
+simple, sin nvmem de speed-bin, es segura en cualquier chip). Capadas
+conservadoras para el bring-up: cluster0 (little) a su máx 1.416 GHz;
+cluster1 (big) a 1.488 GHz (puede subir a ~2 GHz cuando se amplíe el máx de
+reg_dcdc1_323 por encima de 1.15 V). Todos los voltajes dentro del rango de
+los reguladores (reg_dcdc1 0.9-1.16V, reg_dcdc1_323 0.9-1.15V).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 82 ++++++++++++++++++-
+ 1 file changed, 80 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 1c9005db2..7dcfd6258 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -233,38 +233,116 @@ reg_vcc5v: regulator-vcc5v {
+ 	};
+ };
+ 
+-/* Little cluster (cpu0-3) is powered by the AXP717 DCDC1 (vdd-cpul). */
++/ {
++	/*
++	 * OPP tables, voltages taken verbatim from the vendor DT
++	 * (sun55iw3p1.dtsi), using the worst-case voltage across speed bins
++	 * for each frequency so a plain cpufreq-dt (no speed-bin nvmem) is
++	 * safe on any chip. Capped conservatively for bring-up (little cluster
++	 * at its 1.416 GHz max, big cluster at 1.488 GHz; the big cluster can
++	 * go to ~2 GHz later once reg_dcdc1_323's max is raised past 1.15 V).
++	 */
++	cluster0_opp: opp-table-cluster0 {
++		compatible = "operating-points-v2";
++		opp-shared;
++
++		opp-408000000 {
++			opp-hz = /bits/ 64 <408000000>;
++			opp-microvolt = <900000>;
++		};
++
++		opp-792000000 {
++			opp-hz = /bits/ 64 <792000000>;
++			opp-microvolt = <900000>;
++		};
++
++		opp-1008000000 {
++			opp-hz = /bits/ 64 <1008000000>;
++			opp-microvolt = <960000>;
++		};
++
++		opp-1224000000 {
++			opp-hz = /bits/ 64 <1224000000>;
++			opp-microvolt = <1050000>;
++		};
++
++		opp-1416000000 {
++			opp-hz = /bits/ 64 <1416000000>;
++			opp-microvolt = <1150000>;
++		};
++	};
++
++	cluster1_opp: opp-table-cluster1 {
++		compatible = "operating-points-v2";
++		opp-shared;
++
++		opp-408000000 {
++			opp-hz = /bits/ 64 <408000000>;
++			opp-microvolt = <900000>;
++		};
++
++		opp-1008000000 {
++			opp-hz = /bits/ 64 <1008000000>;
++			opp-microvolt = <900000>;
++		};
++
++		opp-1200000000 {
++			opp-hz = /bits/ 64 <1200000000>;
++			opp-microvolt = <920000>;
++		};
++
++		opp-1344000000 {
++			opp-hz = /bits/ 64 <1344000000>;
++			opp-microvolt = <960000>;
++		};
++
++		opp-1488000000 {
++			opp-hz = /bits/ 64 <1488000000>;
++			opp-microvolt = <1000000>;
++		};
++	};
++};
++
++/* Little cluster (cpu0-3): AXP717 DCDC1 (vdd-cpul), up to 1.416 GHz. */
+ &cpu0 {
+ 	cpu-supply = <&reg_dcdc1>;
++	operating-points-v2 = <&cluster0_opp>;
+ };
+ 
+ &cpu1 {
+ 	cpu-supply = <&reg_dcdc1>;
++	operating-points-v2 = <&cluster0_opp>;
+ };
+ 
+ &cpu2 {
+ 	cpu-supply = <&reg_dcdc1>;
++	operating-points-v2 = <&cluster0_opp>;
+ };
+ 
+ &cpu3 {
+ 	cpu-supply = <&reg_dcdc1>;
++	operating-points-v2 = <&cluster0_opp>;
+ };
+ 
+-/* Big cluster (cpu4-7) is powered by the AXP323 DCDC1 (vdd-cpub). */
++/* Big cluster (cpu4-7): AXP323 DCDC1 (vdd-cpub), capped at 1.488 GHz for now. */
+ &cpu4 {
+ 	cpu-supply = <&reg_dcdc1_323>;
++	operating-points-v2 = <&cluster1_opp>;
+ };
+ 
+ &cpu5 {
+ 	cpu-supply = <&reg_dcdc1_323>;
++	operating-points-v2 = <&cluster1_opp>;
+ };
+ 
+ &cpu6 {
+ 	cpu-supply = <&reg_dcdc1_323>;
++	operating-points-v2 = <&cluster1_opp>;
+ };
+ 
+ &cpu7 {
+ 	cpu-supply = <&reg_dcdc1_323>;
++	operating-points-v2 = <&cluster1_opp>;
+ };
+ 
+ &ehci0 {
+-- 
+2.47.3
+

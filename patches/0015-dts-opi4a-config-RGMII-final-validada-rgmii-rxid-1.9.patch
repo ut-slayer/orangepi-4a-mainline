@@ -1,8 +1,8 @@
-From f243e981f9b0599aceff083bc1f6b5937cf0ddc6 Mon Sep 17 00:00:00 2001
+From d4b2bf4c2094aae5b6df212510343b8e91549dda Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 04:04:05 +0200
-Subject: [PATCH T527 15/66] dts: opi4a: config RGMII final validada
- (rgmii-rxid + 1.9ns PHY + syscon tx100)
+Subject: [PATCH 015/106] dts: opi4a: config RGMII final validada (rgmii-rxid +
+ 1.9ns PHY + syscon tx100)
 
 Con el withstand del banco PJ corregido, combo validado en vivo con
 ping 0% loss a 1Gbps: la PHY YT8531 pone ~1.9ns en RXC (rgmii-rxid +

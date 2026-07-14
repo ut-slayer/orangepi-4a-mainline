@@ -1,13 +1,17 @@
-From e8cab5fed6a8f4b3ee7d291d2e287dd177ae4a6b Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From f5a7689e20e89ef3e3cc003812c4569a850fe3cc Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:54 +0200
-Subject: [PATCH T527 32/66] drm/sun4i: sun55i_de: fix tearing del page-flip
- (RCQ armado en vblank) (minimyth2 2727)
+Subject: [PATCH 032/106] drm/sun4i: sun55i_de: fix tearing del page-flip (RCQ
+ armado en vblank) (minimyth2 2727)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun4i_backend.c    |   3 +-
  drivers/gpu/drm/sun4i/sun4i_tcon.c       |  80 +++-

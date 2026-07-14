@@ -1,13 +1,17 @@
-From d2f27f928ae801dfac099d2308b02c8b2178d474 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From f8fe126debc046491dee7cec91be50f72eff18a9 Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:55 +0200
-Subject: [PATCH T527 33/66] drm/sun4i: sun55i_de: recarga RCQ completa tras
+Subject: [PATCH 033/106] drm/sun4i: sun55i_de: recarga RCQ completa tras
  modeset (minimyth2 2728)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun55i_de.c | 16 ++++++++++++++++
  drivers/gpu/drm/sun4i/sun55i_de.h |  8 ++++++++

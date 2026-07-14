@@ -1,8 +1,8 @@
-From 17d7a1560af959ee23930b9e6e7810afdc1f92c6 Mon Sep 17 00:00:00 2001
+From 28567dcf71738469fd676eb8c901254293486b73 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 19:42:33 +0200
-Subject: [PATCH T527 55/66] drm/sun4i: no programar el escalador DE33 legacy
- con el backend RCQ (fix franjas verticales)
+Subject: [PATCH 055/106] drm/sun4i: no programar el escalador DE33 legacy con
+ el backend RCQ (fix franjas verticales)
 
 Con el sun55i_de activo (A523 v35x), sun8i_ui/vi_layer_update_coord seguia
 llamando a sun8i_vi_scaler_setup por AHB en cada atomic_update: escribia las

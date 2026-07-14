@@ -1,0 +1,46 @@
+From 2e441b8f995cee8a9539c7593e75707e3884eb20 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 12 Jul 2026 15:26:26 +0200
+Subject: [PATCH 069/106] drm/sun4i: sun55i_de: activar AFBC por defecto
+ (decode 32x8 confirmado)
+
+Confirmado visualmente (usuario, 2026-07-12): escritorio Plasma Wayland
+perfecto con kwin escaneando ARGB8888 en 32x8|SPARSE|YTR|SPLIT via el AFBD.
+Se activa AFBC por defecto; afbc=0 fuerza scanout lineal si hiciera falta.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 15 ++++++++-------
+ 1 file changed, 8 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index bf746cf4e..9bacff5b4 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -996,15 +996,16 @@ static int sun55i_de_afbc_fmt_seq(u32 drm_fmt, u32 *seq)
+ }
+ 
+ /*
+- * AFBC scanout via el AFBD: la programacion del bloque esta verificada por
+- * registros, pero el DECODE de contenido real sale mal (2026-07-12, kwin:
+- * AFBC = negro/cuadrados, LINEAR = escritorio perfecto — mismo kernel).
+- * Apagado por defecto hasta depurar la semantica contra el BSP; reactivar
+- * con sun8i-mixer afbc=1 para las sesiones de debug.
++ * AFBC scanout via el AFBD: el DE decodifica RGB8888 comprimido en el modo
++ * del vendor 32x8|SPARSE|YTR|SPLIT (block_layout=3). CONFIRMADO VISUAL
++ * 2026-07-12: escritorio Plasma perfecto con kwin escaneando AR24 en ese
++ * modifier (antes, en 16x16, salia negro/cuadrados: 16x16 RGB es un modo que
++ * este AFBD no decodifica). Activado por defecto; afbc=0 lo desactiva
++ * (fuerza scanout lineal) si hiciera falta.
+  */
+-bool sun55i_afbc_enable;
++bool sun55i_afbc_enable = true;
+ module_param_named(afbc, sun55i_afbc_enable, bool, 0444);
+-MODULE_PARM_DESC(afbc, "anunciar modifiers AFBC (decode AFBD en depuracion)");
++MODULE_PARM_DESC(afbc, "anunciar modifiers AFBC (scanout comprimido por el AFBD)");
+ 
+ bool sun55i_de_afbc_mod_supported(u32 drm_fmt, u64 modifier)
+ {
+-- 
+2.47.3
+

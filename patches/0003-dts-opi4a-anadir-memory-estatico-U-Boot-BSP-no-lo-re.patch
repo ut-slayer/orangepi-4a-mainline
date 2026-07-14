@@ -1,8 +1,8 @@
-From 462b6ff0bdf98c3d273cad936aa1593bca4f606c Mon Sep 17 00:00:00 2001
+From c2b847a3b3b0b7d12b7e5f7a6a956e07d5fe9c13 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 19:35:07 +0200
-Subject: [PATCH T527 03/66] dts: opi4a: anadir /memory estatico (U-Boot BSP no
- lo rellena)
+Subject: [PATCH 003/106] dts: opi4a: anadir /memory estatico (U-Boot BSP no lo
+ rellena)
 
 El U-Boot v2018.05-t527 no rellena /memory en el FDT (asume DTB con memory
 estatico, como el del BSP). El DTB mainline lo dejaba vacio -> kernel sin RAM

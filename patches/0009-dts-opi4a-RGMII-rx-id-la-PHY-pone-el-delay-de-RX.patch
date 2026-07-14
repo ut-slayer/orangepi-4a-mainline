@@ -1,8 +1,7 @@
-From f9caac613741c256c0d996915c75a729f0f52aa7 Mon Sep 17 00:00:00 2001
+From bda1a44724166c33c0578601439b6ae4b70ca05c Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 01:46:18 +0200
-Subject: [PATCH T527 09/66] dts: opi4a: RGMII rx-id (la PHY pone el delay de
- RX)
+Subject: [PATCH 009/106] dts: opi4a: RGMII rx-id (la PHY pone el delay de RX)
 
 rx_packets=0 con phy-mode rgmii (RX sin delay: la PCB no lo aporta y el
 syscon no basta). La PHY YT8531 pone ~2ns de delay de RX via rgmii-rxid;

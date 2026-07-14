@@ -1,8 +1,8 @@
-From 847fd5c3ccc46ef46529b5079b8272a8137043ee Mon Sep 17 00:00:00 2001
+From b134337183bd5e387f8ec74a3e6674047677fdb6 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:54:30 +0200
-Subject: [PATCH T527 21/66] dts: opi4a: el framebuffer reclama los power
- domains DE y VO0 del pck600
+Subject: [PATCH 021/106] dts: opi4a: el framebuffer reclama los power domains
+ DE y VO0 del pck600
 
 Al cargar panfrost como modulo, TODOS los consumidores del pck600 quedan
 probados y su sync_state() apaga los dominios sin consumidor: DE y VO0

@@ -1,7 +1,7 @@
-From 5a9e15ebf578486d62ef2ddf6f97882c6273d04d Mon Sep 17 00:00:00 2001
+From 9f62d3f3231a4240d133becf1e2285aee68c7fc0 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:15:29 +0200
-Subject: [PATCH T527 41/66] drm/sun4i: PHY Inno: tabla MPLL completa del BSP +
+Subject: [PATCH 041/106] drm/sun4i: PHY Inno: tabla MPLL completa del BSP +
  fixes de auditoria
 
 - Restaurar las 12 entradas prePLL/postPLL que el parche recorto

@@ -1,13 +1,17 @@
-From 9673d9ccbec12629fb7e20f4a22bb355857d455d Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 2b0315144e88a6138ef6c8b1591e8ece0e778d90 Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:07 +0200
-Subject: [PATCH T527 29/66] iommu/sun50i: soporte del A523/sun55i (minimyth2
+Subject: [PATCH 029/106] iommu/sun50i: soporte del A523/sun55i (minimyth2
  2732)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/iommu/sun50i-iommu.c | 75 ++++++++++++++++++++++++++++++------
  1 file changed, 63 insertions(+), 12 deletions(-)

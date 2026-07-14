@@ -1,0 +1,117 @@
+From 5f19bb1d88edead1ff32c4b4edb850d240fc910b Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 01:26:53 +0200
+Subject: [PATCH 088/106] =?UTF-8?q?thermal:=20sun8i:=20a=C3=B1adir=20el=20?=
+ =?UTF-8?q?THS=20de=20DDR=20del=20A523=20(segunda=20instancia)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+El A523 tiene un segundo controlador THS (1 sensor, temperatura de la
+DDR) que comparte con el principal la línea de reset RST_BUS_THS. Por eso
+el reset pasa a pedirse en modo compartido (para el resto de SoCs, con un
+único consumidor, shared se comporta igual que exclusivo). Se añade la
+variante sun55i_a523_ths_ddr (compatible "allwinner,sun55i-a523-ths-ddr")
+con su calibrate propio (referencia en SID 0x44/0x48), reutilizando el
+resto (calc_temp, init/irq_ack del h616).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ drivers/thermal/sun8i_thermal.c | 60 ++++++++++++++++++++++++++++++++-
+ 1 file changed, 59 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/thermal/sun8i_thermal.c b/drivers/thermal/sun8i_thermal.c
+index e0a03f378..8774ef8d6 100644
+--- a/drivers/thermal/sun8i_thermal.c
++++ b/drivers/thermal/sun8i_thermal.c
+@@ -399,6 +399,46 @@ static int sun55i_a523_ths_calibrate(struct ths_device *tmdev,
+ 	return 0;
+ }
+ 
++/*
++ * The A523 DDR THS is a second instance of the same IP with a single sensor.
++ * It shares the factory-test temperature (SID 0x38/0x3c) but takes its own
++ * reference value from SID 0x44/0x48 (sun55iw3_ths0_calibrate() in the BSP).
++ */
++static int sun55i_a523_ths_ddr_calibrate(struct ths_device *tmdev,
++					 u16 *caldata, int callen)
++{
++	struct device *dev = tmdev->dev;
++	u32 cal[4];
++	int delta, cdata, ft_temp, reg;
++
++	if (callen < 0x14)
++		return -EINVAL;
++
++	cal[0] = caldata[0] | (caldata[1] << 16);	/* SID 0x38 */
++	cal[1] = caldata[2] | (caldata[3] << 16);	/* SID 0x3c */
++	cal[2] = caldata[6] | (caldata[7] << 16);	/* SID 0x44 */
++	cal[3] = caldata[8] | (caldata[9] << 16);	/* SID 0x48 */
++
++	ft_temp = ((cal[1] << 8) | (cal[0] >> 24)) & FT_TEMP_MASK;
++	if (!ft_temp)
++		return 0;
++
++	reg = ((cal[2] >> 24) | (cal[3] << 8)) & TEMP_CALIB_MASK;
++
++	delta = (ft_temp * 100 + SUN55I_A523_CAL_COM -
++		 sun55i_a523_calc_temp_raw(reg)) / SUN55I_A523_SCALE_LOW;
++	cdata = CALIBRATE_DEFAULT - delta;
++	if (cdata & ~TEMP_CALIB_MASK) {
++		dev_warn(dev, "DDR sensor is not calibrated.\n");
++		return 0;
++	}
++
++	regmap_update_bits(tmdev->regmap, SUN50I_H6_THS_TEMP_CALIB,
++			   TEMP_CALIB_MASK, cdata);
++
++	return 0;
++}
++
+ static int sun8i_ths_calibrate(struct ths_device *tmdev)
+ {
+ 	struct nvmem_cell *calcell;
+@@ -489,7 +529,13 @@ static int sun8i_ths_resource_init(struct ths_device *tmdev)
+ 		return PTR_ERR(tmdev->regmap);
+ 
+ 	if (tmdev->chip->has_bus_clk_reset) {
+-		tmdev->reset = devm_reset_control_get(dev, NULL);
++		/*
++		 * Shared: the A523 has two THS controllers (CPU/GPU/NPU and
++		 * DDR) that share a single RST_BUS_THS line. All other SoCs
++		 * have a single consumer, for which shared behaves like
++		 * exclusive.
++		 */
++		tmdev->reset = devm_reset_control_get_shared(dev, NULL);
+ 		if (IS_ERR(tmdev->reset))
+ 			return PTR_ERR(tmdev->reset);
+ 
+@@ -828,6 +874,17 @@ static const struct ths_thermal_chip sun55i_a523_ths = {
+ 	.calc_temp = sun55i_a523_calc_temp,
+ };
+ 
++static const struct ths_thermal_chip sun55i_a523_ths_ddr = {
++	.sensor_num = 1,
++	.has_bus_clk_reset = true,
++	.has_mod_clk = true,
++	.temp_data_base = SUN50I_H6_THS_TEMP_DATA,
++	.calibrate = sun55i_a523_ths_ddr_calibrate,
++	.init = sun50i_h6_thermal_init,
++	.irq_ack = sun50i_h6_irq_ack,
++	.calc_temp = sun55i_a523_calc_temp,
++};
++
+ static const struct of_device_id of_ths_match[] = {
+ 	{ .compatible = "allwinner,sun8i-a83t-ths", .data = &sun8i_a83t_ths },
+ 	{ .compatible = "allwinner,sun8i-h3-ths", .data = &sun8i_h3_ths },
+@@ -839,6 +896,7 @@ static const struct of_device_id of_ths_match[] = {
+ 	{ .compatible = "allwinner,sun20i-d1-ths", .data = &sun20i_d1_ths },
+ 	{ .compatible = "allwinner,sun50i-h616-ths", .data = &sun50i_h616_ths },
+ 	{ .compatible = "allwinner,sun55i-a523-ths", .data = &sun55i_a523_ths },
++	{ .compatible = "allwinner,sun55i-a523-ths-ddr", .data = &sun55i_a523_ths_ddr },
+ 	{ /* sentinel */ },
+ };
+ MODULE_DEVICE_TABLE(of, of_ths_match);
+-- 
+2.47.3
+

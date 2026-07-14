@@ -1,0 +1,137 @@
+From 1555d68563be885aa863ba93a8c58931e1721aad Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 03:12:14 +0200
+Subject: [PATCH 098/106] clk: sunxi-ng: a523 cpu: commit BIT(26) en los PLL +
+ init de probe del BSP
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Marca pll-cpul/pll-cpub con CCU_FEATURE_CLEAR_MOD y clear=BIT(26) para
+que ccu_mult_set_rate haga el handshake de update del factor (sin él el
+PLL nunca re-bloquea y el cluster se cuelga en el primer cambio de
+frecuencia de cpufreq).
+
+Además replica el init de probe del driver BSP (ccu-sun55iw3-displl.c):
+asegurar PLL_EN/LDO_EN/LOCK_EN/OUTPUT_EN en ambos PLL, commit con el
+update bit y espera de lock. Normalmente es un no-op (el firmware ya
+arranca ambos clusters de estos PLL), pero LOCK_EN tiene que estar
+puesto para que las esperas de lock de los cambios de rate funcionen.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c | 51 +++++++++++++++++++++-
+ 1 file changed, 49 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+index 73d29edd6..d5dd25e02 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+@@ -15,6 +15,7 @@
+  */
+ 
+ #include <linux/clk-provider.h>
++#include <linux/iopoll.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ 
+@@ -30,6 +31,14 @@
+ #define SUN55I_A523_CPUL_REG		0x0060
+ #define SUN55I_A523_CPUB_REG		0x0064
+ 
++/* PLL control bits (BSP ccu-sun55iw3-displl.c) */
++#define SUN55I_A523_PLL_EN		BIT(31)
++#define SUN55I_A523_PLL_LDO_EN		BIT(30)
++#define SUN55I_A523_PLL_LOCK_EN		BIT(29)
++#define SUN55I_A523_PLL_LOCK		BIT(28)
++#define SUN55I_A523_PLL_OUTPUT_EN	BIT(27)
++#define SUN55I_A523_PLL_UPDATE		BIT(26)
++
+ static const struct clk_parent_data osc24M[] = {
+ 	{ .fw_name = "hosc" }
+ };
+@@ -52,13 +61,20 @@ static struct ccu_mult pll_cpu0_clk = {
+ 	},
+ };
+ 
+-/* Little cluster PLL (cpu0-3): 24 MHz * N, N = 20..108 (480 MHz .. 2.592 GHz). */
++/*
++ * Little cluster PLL (cpu0-3): 24 MHz * N, N = 20..108 (480 MHz .. 2.592 GHz).
++ * Factor changes only take effect after the self-clearing update bit BIT(26)
++ * is written (CCU_FEATURE_CLEAR_MOD handshake, as in the BSP ccu_nkmp);
++ * without it the PLL ignores the new N and never re-asserts its lock bit.
++ */
+ static struct ccu_mult pll_cpul_clk = {
+ 	.enable		= BIT(27),
+ 	.lock		= BIT(28),
+ 	.mult		= _SUNXI_CCU_MULT_OFFSET_MIN_MAX(8, 8, 0, 20, 108),
+ 	.common		= {
+ 		.reg		= SUN55I_A523_PLL_CPUL_REG,
++		.clear		= SUN55I_A523_PLL_UPDATE,
++		.features	= CCU_FEATURE_CLEAR_MOD,
+ 		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpul", osc24M,
+ 							   &ccu_mult_ops,
+ 							   CLK_GET_RATE_NOCACHE |
+@@ -67,13 +83,15 @@ static struct ccu_mult pll_cpul_clk = {
+ 	},
+ };
+ 
+-/* Big cluster PLL (cpu4-7). */
++/* Big cluster PLL (cpu4-7). Same update-bit handshake as pll-cpul. */
+ static struct ccu_mult pll_cpub_clk = {
+ 	.enable		= BIT(27),
+ 	.lock		= BIT(28),
+ 	.mult		= _SUNXI_CCU_MULT_OFFSET_MIN_MAX(8, 8, 0, 20, 108),
+ 	.common		= {
+ 		.reg		= SUN55I_A523_PLL_CPUB_REG,
++		.clear		= SUN55I_A523_PLL_UPDATE,
++		.features	= CCU_FEATURE_CLEAR_MOD,
+ 		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpub", osc24M,
+ 							   &ccu_mult_ops,
+ 							   CLK_GET_RATE_NOCACHE |
+@@ -168,13 +186,42 @@ static struct ccu_pll_nb sun55i_a523_pll_cpub_nb = {
+ 
+ static int sun55i_a523_cpu_ccu_probe(struct platform_device *pdev)
+ {
++	static const u16 pll_regs[] = {
++		SUN55I_A523_PLL_CPUL_REG,
++		SUN55I_A523_PLL_CPUB_REG,
++	};
+ 	void __iomem *reg;
++	unsigned int i;
+ 	int ret;
+ 
+ 	reg = devm_platform_ioremap_resource(pdev, 0);
+ 	if (IS_ERR(reg))
+ 		return PTR_ERR(reg);
+ 
++	/*
++	 * Put the cluster PLLs in the state the BSP driver leaves them in
++	 * (displl probe): PLL/LDO/lock-detect/output enabled, committed via
++	 * the self-clearing update bit, then locked. The firmware already
++	 * runs both clusters from these PLLs so this is normally a no-op,
++	 * but LOCK_EN must be set or rate changes can never observe the
++	 * lock bit.
++	 */
++	for (i = 0; i < ARRAY_SIZE(pll_regs); i++) {
++		void __iomem *addr = reg + pll_regs[i];
++		u32 val;
++
++		writel(readl(addr) | SUN55I_A523_PLL_EN |
++		       SUN55I_A523_PLL_LDO_EN | SUN55I_A523_PLL_LOCK_EN |
++		       SUN55I_A523_PLL_OUTPUT_EN, addr);
++		writel(readl(addr) | SUN55I_A523_PLL_UPDATE, addr);
++		WARN_ON(readl_poll_timeout(addr, val,
++					   !(val & SUN55I_A523_PLL_UPDATE),
++					   100, 10000));
++		WARN_ON(readl_poll_timeout(addr, val,
++					   val & SUN55I_A523_PLL_LOCK,
++					   100, 70000));
++	}
++
+ 	ret = devm_sunxi_ccu_probe(&pdev->dev, reg, &sun55i_a523_cpu_ccu_desc);
+ 	if (ret)
+ 		return ret;
+-- 
+2.47.3
+

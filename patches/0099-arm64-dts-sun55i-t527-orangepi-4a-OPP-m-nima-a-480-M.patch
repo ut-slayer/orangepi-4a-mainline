@@ -1,0 +1,61 @@
+From 20446b4ee1cb23d167c1d12b2794f0012b5d80fa Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 03:12:14 +0200
+Subject: [PATCH 099/106] =?UTF-8?q?arm64:=20dts:=20sun55i-t527-orangepi-4a?=
+ =?UTF-8?q?:=20OPP=20m=C3=ADnima=20a=20480=20MHz?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Los PLL de CPU se modelan como 24 MHz * N con N >= 20 y el divisor P
+del firmware a /1, así que 408 MHz (el mínimo del BSP, que lo alcanza
+vía P) no es alcanzable: el reloj redondearía a 480 MHz mientras
+cpufreq informaría 408. Se sube la OPP mínima de ambos clusters a
+480 MHz reales. El voltaje se mantiene en 0.90 V, dentro del sobre del
+BSP (408 y 672 MHz van a 0.90 V en todos los speed bins).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 7dcfd6258..d7248287c 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -241,13 +241,19 @@ / {
+ 	 * safe on any chip. Capped conservatively for bring-up (little cluster
+ 	 * at its 1.416 GHz max, big cluster at 1.488 GHz; the big cluster can
+ 	 * go to ~2 GHz later once reg_dcdc1_323's max is raised past 1.15 V).
++	 *
++	 * The lowest point is 480 MHz instead of the vendor's 408 MHz: the
++	 * CPU PLLs are modelled as plain 24 MHz * N (N >= 20, post-divider
++	 * left at /1 by the firmware), so 480 MHz is the real floor. Its
++	 * 0.90 V sits within the vendor envelope (408 and 672 MHz both run
++	 * at 0.90 V on every speed bin).
+ 	 */
+ 	cluster0_opp: opp-table-cluster0 {
+ 		compatible = "operating-points-v2";
+ 		opp-shared;
+ 
+-		opp-408000000 {
+-			opp-hz = /bits/ 64 <408000000>;
++		opp-480000000 {
++			opp-hz = /bits/ 64 <480000000>;
+ 			opp-microvolt = <900000>;
+ 		};
+ 
+@@ -276,8 +282,8 @@ cluster1_opp: opp-table-cluster1 {
+ 		compatible = "operating-points-v2";
+ 		opp-shared;
+ 
+-		opp-408000000 {
+-			opp-hz = /bits/ 64 <408000000>;
++		opp-480000000 {
++			opp-hz = /bits/ 64 <480000000>;
+ 			opp-microvolt = <900000>;
+ 		};
+ 
+-- 
+2.47.3
+

@@ -1,7 +1,7 @@
-From 5f0ebef352e062016a5eab191cff34eae015141e Mon Sep 17 00:00:00 2001
+From 30fb927efd356a7a26098a88964d9991ab7c58eb Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 03:11:30 +0200
-Subject: [PATCH T527 59/66] drm/sun4i: sun55i_de: scanout AFBC via el
+Subject: [PATCH 059/106] drm/sun4i: sun55i_de: scanout AFBC via el
  decodificador AFBD del v350
 
 Port del AFBD del BSP (lowlevel_de/afbd/de_fbd_atw.c) al canal UI phys 6:

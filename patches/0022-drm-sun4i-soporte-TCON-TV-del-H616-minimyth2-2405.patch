@@ -1,13 +1,16 @@
-From 48e39bba3b8a67b18e9ac4f34416eab1d28fd930 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 9f9e2efc5e6b8d60b6a1dbb60a9313ed476d32b7 Mon Sep 17 00:00:00 2001
+From: Jernej Skrabec <jernej.skrabec@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:05 +0200
-Subject: [PATCH T527 22/66] drm/sun4i: soporte TCON TV del H616 (minimyth2
- 2405)
+Subject: [PATCH 022/106] drm/sun4i: soporte TCON TV del H616 (minimyth2 2405)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun4i_tcon.c | 13 +++++++++++++
  drivers/gpu/drm/sun4i/sun4i_tcon.h |  2 ++

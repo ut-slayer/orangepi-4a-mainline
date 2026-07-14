@@ -1,8 +1,8 @@
-From 676894fb3faa0f37eb02193a7bd645f5759c256b Mon Sep 17 00:00:00 2001
+From 465dfd819e779d2fcc8b44797d7dc43edcb9a914 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 21:51:01 +0200
-Subject: [PATCH T527 44/66] dts: opi4a: CMA 64MB clavada en
- 0x43000000-0x48000000 (apertura real del DE)
+Subject: [PATCH 044/106] dts: opi4a: CMA 64MB clavada en 0x43000000-0x48000000
+ (apertura real del DE)
 
 El boot 2 dejo la placa medio muerta: con alloc-ranges hasta 0x70000000
 la CMA cayo en 0x60000000, fuera de la apertura del DE (el parche X96Q

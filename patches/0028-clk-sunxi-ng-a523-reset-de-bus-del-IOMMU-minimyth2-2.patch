@@ -1,13 +1,17 @@
-From 28ee97d6c8f3c71312eb301758dbf4cc36f51585 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 4f2cdb7fd05b660e8b3d8bdcc950eb4b52c6eefa Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:06 +0200
-Subject: [PATCH T527 28/66] clk: sunxi-ng: a523: reset de bus del IOMMU
+Subject: [PATCH 028/106] clk: sunxi-ng: a523: reset de bus del IOMMU
  (minimyth2 2731)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/clk/sunxi-ng/ccu-sun55i-a523.c      | 6 ++++++
  include/dt-bindings/reset/sun55i-a523-ccu.h | 1 +

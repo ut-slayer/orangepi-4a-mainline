@@ -1,8 +1,8 @@
-From 55c6d5410be76a443fcc1a0639b0d99b448dec98 Mon Sep 17 00:00:00 2001
+From 13ad598363daa82c36eb3977b9558b88e4510723 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 23:41:03 +0200
-Subject: [PATCH T527 49/66] iommu/sun50i: CAUSA RAIZ del Oops: el pliegue +4G
- del DTE comparaba contra PHYS_OFFSET
+Subject: [PATCH 049/106] iommu/sun50i: CAUSA RAIZ del Oops: el pliegue +4G del
+ DTE comparaba contra PHYS_OFFSET
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

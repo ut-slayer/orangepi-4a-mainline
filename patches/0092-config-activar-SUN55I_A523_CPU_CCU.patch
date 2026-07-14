@@ -1,0 +1,31 @@
+From 49e5e54fea3f550c366c80ce5fdb40d620bd8783 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 02:00:34 +0200
+Subject: [PATCH 092/106] config: activar SUN55I_A523_CPU_CCU
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+El CCU de CPU del A523 va built-in (=y) para estar disponible pronto en el
+arranque (prerequisito de cpufreq). olddefconfig, una sola opción nueva.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .config | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/.config b/.config
+index 3e11d8dae..da4e2b24d 100644
+--- a/.config
++++ b/.config
+@@ -7165,6 +7165,7 @@ CONFIG_SUN50I_H6_CCU=y
+ CONFIG_SUN50I_H616_CCU=y
+ CONFIG_SUN50I_H6_R_CCU=y
+ CONFIG_SUN55I_A523_CCU=y
++CONFIG_SUN55I_A523_CPU_CCU=y
+ CONFIG_SUN55I_A523_MCU_CCU=y
+ CONFIG_SUN55I_A523_R_CCU=y
+ CONFIG_SUN6I_RTC_CCU=y
+-- 
+2.47.3
+

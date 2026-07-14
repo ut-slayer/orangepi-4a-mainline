@@ -1,8 +1,8 @@
-From 9cc7656a7cef68db41644c1a074de0c20041eba7 Mon Sep 17 00:00:00 2001
+From 2d917dc8aa6cba2987916ebcdcaa4ce44559a545 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 15:13:36 +0200
-Subject: [PATCH T527 64/66] drm/sun4i: sun55i_de: retener los fbs viejos hasta
- el arm RCQ (FINISH BSP)
+Subject: [PATCH 064/106] drm/sun4i: sun55i_de: retener los fbs viejos hasta el
+ arm RCQ (FINISH BSP)
 
 El helper atomico libera los framebuffers viejos justo tras el evento de
 vblank, pero en el v35x el cambio real de direcciones solo aterriza con

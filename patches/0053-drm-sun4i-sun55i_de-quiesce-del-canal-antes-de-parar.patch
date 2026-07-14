@@ -1,7 +1,7 @@
-From 1a7cf62798271de38f0c22056685f3c32f71b329 Mon Sep 17 00:00:00 2001
+From 5de0c012eec2da5488a9d0616541c73da6bd0dd2 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 18:29:06 +0200
-Subject: [PATCH T527 53/66] drm/sun4i: sun55i_de: quiesce del canal antes de
+Subject: [PATCH 053/106] drm/sun4i: sun55i_de: quiesce del canal antes de
  parar el TCON (fix fault/wedge en modeset)
 
 El disable stageado por el commit atomico solo latchea con un RCQ FINISH,

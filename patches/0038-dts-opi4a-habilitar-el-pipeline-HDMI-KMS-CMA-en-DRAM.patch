@@ -1,8 +1,8 @@
-From bc894ee1e9311220b2a3787487b4cb98b7a0a2ef Mon Sep 17 00:00:00 2001
+From 1f5efc4f9fb79ecf9ed329efae7c08b7acdeb77e Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:09:42 +0200
-Subject: [PATCH T527 38/66] dts: opi4a: habilitar el pipeline HDMI KMS + CMA
- en DRAM baja
+Subject: [PATCH 038/106] dts: opi4a: habilitar el pipeline HDMI KMS + CMA en
+ DRAM baja
 
 Enable de &de/&hdmi + hdmi-connector (adaptado de minimyth2 2903, que
 tambien cubre la OPi 4A) fusionado a mano con nuestro dts local

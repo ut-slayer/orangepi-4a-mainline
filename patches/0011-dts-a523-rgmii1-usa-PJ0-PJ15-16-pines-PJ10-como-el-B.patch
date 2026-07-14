@@ -1,8 +1,8 @@
-From 7ed86593143064b3ebeb3286862fe228840cae17 Mon Sep 17 00:00:00 2001
+From ba8806fda1ba749e140a7ca554ec23f899a8035b Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 02:05:52 +0200
-Subject: [PATCH T527 11/66] dts: a523: rgmii1 usa PJ0-PJ15 (16 pines, +PJ10
- como el BSP)
+Subject: [PATCH 011/106] dts: a523: rgmii1 usa PJ0-PJ15 (16 pines, +PJ10 como
+ el BSP)
 
 Mainline se saltaba PJ10; el BSP del OPi4A mapea PJ0..PJ15 completo a gmac1.
 Con PJ10 sin mapear una senal de RX se quedaba fuera -> rx_packets=0 pese a

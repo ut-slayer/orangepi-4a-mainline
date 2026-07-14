@@ -1,7 +1,7 @@
-From 76a5b304ec89981c496b8cee81244ba883c09df2 Mon Sep 17 00:00:00 2001
+From 838f6f459547c5352837c5cc17300ad7288e0136 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:32:34 +0200
-Subject: [PATCH T527 20/66] mfd: axp20x: el poweroff del AXP717 no escribia
+Subject: [PATCH 020/106] mfd: axp20x: el poweroff del AXP717 no escribia
  OFF_CTRL (rango no writeable)
 
 axp20x_power_off() escribe AXP20X_OFF_CTRL (0x32) para el AXP717 (rama

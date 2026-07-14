@@ -1,7 +1,7 @@
-From 5d9f07c7fa87622aea1ac92ee2259f19155c08b3 Mon Sep 17 00:00:00 2001
+From 53631bc050adccc107965b60ec0af1f04a55cb6d Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 02:34:10 +0200
-Subject: [PATCH T527 13/66] dts: opi4a: rgmii puro (PHY sin delay) para barrer
+Subject: [PATCH 013/106] dts: opi4a: rgmii puro (PHY sin delay) para barrer
  syscon RX en vivo
 
 ---

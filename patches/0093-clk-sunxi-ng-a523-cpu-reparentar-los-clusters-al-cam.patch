@@ -1,0 +1,89 @@
+From cd3229362e8723bc708f49f298d99359bbf91e1d Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 02:13:24 +0200
+Subject: [PATCH 093/106] clk: sunxi-ng: a523 cpu: reparentar los clusters al
+ cambiar el PLL
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Registra los notifiers glitch-free (igual que el H616): mientras un PLL de
+CPU cambia de rate, el mux del cluster se reparenta temporalmente a un reloj
+estable (pll-periph0 @ 600MHz, índice 4) y vuelve al PLL una vez re-bloqueado.
+Prerequisito para cambiar la frecuencia con cpufreq sin colgar los cores.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c | 48 +++++++++++++++++++++-
+ 1 file changed, 47 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+index eae54c6fd..9091548dd 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+@@ -133,15 +133,61 @@ static const struct sunxi_ccu_desc sun55i_a523_cpu_ccu_desc = {
+ 	.hw_clks	= &sun55i_a523_cpu_ccu_hw_clks,
+ };
+ 
++/*
++ * While a CPU PLL changes its rate the cores would run off an unstable
++ * clock, so the cluster mux is temporarily reparented to a stable source
++ * (pll-periph0 @ 600MHz, parent index 4) and switched back once the PLL has
++ * re-locked. Same mechanism as the H616.
++ */
++static struct ccu_mux_nb sun55i_a523_cpul_nb = {
++	.common		= &cpul_clk.common,
++	.cm		= &cpul_clk.mux,
++	.delay_us	= 1,
++	.bypass_index	= 4,
++};
++
++static struct ccu_pll_nb sun55i_a523_pll_cpul_nb = {
++	.common		= &pll_cpul_clk.common,
++	.enable		= BIT(29),	/* LOCK_ENABLE */
++	.lock		= BIT(28),
++};
++
++static struct ccu_mux_nb sun55i_a523_cpub_nb = {
++	.common		= &cpub_clk.common,
++	.cm		= &cpub_clk.mux,
++	.delay_us	= 1,
++	.bypass_index	= 4,
++};
++
++static struct ccu_pll_nb sun55i_a523_pll_cpub_nb = {
++	.common		= &pll_cpub_clk.common,
++	.enable		= BIT(29),	/* LOCK_ENABLE */
++	.lock		= BIT(28),
++};
++
+ static int sun55i_a523_cpu_ccu_probe(struct platform_device *pdev)
+ {
+ 	void __iomem *reg;
++	int ret;
+ 
+ 	reg = devm_platform_ioremap_resource(pdev, 0);
+ 	if (IS_ERR(reg))
+ 		return PTR_ERR(reg);
+ 
+-	return devm_sunxi_ccu_probe(&pdev->dev, reg, &sun55i_a523_cpu_ccu_desc);
++	ret = devm_sunxi_ccu_probe(&pdev->dev, reg, &sun55i_a523_cpu_ccu_desc);
++	if (ret)
++		return ret;
++
++	/* Reparent each cluster while its CPU PLL changes rate, then re-lock. */
++	ccu_mux_notifier_register(pll_cpul_clk.common.hw.clk,
++				  &sun55i_a523_cpul_nb);
++	ccu_pll_notifier_register(&sun55i_a523_pll_cpul_nb);
++
++	ccu_mux_notifier_register(pll_cpub_clk.common.hw.clk,
++				  &sun55i_a523_cpub_nb);
++	ccu_pll_notifier_register(&sun55i_a523_pll_cpub_nb);
++
++	return 0;
+ }
+ 
+ static const struct of_device_id sun55i_a523_cpu_ccu_ids[] = {
+-- 
+2.47.3
+

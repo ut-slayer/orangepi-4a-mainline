@@ -1,0 +1,53 @@
+From 81f7bb95f9f7b2f1b18a2da9cc9d5d61706bb610 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 05:08:46 +0200
+Subject: [PATCH 104/106] clk: sunxi-ng: sun55i-a523: no propagar rate de la
+ GPU a los padres
+
+Todas las OPP de la GPU (150/200/300/400/600 MHz, tabla del BSP) dividen
+exacto de las salidas fijas de pll-periph0, asi que gpu_clk no necesita
+retocar ningun PLL. Con CLK_SET_RATE_PARENT el peligro es real: mientras
+la GPU cuelga de pll-gpu este queda protegido por CLK_SET_RATE_GATE (via
+rate protection en prepare), pero en cuanto el mux se mueve a un periph
+el PLL queda sin preparar y pierde la proteccion; una peticion propagada
+posterior (600/300/150 MHz le cuadran exactos y es el padre indice 0, que
+gana por el early-exit de ccu_mux_helper_determine_rate) lo reprogramaria
+con la puerta cerrada (el lock nunca asoma: timeout de 70 ms + WARN por
+transicion) y luego muxearia la GPU en marcha a un PLL recien encendido
+sin esperar el lock.
+
+Sin el flag, los padres solo ofrecen su rate actual: 432 MHz (lo que deja
+U-Boot) entre 1..16 nunca coincide con ninguna OPP, con lo que la GPU vive
+siempre de los periph fijos y pll-gpu queda apagado (ahorro extra).
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+index 00ee6d8e9..5678d1acb 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+@@ -449,11 +449,19 @@ static const struct clk_hw *gpu_parents[] = {
+ 	&pll_periph0_200M_clk.hw,
+ };
+ 
++/*
++ * No CLK_SET_RATE_PARENT: every GPU OPP is an exact division of the fixed
++ * pll-periph0 outputs, and pll-gpu must never be retuned through this mux.
++ * Once the GPU moves off pll-gpu the PLL is no longer prepared, so it loses
++ * the rate protection of CLK_SET_RATE_GATE; a propagated rate request would
++ * then reprogram the PLL while its gate is off (the lock bit never asserts,
++ * 70 ms timeout) and switch the running GPU onto it before it locks.
++ */
+ static SUNXI_CCU_M_HW_WITH_MUX_GATE(gpu_clk, "gpu", gpu_parents, 0x670,
+ 				    0, 4,	/* M */
+ 				    24, 3,	/* mux */
+ 				    BIT(31),	/* gate */
+-				    CLK_SET_RATE_PARENT);
++				    0);
+ 
+ static SUNXI_CCU_GATE_HWS(bus_gpu_clk, "bus-gpu", ahb_hws, 0x67c, BIT(0), 0);
+ 
+-- 
+2.47.3
+

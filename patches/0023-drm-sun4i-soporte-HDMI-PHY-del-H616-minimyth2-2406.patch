@@ -1,13 +1,16 @@
-From c4e1872f5c89619281854e83a378943e48352080 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 55d855de244d9d968155a0aa028ad558ac1b99fc Mon Sep 17 00:00:00 2001
+From: Jernej Skrabec <jernej.skrabec@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:05 +0200
-Subject: [PATCH T527 23/66] drm/sun4i: soporte HDMI PHY del H616 (minimyth2
- 2406)
+Subject: [PATCH 023/106] drm/sun4i: soporte HDMI PHY del H616 (minimyth2 2406)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c | 71 ++++++++++++++++++++++++++
  1 file changed, 71 insertions(+)

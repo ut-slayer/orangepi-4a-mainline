@@ -1,0 +1,488 @@
+From 4e9eb4535c90faaa69cd41db215ab45ddc090053 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:16:57 +0200
+Subject: [PATCH 070/106] drm/sun4i: sun55i_de: cerrar las carreras del RCQ con
+ el arm en vuelo (auditoria C1/C2/A1)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+C1: quiesce() limpiaba arm_pending y reseteaba el DE sin arm_lock con el
+vblank IRQ vivo (corre antes de vblank_off y los retries mantienen
+arm_pending entre commits): un do_arm() concurrente podia escribir AHB o
+kickear el DMA RCQ contra un core gateado/en reset = el wedge del MBUS.
+Ahora el clear va bajo el lock (drena cualquier arm en vuelo), quiesced
+hace no-op los dos caminos de arm, y el hrtimer_cancel va despues.
+
+C2: el staging de la sombra (layer_update/vsu_setup/afbd_stage) corria
+sin lock mientras un retry-arm (IRQ/hrtimer) podia consumirla a medio
+escribir (LADDR nuevo + HADDR/pitch viejos -> fetch de IOVA inexistente
+-> fault -> wedge). Todo el ramo RCQ de sun8i_mixer_commit va ahora bajo
+arm_lock (holds con kmalloc en una primera pasada sin lock).
+
+A1: en modo RCQ un re-arm podia pisar un load DMA aun en vuelo. FINISHED
+es W1C: se limpia antes de cada kick y si no esta set al siguiente arm se
+salta (retry al vblank siguiente, acotado a 3 saltos por si el hw dropea
+el load; semantica de_top_query_state_with_clear del vendor).
+
+M4: con el CRTC inactivo (DPMS off) los holds se acumulaban sin limite y
+arm_pending quedaba set sin vblanks: con quiesced los commits ni retienen
+fbs ni arman (el full reload del enable() aplica la sombra staged).
+
+A2/M1: sun55i_de_fini() en unbind (drena hrtimer+work y las 4 listas de
+holds, suelta el reserved-mem, limpia el global de diagnostico) — antes
+el work podia correr tras liberar devm 'de' (UAF). list_del del engine en
+el error-path del bind (el master libera drv y la lista quedaba colgando)
+y release del reserved-mem si falla el pool.
+
+B2/B6: pr_warn_once si falla el kmalloc del hold (antes degradaba en
+silencio al comportamiento con wedge); enable()/mode_set() escriben el
+estado compartido bajo arm_lock; lockdep_assert_held en los stagers.
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c   | 173 ++++++++++++++++++++++++++--
+ drivers/gpu/drm/sun4i/sun55i_de.h   |  22 +++-
+ drivers/gpu/drm/sun4i/sun8i_mixer.c |  44 +++++--
+ 3 files changed, 221 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 9bacff5b4..937cbb129 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -394,13 +394,31 @@ void sun55i_de_hold_fb(struct sun8i_mixer *mixer, struct drm_framebuffer *fb)
+ 	unsigned long flags;
+ 
+ 	hold = kmalloc(sizeof(*hold), GFP_KERNEL);
+-	if (!hold)
+-		return;	/* best effort: behaves like the unpatched driver */
++	if (!hold) {
++		/*
++		 * Best effort: behaves like the unpatched driver, whose
++		 * freed-fb fetch is precisely the MBUS-wedge bug this hold
++		 * prevents - leave a trace so a post-OOM wedge is attributable.
++		 */
++		pr_warn_once("sun55i_de: fb hold alloc failed; early fb free may fault the DE\n");
++		return;
++	}
+ 
+ 	drm_framebuffer_get(fb);
+ 	hold->fb = fb;
+ 
+ 	spin_lock_irqsave(&de->arm_lock, flags);
++	if (de->quiesced) {
++		/*
++		 * DE gated + in reset: nothing can fetch, so the hold is not
++		 * needed - and with the TCON down no arm would ever age it
++		 * (a DPMS-off client flipping away would pin GEM unbounded).
++		 */
++		spin_unlock_irqrestore(&de->arm_lock, flags);
++		drm_framebuffer_put(fb);
++		kfree(hold);
++		return;
++	}
+ 	list_add_tail(&hold->node, &de->fbs_pending);
+ 	spin_unlock_irqrestore(&de->arm_lock, flags);
+ }
+@@ -545,6 +563,7 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 	INIT_LIST_HEAD(&de->fbs_armed2);
+ 	INIT_LIST_HEAD(&de->fbs_release);
+ 	INIT_WORK(&de->fb_release_work, sun55i_de_fb_release_work);
++	de->quiesced = true;	/* off until the first enable() */
+ 
+ 	/* TEMP: map the TCON current-scan reg for arm-line diagnostics */
+ 	tcon_curline_io = devm_ioremap(mixer->dev, tcon_curline_phys & ~0x3, 4);
+@@ -588,8 +607,11 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 
+ 	de->pool = dmam_alloc_coherent(mixer->dev, de->pool_size,
+ 				       &de->pool_dma, GFP_KERNEL);
+-	if (!de->pool)
++	if (!de->pool) {
++		of_reserved_mem_device_release(mixer->dev);
++		mixer->de = NULL;
+ 		return -ENOMEM;
++	}
+ 
+ 	de->heads = de->pool;
+ 	de->heads_dma = de->pool_dma;
+@@ -648,6 +670,52 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 	return 0;
+ }
+ 
++/*
++ * Component-unbind teardown. The devm allocations (de, the dmam pool, the
++ * ioremaps) only die at platform-driver detach, AFTER this - but the hrtimer
++ * and fb_release_work can still be queued/running here (the atomic shutdown's
++ * quiesce() schedules the work moments earlier), and nothing else stops them
++ * before devm frees the memory they touch. Drain them, then drop any holds
++ * the last quiesce left in flight, and detach the reserved-mem region so a
++ * re-bind (component defer, sysfs unbind/bind) does not attach it twice.
++ */
++void sun55i_de_fini(struct sun8i_mixer *mixer)
++{
++	struct sun55i_de *de = mixer->de;
++	struct sun55i_de_fb_hold *hold, *tmp;
++	unsigned long flags;
++	LIST_HEAD(gone);
++
++	if (!de)
++		return;
++
++	spin_lock_irqsave(&de->arm_lock, flags);
++	de->arm_pending = false;
++	de->quiesced = true;
++	spin_unlock_irqrestore(&de->arm_lock, flags);
++
++	hrtimer_cancel(&de->arm_timer);
++	cancel_work_sync(&de->fb_release_work);
++
++	spin_lock_irqsave(&de->arm_lock, flags);
++	list_splice_tail_init(&de->fbs_pending, &gone);
++	list_splice_tail_init(&de->fbs_armed1, &gone);
++	list_splice_tail_init(&de->fbs_armed2, &gone);
++	list_splice_tail_init(&de->fbs_release, &gone);
++	spin_unlock_irqrestore(&de->arm_lock, flags);
++
++	list_for_each_entry_safe(hold, tmp, &gone, node) {
++		drm_framebuffer_put(hold->fb);
++		kfree(hold);
++	}
++
++	of_reserved_mem_device_release(mixer->dev);
++
++	/* the global diag mapping dies with this device's devm */
++	tcon_curline_io = NULL;
++	mixer->de = NULL;
++}
++
+ /*
+  * Program the per-mode state: arm timing + datapath sizes (RCQ shadow only).
+  * The de_top/GLB MMIO programming lives in sun55i_de_enable(): the atomic
+@@ -663,6 +731,7 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	u32 w = mode->hdisplay, h = mode->vdisplay;
+ 	u32 size = SUN55I_DE_OUT_SIZE(w, h);
+ 	u32 vtotal = mode->crtc_vtotal, clock = mode->crtc_clock;
++	unsigned long flags;
+ 	u32 vbp;
+ 
+ 	/*
+@@ -676,6 +745,9 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	 * ns_per_line = htotal / pixel_clock, per counter tick.
+ 	 */
+ 	hrtimer_cancel(&de->arm_timer);
++
++	/* timing + shadow are consumed from IRQ context: stage under arm_lock */
++	spin_lock_irqsave(&de->arm_lock, flags);
+ 	vbp = mode->crtc_vtotal - mode->crtc_vsync_end;
+ 	de->line_total = vtotal ? vtotal : 1;
+ 	de->arm_target = vbp + (vtotal * 3) / 100;
+@@ -725,6 +797,7 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	/* output formatter size */
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_FMT),
+ 		     SUN55I_FMT_SIZE_REG, size);
++	spin_unlock_irqrestore(&de->arm_lock, flags);
+ 
+ 	/* TEMP diagnostic (dev_info) — revert later */
+ 	dev_info(mixer->dev,
+@@ -755,11 +828,24 @@ void sun55i_de_enable(struct sun8i_mixer *mixer,
+ {
+ 	struct sun55i_de *de = mixer->de;
+ 	u32 size = SUN55I_DE_OUT_SIZE(mode->hdisplay, mode->vdisplay);
++	unsigned long flags;
+ 	u32 mux;
+ 
+ 	hrtimer_cancel(&de->arm_timer);
++
++	/*
++	 * Under arm_lock: these are read by do_arm()/vblank_quirk() from IRQ
++	 * context. The TCON is off at this point so no vblank should fire, but
++	 * that is an ordering invariant of the atomic helper, not of this
++	 * driver - the lock makes enable() safe on its own.
++	 */
++	spin_lock_irqsave(&de->arm_lock, flags);
+ 	de->armed_once = false;	/* re-stage the whole datapath */
+ 	de->full_arms_left = 4;	/* re-issue the full reload on the next vblanks */
++	de->quiesced = false;	/* commits may hold fbs and arm again */
++	de->rcq_kicked = false;	/* the reset pulse below clears the RCQ state */
++	de->rcq_skips = 0;
++	spin_unlock_irqrestore(&de->arm_lock, flags);
+ 
+ 	/*
+ 	 * Reset pulse. quiesce() left the reset asserted (BSP model: the DE
+@@ -1114,6 +1200,8 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 	dma_addr_t addr;
+ 	u32 fmt, attctl;
+ 
++	lockdep_assert_held(&mixer->de->arm_lock);
++
+ 	/*
+ 	 * this milestone only drives the first UI channel (logic 1 = phys 6).
+ 	 * En 6.18 layer->channel es el canal LOGICO (vi_num + index); la
+@@ -1233,9 +1321,10 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ {
+ 	struct sun55i_de *de = mixer->de;
+-	unsigned long flags;
+ 	unsigned int i;
+ 
++	lockdep_assert_held(&de->arm_lock);
++
+ 	/*
+ 	 * Convertir el dirty ACUMULADO de cada bloque (solo cambios reales,
+ 	 * ver de_blk_write) en un presupuesto de 2 arms (arms_left). El head
+@@ -1246,7 +1335,6 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ 	 * durante los full-arms de un mode_set. flip_min=N fuerza el
+ 	 * comportamiento antiguo (todo dirty siempre).
+ 	 */
+-	spin_lock_irqsave(&de->arm_lock, flags);
+ 	for (i = 0; i < SUN55I_DE_BLK_NUM; i++) {
+ 		struct sun55i_de_block *blk = &de->blocks[i];
+ 		bool dirty = !flip_min || !de->armed_once ||
+@@ -1261,6 +1349,13 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ 	/* ensure the staged shadow is visible to the DMA before any arm */
+ 	wmb();
+ 
++	/*
++	 * Quiesced (CRTC inactive): the enable() full reload will apply the
++	 * shadow staged above; an arm now would poke a core held in reset.
++	 */
++	if (de->quiesced)
++		return;
++
+ 	/* TEMP: a stage landing while one is still pending = no vblank in between */
+ 	if (de->arm_pending) {
+ 		de->coalesced++;
+@@ -1269,7 +1364,24 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ 	de->commit_seq++;
+ 	dbg_commits++;
+ 	de->arm_pending = true;
+-	spin_unlock_irqrestore(&de->arm_lock, flags);
++}
++
++/*
++ * Staging exclusion for the atomic-flush path (sun8i_mixer_commit): the whole
++ * plane-staging loop + sun55i_de_commit() run under arm_lock, so an arm from
++ * the vblank IRQ or the hrtimer - live between commits thanks to the retry
++ * budgets (arms_left/full_arms_left) - can never apply a half-written shadow
++ * (e.g. a new OVL low address with the old high address/pitch: a fetch from a
++ * nonexistent IOVA -> IOMMU fault -> wedged MBUS port).
++ */
++void sun55i_de_stage_lock(struct sun8i_mixer *mixer, unsigned long *flags)
++{
++	spin_lock_irqsave(&mixer->de->arm_lock, *flags);
++}
++
++void sun55i_de_stage_unlock(struct sun8i_mixer *mixer, unsigned long *flags)
++{
++	spin_unlock_irqrestore(&mixer->de->arm_lock, *flags);
+ }
+ 
+ /*
+@@ -1331,6 +1443,27 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 		return;
+ 	}
+ 
++	/*
++	 * RCQ (DMA) transport: a kicked load walks the head array and shadow
++	 * asynchronously. FINISHED is W1C and cleared before every kick, so it
++	 * being unset here means the previous load may still be reading -
++	 * rewriting the heads below would hand the walker torn data. Skip and
++	 * retry next vblank (arm_pending stays set). Bounded: a load the
++	 * hardware dropped might never report FINISHED, so never skip more
++	 * than 3 in a row - the shadow is idempotent and an occasional stomp
++	 * is strictly better than arming never again. N/A to the AHB path,
++	 * where the CPU copy completes synchronously under arm_lock.
++	 */
++	if ((use_rcq || !de->mmio) && de->rcq_kicked &&
++	    !(status & SUN55I_MIXER_RCQ_STATUS_FINISHED)) {
++		if (de->rcq_skips < 3) {
++			de->rcq_skips++;
++			dbg_arm_busy++;
++			return;
++		}
++	}
++	de->rcq_skips = 0;
++
+ 	de->arm_pending = false;
+ 	de->armed_once = true;
+ 
+@@ -1403,7 +1536,15 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 			blk->head->dirty = cpu_to_le32(0);
+ 		}
+ 	} else {
++		/*
++		 * W1C-clear the latched state first so FINISHED unambiguously
++		 * refers to THIS load at the next arm (vendor
++		 * de_top_query_state_with_clear semantics).
++		 */
++		regmap_write(de->mixer->top_regs, SUN55I_MIXER_RCQ_STATUS,
++			     SUN55I_MIXER_RCQ_STATUS_W1C);
+ 		regmap_write(de->mixer->top_regs, SUN55I_MIXER_RCQ_CTL, 1);
++		de->rcq_kicked = true;
+ 	}
+ 
+ 	/* TEMP: record the TCON scanline the arm actually landed on */
+@@ -1446,11 +1587,27 @@ void sun55i_de_quiesce(struct sun8i_mixer *mixer, struct drm_crtc *crtc)
+ 	unsigned long flags;
+ 	u32 val;
+ 
+-	hrtimer_cancel(&de->arm_timer);
++	/*
++	 * Fence off the arm paths BEFORE touching the hardware. The vblank IRQ
++	 * is still live here (quiesce runs before drm_crtc_vblank_off, and the
++	 * retry budget keeps arm_pending set between commits), so clearing
++	 * arm_pending without the lock leaves a window where another CPU's
++	 * do_arm() writes AHB registers - or kicks the RCQ DMA - into a core
++	 * this function is about to gate and hold in reset: an MBUS transaction
++	 * against a block in reset is exactly the wedge this driver fights.
++	 * Taking arm_lock drains any do_arm() in flight; quiesced makes both
++	 * arm paths (vblank_quirk, arm_timer) no-ops from here on. Cancel the
++	 * hrtimer only after that: a callback firing in between sees
++	 * arm_pending == false and does nothing.
++	 */
++	spin_lock_irqsave(&de->arm_lock, flags);
+ 	de->arm_pending = false;
+-
++	de->quiesced = true;
+ 	/* stage the channel off: first config the reload applies on enable */
+ 	sun55i_de_layer_disable(mixer);
++	spin_unlock_irqrestore(&de->arm_lock, flags);
++
++	hrtimer_cancel(&de->arm_timer);
+ 
+ 	/* vendor __de_mod_clk_enable(disp0, 0): clk gate, then reset assert */
+ 	regmap_read(mixer->detop_regs, SUN55I_DETOP_CLK, &val);
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index edeb7af04..6c9e4a8f1 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -160,10 +160,27 @@ struct sun55i_de {
+ 	 * there. Either way the arm lands in blanking by construction,
+ 	 * regardless of IRQ-servicing jitter.
+ 	 */
+-	spinlock_t			arm_lock;	/* arm_pending + timer */
++	spinlock_t			arm_lock;	/* arm_pending + timer + shadow staging */
+ 	struct hrtimer			arm_timer;	/* fires in next blanking */
+ 	bool				arm_pending;	/* RCQ staged, not armed */
+ 	bool				armed_once;	/* datapath fully loaded once */
++	/*
++	 * Set by quiesce(), cleared by enable(): the DE core is gated and held
++	 * in reset, so nothing can fetch and no arm may be issued. While set,
++	 * commits neither hold replaced fbs (a DPMS-off client would pin GEM
++	 * without bound: no vblanks age the lists) nor mark an arm pending
++	 * (the enable() full reload re-applies the whole staged shadow).
++	 */
++	bool				quiesced;
++	/*
++	 * RCQ (DMA) transport state: a kicked load walks the head array and
++	 * shadow asynchronously. FINISHED (W1C, cleared before each kick)
++	 * still unset at the next arm means the walker may still be reading:
++	 * rewriting the heads then would hand it torn data, so that arm is
++	 * skipped (bounded by rcq_skips so a dropped load cannot stall arming).
++	 */
++	bool				rcq_kicked;	/* a load was kicked since enable() */
++	unsigned int			rcq_skips;	/* consecutive in-flight skips */
+ 	/*
+ 	 * Full-reload arms left to issue after a modeset. A single full-reload
+ 	 * RCQ load does not reliably latch every block (live-verified: the
+@@ -206,6 +223,9 @@ struct sun55i_de {
+ extern bool sun55i_afbc_enable;	/* modparam afbc: anunciar AFBC (WIP) */
+ bool sun55i_de_afbc_mod_supported(u32 drm_fmt, u64 modifier);
+ int sun55i_de_init(struct sun8i_mixer *mixer);
++void sun55i_de_fini(struct sun8i_mixer *mixer);
++void sun55i_de_stage_lock(struct sun8i_mixer *mixer, unsigned long *flags);
++void sun55i_de_stage_unlock(struct sun8i_mixer *mixer, unsigned long *flags);
+ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 			const struct drm_display_mode *mode);
+ void sun55i_de_enable(struct sun8i_mixer *mixer,
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index fb473e051..849df3a00 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -289,6 +289,15 @@ static void sun8i_mixer_commit(struct sunxi_engine *engine,
+ 	 * plane into the shadow, then (re)arm the queue.
+ 	 */
+ 	if (mixer->cfg->uses_rcq) {
++		unsigned long flags;
++
++		/*
++		 * Pass 1, unlocked (kmalloc inside): keep each replaced fb
++		 * mapped until the RCQ arm that retires it lands (BSP: release
++		 * on RCQ FINISH). The atomic helper frees old fbs after the
++		 * vblank event, which can precede the deferred arm -> the DE
++		 * fetches an unmapped buffer -> fault -> wedged MBUS port.
++		 */
+ 		drm_for_each_plane(plane, state->dev) {
+ 			struct drm_plane_state *old_state;
+ 
+@@ -299,22 +308,31 @@ static void sun8i_mixer_commit(struct sunxi_engine *engine,
+ 			if (!plane_state)
+ 				plane_state = plane->state;
+ 
+-			/*
+-			 * Keep the replaced fb mapped until the RCQ arm that
+-			 * retires it lands (BSP: release on RCQ FINISH). The
+-			 * atomic helper frees old fbs after the vblank event,
+-			 * which can precede the deferred arm -> the DE fetches
+-			 * an unmapped buffer -> fault -> wedged MBUS port.
+-			 */
+ 			old_state = drm_atomic_get_old_plane_state(state, plane);
+ 			if (old_state && old_state->fb &&
+ 			    old_state->fb != plane_state->fb)
+ 				sun55i_de_hold_fb(mixer, old_state->fb);
++		}
++
++		/*
++		 * Pass 2, under arm_lock: stage the shadow + mark the arm.
++		 * The retry arms (vblank IRQ / hrtimer) take the same lock,
++		 * so they can never apply a half-written shadow.
++		 */
++		sun55i_de_stage_lock(mixer, &flags);
++		drm_for_each_plane(plane, state->dev) {
++			if (!(plane->possible_crtcs & drm_crtc_mask(crtc)))
++				continue;
++
++			plane_state = drm_atomic_get_new_plane_state(state, plane);
++			if (!plane_state)
++				plane_state = plane->state;
+ 
+ 			sun55i_de_layer_update(mixer, plane_to_sun8i_layer(plane),
+ 					       plane_state);
+ 		}
+ 		sun55i_de_commit(mixer);
++		sun55i_de_stage_unlock(mixer, &flags);
+ 		return;
+ 	}
+ 
+@@ -820,13 +838,19 @@ static int sun8i_mixer_bind(struct device *dev, struct device *master,
+ 		ret = sun55i_de_init(mixer);
+ 		if (ret) {
+ 			dev_err(dev, "Couldn't set up the v35x DE RCQ engine\n");
+-			goto err_disable_mod_clk;
++			goto err_unlink_engine;
+ 		}
+ 	}
+ 
+ 	return 0;
+ 
+-err_disable_mod_clk:
++err_unlink_engine:
++	/*
++	 * The master bind aborts and frees drv on our error: the engine node
++	 * must not stay linked into drv->engine_list (use-after-free on the
++	 * next walk / probe-defer retry).
++	 */
++	list_del(&mixer->engine.list);
+ 	clk_disable_unprepare(mixer->mod_clk);
+ err_disable_bus_clk:
+ 	clk_disable_unprepare(mixer->bus_clk);
+@@ -840,6 +864,8 @@ static void sun8i_mixer_unbind(struct device *dev, struct device *master,
+ {
+ 	struct sun8i_mixer *mixer = dev_get_drvdata(dev);
+ 
++	sun55i_de_fini(mixer);
++
+ 	list_del(&mixer->engine.list);
+ 
+ 	clk_disable_unprepare(mixer->mod_clk);
+-- 
+2.47.3
+

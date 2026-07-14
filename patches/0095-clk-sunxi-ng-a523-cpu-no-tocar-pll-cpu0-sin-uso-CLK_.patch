@@ -1,0 +1,36 @@
+From 3a2a8fd65de6e48fcb8f162bb3a1b759b57ad9e7 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 02:29:47 +0200
+Subject: [PATCH 095/106] clk: sunxi-ng: a523 cpu: no tocar pll-cpu0 sin uso
+ (CLK_IGNORE_UNUSED)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+pll-cpu0 es un PLL de reserva que no gobernamos (solo es una entrada de los
+muxes de cluster, nunca seleccionada). Sin la marca, clk_disable_unused lo
+apagaría al arrancar, escribiendo en el bloque sensible del CPU-PLL sin
+necesidad. Con CLK_IGNORE_UNUSED se deja tal cual lo dejó el firmware.
+
+Hallazgo de la auditoría previa al paso en vivo de cpufreq.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+index 9091548dd..73d29edd6 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+@@ -47,6 +47,7 @@ static struct ccu_mult pll_cpu0_clk = {
+ 		.reg		= SUN55I_A523_PLL_CPU0_REG,
+ 		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpu0", osc24M,
+ 							   &ccu_mult_ops,
++							   CLK_IGNORE_UNUSED |
+ 							   CLK_SET_RATE_UNGATE),
+ 	},
+ };
+-- 
+2.47.3
+

@@ -1,7 +1,7 @@
-From 9a79e38ef82457a77c0c868b44d519fb072274dd Mon Sep 17 00:00:00 2001
+From cb839c852db41fb6284cb5050492482aa9d1f055 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 01:56:42 +0200
-Subject: [PATCH T527 10/66] dts: opi4a: activar RXC_DLY_EN (1.9ns) en la PHY
+Subject: [PATCH 010/106] dts: opi4a: activar RXC_DLY_EN (1.9ns) en la PHY
  YT8531
 
 El delay de la PHY se pide EN EL NODO DE LA PHY (motorcomm lo lee de ahi),

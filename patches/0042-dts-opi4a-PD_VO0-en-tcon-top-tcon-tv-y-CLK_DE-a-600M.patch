@@ -1,7 +1,7 @@
-From bc0378ac6de1fc3f891cfc9cec2d5b1fbeacc099 Mon Sep 17 00:00:00 2001
+From c907764fdd2ea63cfc745c85f5d4d72ed99399a2 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:22:09 +0200
-Subject: [PATCH T527 42/66] dts: opi4a: PD_VO0 en tcon-top/tcon-tv y CLK_DE a
+Subject: [PATCH 042/106] dts: opi4a: PD_VO0 en tcon-top/tcon-tv y CLK_DE a
  600MHz como el BSP
 
 Hallazgos de la auditoria vs BSP: el dtsi de la serie no reclama la isla

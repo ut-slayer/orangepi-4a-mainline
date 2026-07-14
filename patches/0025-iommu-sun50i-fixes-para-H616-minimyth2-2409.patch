@@ -1,12 +1,19 @@
-From 2b84503a02e9eb31825befd8d9938e7152ada12a Mon Sep 17 00:00:00 2001
+From 37b5015edd9b76347ea66039e88bf67f1ffd8526 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:06 +0200
-Subject: [PATCH T527 25/66] iommu/sun50i: fixes para H616 (minimyth2 2409)
+Subject: [PATCH 025/106] iommu/sun50i: fixes para H616 (minimyth2 2409)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Tomado de la coleccion de parches minimyth2 (fichero 2409, sin
+cabecera From: — autor original no identificado en el fichero).
+Port a 6.18/T527: AurealNix.
 ---
  drivers/iommu/sun50i-iommu.c | 26 ++++++++++++++------------
  1 file changed, 14 insertions(+), 12 deletions(-)

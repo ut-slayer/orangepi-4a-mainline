@@ -1,7 +1,7 @@
-From fcb0e82731592b9c93a46a995a789a0154ceac28 Mon Sep 17 00:00:00 2001
+From d39fbc45bd7da00711523900e09c38004ebe4dd0 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 14:34:32 +0200
-Subject: [PATCH T527 63/66] drm/sun4i: sun55i_de: fix wedge v2 = modelo BSP:
+Subject: [PATCH 063/106] drm/sun4i: sun55i_de: fix wedge v2 = modelo BSP:
  RST_BUS_DE en quiesce/enable
 
 Un fault del puerto MBUS del DE durante el teardown de una sesion deja

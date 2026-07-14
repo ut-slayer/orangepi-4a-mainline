@@ -1,7 +1,7 @@
-From 595ad833b81ba4022c05c64f4539da0909973306 Mon Sep 17 00:00:00 2001
+From f704e4b526842c65d9757593fe4d6d19dd7ccc10 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 23 Jun 2026 15:04:55 +0200
-Subject: [PATCH T527 06/66] dts: opi4a: reservar las 4 regiones secure del
+Subject: [PATCH 006/106] dts: opi4a: reservar las 4 regiones secure del
  firmware BSP (bl31+optee+2 sram)
 
 El U-Boot BSP reserva BL31+OP-TEE+shmem en el FDT del 5.15 pero no en el DTB

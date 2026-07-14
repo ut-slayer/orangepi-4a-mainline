@@ -1,0 +1,260 @@
+From 2eaec01e57f14b0f96c94260b9979ca69acfea55 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 01:59:05 +0200
+Subject: [PATCH 090/106] =?UTF-8?q?clk:=20sunxi-ng:=20a=C3=B1adir=20el=20C?=
+ =?UTF-8?q?CU=20de=20CPU=20del=20A523/T527?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+El A523 tiene los PLLs de CPU y los dos muxes de cluster en un bloque de
+registros aparte (0x08817000), separado del CCU principal. Se añade un CCU
+propio (compatible "allwinner,sun55i-a523-cpu-ccu") que modela pll-cpul
+(cluster0, cpu0-3) y pll-cpub (cluster1, cpu4-7) como multiplicadores
+24MHz*N (igual que el pll-cpux del H616; el post-divisor del registro del
+mux lo deja a /1 el firmware de arranque), más pll-cpu0 y los muxes cpul y
+cpub. De momento solo registra los relojes (read-only); el soporte settable
+y los notifiers glitch-free llegan con cpufreq.
+
+Portado del driver del BSP (ccu-sun55iw3-displl.c).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ drivers/clk/sunxi-ng/Kconfig                  |   5 +
+ drivers/clk/sunxi-ng/Makefile                 |   2 +
+ drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c    | 164 ++++++++++++++++++
+ .../dt-bindings/clock/sun55i-a523-cpu-ccu.h   |  15 ++
+ 4 files changed, 186 insertions(+)
+ create mode 100644 drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+ create mode 100644 include/dt-bindings/clock/sun55i-a523-cpu-ccu.h
+
+diff --git a/drivers/clk/sunxi-ng/Kconfig b/drivers/clk/sunxi-ng/Kconfig
+index 6af2d020e..8e3913d6a 100644
+--- a/drivers/clk/sunxi-ng/Kconfig
++++ b/drivers/clk/sunxi-ng/Kconfig
+@@ -57,6 +57,11 @@ config SUN55I_A523_CCU
+ 	default ARCH_SUNXI
+ 	depends on ARM64 || COMPILE_TEST
+ 
++config SUN55I_A523_CPU_CCU
++	tristate "Support for the Allwinner A523/T527 CPU CCU"
++	default ARCH_SUNXI
++	depends on ARM64 || COMPILE_TEST
++
+ config SUN55I_A523_MCU_CCU
+ 	tristate "Support for the Allwinner A523/T527 MCU CCU"
+ 	default ARCH_SUNXI
+diff --git a/drivers/clk/sunxi-ng/Makefile b/drivers/clk/sunxi-ng/Makefile
+index a1c4087d7..8d131e8d8 100644
+--- a/drivers/clk/sunxi-ng/Makefile
++++ b/drivers/clk/sunxi-ng/Makefile
+@@ -34,6 +34,7 @@ obj-$(CONFIG_SUN50I_H6_CCU)	+= sun50i-h6-ccu.o
+ obj-$(CONFIG_SUN50I_H6_R_CCU)	+= sun50i-h6-r-ccu.o
+ obj-$(CONFIG_SUN50I_H616_CCU)	+= sun50i-h616-ccu.o
+ obj-$(CONFIG_SUN55I_A523_CCU)	+= sun55i-a523-ccu.o
++obj-$(CONFIG_SUN55I_A523_CPU_CCU)	+= sun55i-a523-cpu-ccu.o
+ obj-$(CONFIG_SUN55I_A523_MCU_CCU)	+= sun55i-a523-mcu-ccu.o
+ obj-$(CONFIG_SUN55I_A523_R_CCU)	+= sun55i-a523-r-ccu.o
+ obj-$(CONFIG_SUN4I_A10_CCU)	+= sun4i-a10-ccu.o
+@@ -62,6 +63,7 @@ sun50i-h6-ccu-y			+= ccu-sun50i-h6.o
+ sun50i-h6-r-ccu-y		+= ccu-sun50i-h6-r.o
+ sun50i-h616-ccu-y		+= ccu-sun50i-h616.o
+ sun55i-a523-ccu-y		+= ccu-sun55i-a523.o
++sun55i-a523-cpu-ccu-y		+= ccu-sun55i-a523-cpu.o
+ sun55i-a523-mcu-ccu-y		+= ccu-sun55i-a523-mcu.o
+ sun55i-a523-r-ccu-y		+= ccu-sun55i-a523-r.o
+ sun4i-a10-ccu-y			+= ccu-sun4i-a10.o
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+new file mode 100644
+index 000000000..eae54c6fd
+--- /dev/null
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+@@ -0,0 +1,164 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (C) 2026 AurealNix
++ *
++ * CPU clock controller for the Allwinner A523/T527 (sun55iw3).
++ *
++ * On this SoC the CPU PLLs and the two per-cluster clock muxes live in a
++ * dedicated register block (0x08817000) separate from the main CCU. The
++ * little cluster (cpu0-3) is clocked from "cpul" (mux -> pll-cpul), the big
++ * cluster (cpu4-7) from "cpub" (mux -> pll-cpub). Each PLL is a plain
++ * 24 MHz * N multiplier, like the H616 pll-cpux; the boot firmware leaves the
++ * post-divider present in the mux register at /1, so it is not modelled here.
++ *
++ * Ported from the vendor driver (bsp/drivers/clk/sunxi-ng/ccu-sun55iw3-displl.c).
++ */
++
++#include <linux/clk-provider.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++
++#include "ccu_common.h"
++#include "ccu_mult.h"
++#include "ccu_mux.h"
++
++#include <dt-bindings/clock/sun55i-a523-cpu-ccu.h>
++
++#define SUN55I_A523_PLL_CPU0_REG	0x0000
++#define SUN55I_A523_PLL_CPUL_REG	0x0004
++#define SUN55I_A523_PLL_CPUB_REG	0x000c
++#define SUN55I_A523_CPUL_REG		0x0060
++#define SUN55I_A523_CPUB_REG		0x0064
++
++static const struct clk_parent_data osc24M[] = {
++	{ .fw_name = "hosc" }
++};
++
++/*
++ * pll-cpu0 is a backup/alternate CPU PLL. Model it like the H616 pll-cpux
++ * (24 MHz * N, offset 1). It is not on the active cluster path but is one of
++ * the mux inputs, so it needs to exist.
++ */
++static struct ccu_mult pll_cpu0_clk = {
++	.enable		= BIT(27) | BIT(29) | BIT(30) | BIT(31),
++	.lock		= BIT(28),
++	.mult		= _SUNXI_CCU_MULT_MIN(8, 8, 12),
++	.common		= {
++		.reg		= SUN55I_A523_PLL_CPU0_REG,
++		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpu0", osc24M,
++							   &ccu_mult_ops,
++							   CLK_SET_RATE_UNGATE),
++	},
++};
++
++/* Little cluster PLL (cpu0-3): 24 MHz * N, N = 20..108 (480 MHz .. 2.592 GHz). */
++static struct ccu_mult pll_cpul_clk = {
++	.enable		= BIT(27),
++	.lock		= BIT(28),
++	.mult		= _SUNXI_CCU_MULT_OFFSET_MIN_MAX(8, 8, 0, 20, 108),
++	.common		= {
++		.reg		= SUN55I_A523_PLL_CPUL_REG,
++		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpul", osc24M,
++							   &ccu_mult_ops,
++							   CLK_GET_RATE_NOCACHE |
++							   CLK_IS_CRITICAL |
++							   CLK_SET_RATE_UNGATE),
++	},
++};
++
++/* Big cluster PLL (cpu4-7). */
++static struct ccu_mult pll_cpub_clk = {
++	.enable		= BIT(27),
++	.lock		= BIT(28),
++	.mult		= _SUNXI_CCU_MULT_OFFSET_MIN_MAX(8, 8, 0, 20, 108),
++	.common		= {
++		.reg		= SUN55I_A523_PLL_CPUB_REG,
++		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpub", osc24M,
++							   &ccu_mult_ops,
++							   CLK_GET_RATE_NOCACHE |
++							   CLK_IS_CRITICAL |
++							   CLK_SET_RATE_UNGATE),
++	},
++};
++
++static const struct clk_parent_data cpul_parents[] = {
++	{ .fw_name = "hosc" },
++	{ .fw_name = "losc" },
++	{ .fw_name = "iosc" },
++	{ .hw = &pll_cpul_clk.common.hw },
++	{ .fw_name = "pll-periph0-600m" },
++	{ .hw = &pll_cpu0_clk.common.hw },
++};
++
++static SUNXI_CCU_MUX_DATA(cpul_clk, "cpul", cpul_parents,
++			  SUN55I_A523_CPUL_REG, 24, 3,
++			  CLK_SET_RATE_PARENT | CLK_IS_CRITICAL);
++
++static const struct clk_parent_data cpub_parents[] = {
++	{ .fw_name = "hosc" },
++	{ .fw_name = "losc" },
++	{ .fw_name = "iosc" },
++	{ .hw = &pll_cpub_clk.common.hw },
++	{ .fw_name = "pll-periph0-600m" },
++	{ .hw = &pll_cpu0_clk.common.hw },
++};
++
++static SUNXI_CCU_MUX_DATA(cpub_clk, "cpub", cpub_parents,
++			  SUN55I_A523_CPUB_REG, 24, 3,
++			  CLK_SET_RATE_PARENT | CLK_IS_CRITICAL);
++
++static struct ccu_common *sun55i_a523_cpu_ccu_clks[] = {
++	&pll_cpu0_clk.common,
++	&pll_cpul_clk.common,
++	&pll_cpub_clk.common,
++	&cpul_clk.common,
++	&cpub_clk.common,
++};
++
++static struct clk_hw_onecell_data sun55i_a523_cpu_ccu_hw_clks = {
++	.hws	= {
++		[CLK_PLL_CPU0]	= &pll_cpu0_clk.common.hw,
++		[CLK_PLL_CPUL]	= &pll_cpul_clk.common.hw,
++		[CLK_PLL_CPUB]	= &pll_cpub_clk.common.hw,
++		[CLK_CPUL]	= &cpul_clk.common.hw,
++		[CLK_CPUB]	= &cpub_clk.common.hw,
++	},
++	.num	= CLK_CPUB + 1,
++};
++
++static const struct sunxi_ccu_desc sun55i_a523_cpu_ccu_desc = {
++	.ccu_clks	= sun55i_a523_cpu_ccu_clks,
++	.num_ccu_clks	= ARRAY_SIZE(sun55i_a523_cpu_ccu_clks),
++
++	.hw_clks	= &sun55i_a523_cpu_ccu_hw_clks,
++};
++
++static int sun55i_a523_cpu_ccu_probe(struct platform_device *pdev)
++{
++	void __iomem *reg;
++
++	reg = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(reg))
++		return PTR_ERR(reg);
++
++	return devm_sunxi_ccu_probe(&pdev->dev, reg, &sun55i_a523_cpu_ccu_desc);
++}
++
++static const struct of_device_id sun55i_a523_cpu_ccu_ids[] = {
++	{ .compatible = "allwinner,sun55i-a523-cpu-ccu" },
++	{ }
++};
++
++static struct platform_driver sun55i_a523_cpu_ccu_driver = {
++	.probe	= sun55i_a523_cpu_ccu_probe,
++	.driver	= {
++		.name			= "sun55i-a523-cpu-ccu",
++		.suppress_bind_attrs	= true,
++		.of_match_table		= sun55i_a523_cpu_ccu_ids,
++	},
++};
++module_platform_driver(sun55i_a523_cpu_ccu_driver);
++
++MODULE_IMPORT_NS("SUNXI_CCU");
++MODULE_DESCRIPTION("Support for the Allwinner A523/T527 CPU CCU");
++MODULE_LICENSE("GPL");
+diff --git a/include/dt-bindings/clock/sun55i-a523-cpu-ccu.h b/include/dt-bindings/clock/sun55i-a523-cpu-ccu.h
+new file mode 100644
+index 000000000..2d17ce64c
+--- /dev/null
++++ b/include/dt-bindings/clock/sun55i-a523-cpu-ccu.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR MIT) */
++/*
++ * Copyright (C) 2026 AurealNix
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN55I_A523_CPU_CCU_H_
++#define _DT_BINDINGS_CLK_SUN55I_A523_CPU_CCU_H_
++
++#define CLK_PLL_CPUL		0
++#define CLK_PLL_CPUB		1
++#define CLK_PLL_CPU0		2
++#define CLK_CPUL		3
++#define CLK_CPUB		4
++
++#endif /* _DT_BINDINGS_CLK_SUN55I_A523_CPU_CCU_H_ */
+-- 
+2.47.3
+

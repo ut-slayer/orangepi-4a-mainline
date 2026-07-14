@@ -1,7 +1,7 @@
-From 2d13f17dfcb6ade6486ecbb0bc091dbc60028eac Mon Sep 17 00:00:00 2001
+From c520922d2490ae3c0da715eb199899514d8d6296 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 03:37:17 +0200
-Subject: [PATCH T527 60/66] drm/sun4i: sun55i_de: fondo del blender negro (fin
+Subject: [PATCH 060/106] drm/sun4i: sun55i_de: fondo del blender negro (fin
  del verde de debug)
 
 El verde chillon 0xff00ff00 era el marcador de diagnostico del bring-up

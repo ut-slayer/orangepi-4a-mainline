@@ -1,0 +1,111 @@
+From e58099fe186bba764bd659be271a423fdad09ab9 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 03:12:13 +0200
+Subject: [PATCH 097/106] clk: sunxi-ng: handshake de update de factores
+ (CCU_FEATURE_CLEAR_MOD)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Los PLL de CPU del A523/T527 solo aplican un cambio de factor N tras
+escribir el bit de update BIT(26), que se auto-limpia cuando el PLL toma
+la nueva configuración. Sin ese commit el PLL ignora la escritura y no
+vuelve a asertar su bit de lock: cada transición de cpufreq acababa en
+'ccu_helper_wait_for_lock' expirado (WARN en ccu_common.c:38, visto por
+UART en ambos clusters desde el primer cambio de sugov) y la placa se
+colgaba al devolver el mux al PLL muerto.
+
+Se añade el mismo mecanismo que usa el BSP (CCU_FEATURE_CLEAR_MOD +
+ccu_helper_wait_for_clear, de bsp/drivers/clk/sunxi-ng/ccu_nkmp.c y
+ccu_common.c): campo 'clear' en ccu_common y, en ccu_mult_set_rate,
+escribir el bit y esperar su auto-limpieza justo tras escribir N, aún
+bajo el spinlock (poll atómico), antes de esperar el lock. Solo afecta
+a relojes que declaren la feature; el resto de SoCs no cambian.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/clk/sunxi-ng/ccu_common.c | 24 ++++++++++++++++++++++++
+ drivers/clk/sunxi-ng/ccu_common.h |  3 +++
+ drivers/clk/sunxi-ng/ccu_mult.c   |  3 +++
+ 3 files changed, 30 insertions(+)
+
+diff --git a/drivers/clk/sunxi-ng/ccu_common.c b/drivers/clk/sunxi-ng/ccu_common.c
+index c7e00f0c2..4a7dba42e 100644
+--- a/drivers/clk/sunxi-ng/ccu_common.c
++++ b/drivers/clk/sunxi-ng/ccu_common.c
+@@ -39,6 +39,30 @@ void ccu_helper_wait_for_lock(struct ccu_common *common, u32 lock)
+ }
+ EXPORT_SYMBOL_NS_GPL(ccu_helper_wait_for_lock, "SUNXI_CCU");
+ 
++/*
++ * Some PLLs (e.g. the A523/T527 CPU PLLs) only take over new factors after
++ * an update bit has been written; the bit clears itself once the new
++ * configuration is applied. Without this handshake the factor write is
++ * ignored and the PLL never asserts its lock bit again.
++ *
++ * Callers hold the CCU spinlock, so poll atomically.
++ */
++void ccu_helper_wait_for_clear(struct ccu_common *common, u32 clear)
++{
++	void __iomem *addr;
++	u32 reg;
++
++	if (!clear)
++		return;
++
++	addr = common->base + common->reg;
++	writel(readl(addr) | clear, addr);
++
++	WARN_ON(readl_relaxed_poll_timeout_atomic(addr, reg, !(reg & clear),
++						  100, 10000));
++}
++EXPORT_SYMBOL_NS_GPL(ccu_helper_wait_for_clear, "SUNXI_CCU");
++
+ bool ccu_is_better_rate(struct ccu_common *common,
+ 			unsigned long target_rate,
+ 			unsigned long current_rate,
+diff --git a/drivers/clk/sunxi-ng/ccu_common.h b/drivers/clk/sunxi-ng/ccu_common.h
+index bbec283b9..d00c955fd 100644
+--- a/drivers/clk/sunxi-ng/ccu_common.h
++++ b/drivers/clk/sunxi-ng/ccu_common.h
+@@ -21,6 +21,7 @@
+ #define CCU_FEATURE_CLOSEST_RATE	BIT(9)
+ #define CCU_FEATURE_DUAL_DIV		BIT(10)
+ #define CCU_FEATURE_UPDATE_BIT		BIT(11)
++#define CCU_FEATURE_CLEAR_MOD		BIT(12)
+ 
+ /* MMC timing mode switch bit */
+ #define CCU_MMC_NEW_TIMING_MODE		BIT(30)
+@@ -34,6 +35,7 @@ struct ccu_common {
+ 	void __iomem	*base;
+ 	u16		reg;
+ 	u16		lock_reg;
++	u32		clear;
+ 	u32		prediv;
+ 
+ 	unsigned long	min_rate;
+@@ -60,6 +62,7 @@ struct sunxi_ccu_desc {
+ };
+ 
+ void ccu_helper_wait_for_lock(struct ccu_common *common, u32 lock);
++void ccu_helper_wait_for_clear(struct ccu_common *common, u32 clear);
+ 
+ bool ccu_is_better_rate(struct ccu_common *common,
+ 			unsigned long target_rate,
+diff --git a/drivers/clk/sunxi-ng/ccu_mult.c b/drivers/clk/sunxi-ng/ccu_mult.c
+index 8d5720f3d..7dcdd3f75 100644
+--- a/drivers/clk/sunxi-ng/ccu_mult.c
++++ b/drivers/clk/sunxi-ng/ccu_mult.c
+@@ -137,6 +137,9 @@ static int ccu_mult_set_rate(struct clk_hw *hw, unsigned long rate,
+ 
+ 	writel(reg, cm->common.base + cm->common.reg);
+ 
++	if (cm->common.features & CCU_FEATURE_CLEAR_MOD)
++		ccu_helper_wait_for_clear(&cm->common, cm->common.clear);
++
+ 	spin_unlock_irqrestore(cm->common.lock, flags);
+ 
+ 	ccu_helper_wait_for_lock(&cm->common, cm->lock);
+-- 
+2.47.3
+

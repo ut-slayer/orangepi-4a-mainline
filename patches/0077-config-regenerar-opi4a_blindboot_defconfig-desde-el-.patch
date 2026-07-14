@@ -1,0 +1,77 @@
+From c7018af5a07d90742000b8e9877fa8004d88275e Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:34:54 +0200
+Subject: [PATCH 077/106] config: regenerar opi4a_blindboot_defconfig desde el
+ .config validado (auditoria A5)
+
+El defconfig se quedo desincronizado del .config real: conservaba
+CONFIG_RESET_GPIO=m (la causa raiz documentada de la muerte del WiFi
+AP6256: pwrseq_simple con #gpio-cells=3), SUNXI_WATCHDOG=m, DRM=m y no
+tenia SUN50I_IOMMU/SIMPLEDRM/SYSFB_SIMPLEFB. Cualquiera que compilara
+desde el (incluida la imagen publica v0.1) obtenia un kernel sin WiFi,
+sin consola HDMI y sin IOMMU.
+
+make savedefconfig del .config validado en placa; roundtrip verificado
+(defconfig -> .config identico, 0 diffs, RESET_GPIO sigue apagado).
+---
+ arch/arm64/configs/opi4a_blindboot_defconfig | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/configs/opi4a_blindboot_defconfig b/arch/arm64/configs/opi4a_blindboot_defconfig
+index 210c10302..49326a282 100644
+--- a/arch/arm64/configs/opi4a_blindboot_defconfig
++++ b/arch/arm64/configs/opi4a_blindboot_defconfig
+@@ -179,6 +179,7 @@ CONFIG_IMX_SCMI_BBM_EXT=y
+ CONFIG_ARM_SCPI_PROTOCOL=y
+ CONFIG_INTEL_STRATIX10_SERVICE=y
+ CONFIG_INTEL_STRATIX10_RSU=m
++CONFIG_SYSFB_SIMPLEFB=y
+ CONFIG_GOOGLE_FIRMWARE=y
+ CONFIG_GOOGLE_CBMEM=m
+ CONFIG_GOOGLE_COREBOOT_TABLE=m
+@@ -277,7 +278,6 @@ CONFIG_STMMAC_ETH=y
+ CONFIG_DWMAC_GENERIC=m
+ CONFIG_DWMAC_SOCFPGA=m
+ CONFIG_DWMAC_SUNXI=m
+-CONFIG_DWMAC_SUN55I=y
+ CONFIG_AQUANTIA_PHY=y
+ CONFIG_BROADCOM_PHY=m
+ CONFIG_BCM54140_PHY=m
+@@ -486,7 +486,7 @@ CONFIG_WATCHDOG=y
+ CONFIG_ARM_SP805_WATCHDOG=y
+ CONFIG_ARM_SBSA_WATCHDOG=y
+ CONFIG_DW_WATCHDOG=y
+-CONFIG_SUNXI_WATCHDOG=m
++CONFIG_SUNXI_WATCHDOG=y
+ CONFIG_ARM_SMC_WATCHDOG=y
+ CONFIG_MFD_ADP5585=m
+ CONFIG_MFD_ALTERA_SYSMGR=y
+@@ -566,7 +566,8 @@ CONFIG_VIDEO_IMX219=m
+ CONFIG_VIDEO_IMX412=m
+ CONFIG_VIDEO_OV5640=m
+ CONFIG_VIDEO_OV5645=m
+-CONFIG_DRM=m
++CONFIG_DRM=y
++CONFIG_DRM_SIMPLEDRM=y
+ CONFIG_DRM_HDLCD=m
+ CONFIG_DRM_MALI_DISPLAY=m
+ CONFIG_DRM_KOMEDA=m
+@@ -885,6 +886,7 @@ CONFIG_CIX_MBOX=y
+ CONFIG_IOMMU_IO_PGTABLE_ARMV7S=y
+ CONFIG_ARM_SMMU=y
+ CONFIG_ARM_SMMU_V3=y
++CONFIG_SUN50I_IOMMU=y
+ CONFIG_REMOTEPROC=y
+ CONFIG_RPMSG_CHAR=m
+ CONFIG_RPMSG_CTRL=m
+@@ -923,7 +925,6 @@ CONFIG_PWM=y
+ CONFIG_PWM_ADP5585=m
+ CONFIG_PWM_CROS_EC=m
+ CONFIG_PWM_SUN4I=m
+-CONFIG_RESET_GPIO=m
+ CONFIG_PHY_CAN_TRANSCEIVER=m
+ CONFIG_PHY_NXP_PTN3222=m
+ CONFIG_PHY_SUN4I_USB=y
+-- 
+2.47.3
+

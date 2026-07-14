@@ -1,0 +1,40 @@
+From 17cb814fb888e1c0b7791b4bba6a07f1086639d6 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 01:59:05 +0200
+Subject: [PATCH 091/106] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20a=C3=B1a?=
+ =?UTF-8?q?dir=20el=20controlador=20de=20reloj=20de=20CPU?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Nodo clock-controller@8817000 (allwinner,sun55i-a523-cpu-ccu) con sus
+relojes de entrada (hosc/losc/iosc + pll-periph0-600m del CCU principal).
+Todavía sin cablear en cpu@N (validación read-only del reloj primero).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index c1df428e2..7c490c5ee 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -1163,5 +1163,14 @@ npu: npu@7122000 {
+ 			resets = <&mcu_ccu RST_BUS_MCU_NPU>;
+ 			power-domains = <&ppu PD_NPU>;
+ 		};
++
++		cpu_ccu: clock-controller@8817000 {
++			compatible = "allwinner,sun55i-a523-cpu-ccu";
++			reg = <0x08817000 0x4000>;
++			clocks = <&osc24M>, <&rtc CLK_OSC32K>, <&rtc CLK_IOSC>,
++				 <&ccu CLK_PLL_PERIPH0_600M>;
++			clock-names = "hosc", "losc", "iosc", "pll-periph0-600m";
++			#clock-cells = <1>;
++		};
+ 	};
+ };
+-- 
+2.47.3
+

@@ -1,13 +1,17 @@
-From 74224ecb2c6047544165a424530d32470c9e4a9f Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From fa1f2fb6cecb9639cc799a69c50fa4a55c81b3bf Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:06 +0200
-Subject: [PATCH T527 27/66] clk: sunxi-ng: a523: clock del IOMMU always-on
+Subject: [PATCH 027/106] clk: sunxi-ng: a523: clock del IOMMU always-on
  (minimyth2 2722)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/clk/sunxi-ng/ccu-sun55i-a523.c | 11 ++++++++++-
  1 file changed, 10 insertions(+), 1 deletion(-)

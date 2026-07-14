@@ -1,8 +1,8 @@
-From 2cb64c2739be0ce302b9cd3fbd03609ae2440061 Mon Sep 17 00:00:00 2001
+From 6402dca384d0a989864756fa730239b8cceda7c9 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:39:09 +0200
-Subject: [PATCH T527 43/66] dts: opi4a: desactivar iommus del mixer (bring-up
- sin IOMMU, CMA baja)
+Subject: [PATCH 043/106] dts: opi4a: desactivar iommus del mixer (bring-up sin
+ IOMMU, CMA baja)
 
 sun50i_iommu_map Oops (96000005) con el backport 2732 sobre el
 sun50i-iommu de 6.18 al crear los GEM del fbcon y del prime import.

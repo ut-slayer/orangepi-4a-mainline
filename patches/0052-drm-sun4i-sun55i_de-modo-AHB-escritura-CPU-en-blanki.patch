@@ -1,7 +1,7 @@
-From b540149418862db649a9f665d4a1251415ebe861 Mon Sep 17 00:00:00 2001
+From aefeee6a027997a0b96cc98f1e0986719983808f Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 10:21:20 +0200
-Subject: [PATCH T527 52/66] drm/sun4i: sun55i_de: modo AHB (escritura CPU en
+Subject: [PATCH 052/106] drm/sun4i: sun55i_de: modo AHB (escritura CPU en
  blanking) + alpha global del VSU opaco por defecto
 
 MODO AHB (enum de_update_mode del BSP): con use_rcq=0 (default) do_arm

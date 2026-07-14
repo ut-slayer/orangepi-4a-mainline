@@ -1,0 +1,42 @@
+From 1467db0395b027261b41ddbd9095eaa56b337f78 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 23:21:10 +0200
+Subject: [PATCH 082/106] arm64: dts: sun55i-t527-orangepi-4a: keep OTG VBUS
+ always-on (fix 2 USB ports)
+
+The usbc0 complex feeds the two left-hand rear USB-A ports, powered by the
+PL4 GPIO VBUS switch (reg_otg_vbus). Because the OTG port has no ID/CC pin,
+the OTG driver never asserted VBUS, leaving that regulator disabled at boot
+so both left ports were dead (only the usbc1/Terminus-hub ports on the right
+worked). The port is host-only (dr_mode = "host"), so mark reg_otg_vbus
+regulator-always-on to power it unconditionally.
+
+Confirmed on hardware 2026-07-13: all four rear USB-A ports enumerate.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 292d354fc..da783b1c7 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -193,6 +193,14 @@ reg_otg_vbus: regulator-otg-vbus {
+ 		vin-supply = <&reg_vcc5v>;
+ 		gpio = <&r_pio 0 4 GPIO_ACTIVE_HIGH>;	/* PL4 */
+ 		enable-active-high;
++		/*
++		 * PL4 alimenta el VBUS del puerto usbc0 (los 2 USB-A traseros
++		 * izquierdos). Sin ID/CC pin, el driver OTG no llegaba a activar
++		 * el VBUS -> esos 2 puertos quedaban muertos (otg-vbus=disabled).
++		 * dr_mode=host: siempre-encendido es lo correcto para un puerto
++		 * solo-host. Confirmado en placa 2026-07-13: los 4 traseros van.
++		 */
++		regulator-always-on;
+ 	};
+ 
+ 	reg_pcie_vcc3v3: regulator-pcie-vcc3v3 {
+-- 
+2.47.3
+

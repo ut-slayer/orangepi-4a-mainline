@@ -1,7 +1,7 @@
-From 72186a03e5a401917fde95e70d8989a03838cd0f Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From e4461bd3412f6a3671128c7ed8b6b31026ec465c Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:54 +0200
-Subject: [PATCH T527 30/66] drm/sun4i: backend RCQ del DE v35x del A523
+Subject: [PATCH 030/106] drm/sun4i: backend RCQ del DE v35x del A523
  (sun55i_de) (minimyth2 2723)
 
 El DE3.5 del A523/T527 usa el layout del DE33 pero el datapath solo se
@@ -14,6 +14,10 @@ Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/gpu/drm/sun4i/Makefile      |   3 +-
  drivers/gpu/drm/sun4i/sun55i_de.c   | 602 ++++++++++++++++++++++++++++

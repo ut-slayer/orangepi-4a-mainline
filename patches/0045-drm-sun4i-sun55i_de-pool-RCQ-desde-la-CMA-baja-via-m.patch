@@ -1,8 +1,8 @@
-From cce913c817e0f730ba84f328dfd680d043cd3f86 Mon Sep 17 00:00:00 2001
+From e2fa2677e83813cb4019be5363a009c7cf50ed5a Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 22:26:03 +0200
-Subject: [PATCH T527 45/66] drm/sun4i: sun55i_de: pool RCQ desde la CMA baja
- via memory-region
+Subject: [PATCH 045/106] drm/sun4i: sun55i_de: pool RCQ desde la CMA baja via
+ memory-region
 
 CAUSA RAIZ de la pantalla verde: el pool RCQ (pequeno, <=1 pagina) se
 alojaba por el buddy en paginas altas (0x52100000 observado en el

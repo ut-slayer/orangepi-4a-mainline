@@ -1,0 +1,96 @@
+From 607cf3277a7f9efa2a5daa4664857c59e7df5f27 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 23:54:28 +0200
+Subject: [PATCH 083/106] drm/sun4i: a523: enable HPD/RX_SENSE sensing on the
+ Inno PHY
+
+The A523/T527 HDMI connector always reported "disconnected" even with a
+sink attached, although the EDID read fine over the independent DDC/I2C
+channel. The generic Synopsys dw_hdmi_phy_read_hpd() reads PHY_STAT0.HPD,
+which stays 0 because the controller's HPD/RX_SENSE sensing towards the
+external Innosilicon PHY is never enabled: mainline dw-hdmi defines
+HDMI_PHY_CONF0_GEN2_ENHPDRXSENSE but writes it nowhere. Unlike the
+internal DWC PHY, the Inno PHY does not sense HPD until that bit is set.
+
+The Allwinner BSP enables it unconditionally in dw_phy_init()
+(_dw_phy_set_hpdsense()); do the same for the A523 variant. Add a small
+exported core helper dw_hdmi_phy_gen2_enhpdrxsense() and give the A523 a
+setup_hpd that enables it before running the standard HPD setup. It runs
+from dw_hdmi_init_hw() at probe, so HPD is correct before the first
+modeset and hotplug events now fire. No other platform is affected.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ drivers/gpu/drm/bridge/synopsys/dw-hdmi.c |  8 ++++++++
+ drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c    | 18 +++++++++++++++++-
+ include/drm/bridge/dw_hdmi.h              |  1 +
+ 3 files changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+index 206b099a3..defe6f2c2 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+@@ -1454,6 +1454,14 @@ void dw_hdmi_phy_gen2_txpwron(struct dw_hdmi *hdmi, u8 enable)
+ }
+ EXPORT_SYMBOL_GPL(dw_hdmi_phy_gen2_txpwron);
+ 
++void dw_hdmi_phy_gen2_enhpdrxsense(struct dw_hdmi *hdmi, u8 enable)
++{
++	hdmi_mask_writeb(hdmi, enable, HDMI_PHY_CONF0,
++			 HDMI_PHY_CONF0_GEN2_ENHPDRXSENSE_OFFSET,
++			 HDMI_PHY_CONF0_GEN2_ENHPDRXSENSE_MASK);
++}
++EXPORT_SYMBOL_GPL(dw_hdmi_phy_gen2_enhpdrxsense);
++
+ static void dw_hdmi_phy_sel_data_en_pol(struct dw_hdmi *hdmi, u8 enable)
+ {
+ 	hdmi_mask_writeb(hdmi, enable, HDMI_PHY_CONF0,
+diff --git a/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c b/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
+index 328e3acec..670f48995 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
++++ b/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
+@@ -1114,12 +1114,28 @@ static void sun55i_a523_hdmi_phy_disable(struct dw_hdmi *hdmi, void *data)
+ 	sun55i_a523_inno_turn_off(phy);
+ }
+ 
++static void sun55i_a523_hdmi_phy_setup_hpd(struct dw_hdmi *hdmi, void *data)
++{
++	/*
++	 * Unlike the internal DWC PHY, the Inno PHY does not sense HPD/RX_SENSE
++	 * until the controller's ENHPDRXSENSE (PHY_CONF0) is enabled: without it
++	 * PHY_STAT0.HPD stays 0 and the connector is stuck "disconnected" even
++	 * with a sink attached (EDID still reads fine over the independent DDC
++	 * channel). The BSP enables it unconditionally in dw_phy_init(); do the
++	 * same here, then run the standard HPD/interrupt setup. This runs from
++	 * dw_hdmi_init_hw() at probe, so HPD works before the first modeset and
++	 * hotplug events fire.
++	 */
++	dw_hdmi_phy_gen2_enhpdrxsense(hdmi, 1);
++	dw_hdmi_phy_setup_hpd(hdmi, data);
++}
++
+ static const struct dw_hdmi_phy_ops sun55i_a523_hdmi_phy_ops = {
+ 	.init		= sun55i_a523_hdmi_phy_init,
+ 	.disable	= sun55i_a523_hdmi_phy_disable,
+ 	.read_hpd	= dw_hdmi_phy_read_hpd,
+ 	.update_hpd	= dw_hdmi_phy_update_hpd,
+-	.setup_hpd	= dw_hdmi_phy_setup_hpd,
++	.setup_hpd	= sun55i_a523_hdmi_phy_setup_hpd,
+ };
+ 
+ static const struct regmap_config sun55i_a523_hdmi_phy_regmap_config = {
+diff --git a/include/drm/bridge/dw_hdmi.h b/include/drm/bridge/dw_hdmi.h
+index 6a46baa07..e6a570951 100644
+--- a/include/drm/bridge/dw_hdmi.h
++++ b/include/drm/bridge/dw_hdmi.h
+@@ -198,6 +198,7 @@ void dw_hdmi_phy_gen1_reset(struct dw_hdmi *hdmi);
+ 
+ void dw_hdmi_phy_gen2_pddq(struct dw_hdmi *hdmi, u8 enable);
+ void dw_hdmi_phy_gen2_txpwron(struct dw_hdmi *hdmi, u8 enable);
++void dw_hdmi_phy_gen2_enhpdrxsense(struct dw_hdmi *hdmi, u8 enable);
+ void dw_hdmi_phy_gen2_reset(struct dw_hdmi *hdmi);
+ 
+ enum drm_connector_status dw_hdmi_phy_read_hpd(struct dw_hdmi *hdmi,
+-- 
+2.47.3
+

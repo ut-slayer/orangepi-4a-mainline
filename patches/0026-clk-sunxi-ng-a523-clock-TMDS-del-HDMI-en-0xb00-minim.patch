@@ -1,13 +1,17 @@
-From da465a2169db368dca6cf06040003aadd1888b94 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 427d447e2f974e71070bdee64df8cda05c87b279 Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:06 +0200
-Subject: [PATCH T527 26/66] clk: sunxi-ng: a523: clock TMDS del HDMI en 0xb00
+Subject: [PATCH 026/106] clk: sunxi-ng: a523: clock TMDS del HDMI en 0xb00
  (minimyth2 2721)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  drivers/clk/sunxi-ng/ccu-sun55i-a523.c      | 21 ++++++++++++++++++++-
  include/dt-bindings/clock/sun55i-a523-ccu.h |  1 +

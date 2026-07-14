@@ -1,7 +1,7 @@
-From 20825846478e43a05cc573e5eb7c138d51313436 Mon Sep 17 00:00:00 2001
+From ab313605cbc479d4184c26610d54c35ce2a71681 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:12:35 +0200
-Subject: [PATCH T527 39/66] Revert "drm/sun4i: soporte HDMI PHY del H616
+Subject: [PATCH 039/106] Revert "drm/sun4i: soporte HDMI PHY del H616
  (minimyth2 2406)"
 
 This reverts commit c4e1872f5c89619281854e83a378943e48352080.

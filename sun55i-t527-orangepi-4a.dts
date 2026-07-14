@@ -96,20 +96,30 @@
 		 * SOLO bl31 dejaba que el kernel machacara OP-TEE/shm -> cuelgue tras
 		 * 2 latidos. Reservamos las 4 (igual que el BSP).
 		 */
+		/*
+		 * no-map en las cuatro: sin el, quedan en el linear map y una
+		 * lectura ESPECULATIVA del CPU sobre RAM protegida por el
+		 * firewall seguro puede disparar SErrors esporadicos aunque el
+		 * kernel nunca las asigne.
+		 */
 		sec-sram1@42350000 {
 			reg = <0x0 0x42350000 0x0 0x00230000>;
+			no-map;
 		};
 
 		sec-sram2@43000000 {
 			reg = <0x0 0x43000000 0x0 0x00094000>;
+			no-map;
 		};
 
 		bl31@48000000 {
 			reg = <0x0 0x48000000 0x0 0x01000000>;
+			no-map;
 		};
 
 		optee@4941d000 {
 			reg = <0x0 0x4941d000 0x0 0x00be3000>;
+			no-map;
 		};
 
 		/*
@@ -183,6 +193,14 @@
 		vin-supply = <&reg_vcc5v>;
 		gpio = <&r_pio 0 4 GPIO_ACTIVE_HIGH>;	/* PL4 */
 		enable-active-high;
+		/*
+		 * PL4 alimenta el VBUS del puerto usbc0 (los 2 USB-A traseros
+		 * izquierdos). Sin ID/CC pin, el driver OTG no llegaba a activar
+		 * el VBUS -> esos 2 puertos quedaban muertos (otg-vbus=disabled).
+		 * dr_mode=host: siempre-encendido es lo correcto para un puerto
+		 * solo-host. Confirmado en placa 2026-07-13: los 4 traseros van.
+		 */
+		regulator-always-on;
 	};
 
 	reg_pcie_vcc3v3: regulator-pcie-vcc3v3 {
@@ -215,6 +233,190 @@
 	};
 };
 
+/ {
+	/*
+	 * OPP tables, voltages taken verbatim from the vendor DT
+	 * (sun55iw3p1.dtsi), using the worst-case voltage across speed bins
+	 * for each frequency so a plain cpufreq-dt (no speed-bin nvmem) is
+	 * safe on any chip. Both clusters run to their vendor maximums for
+	 * this board's silicon: little 1.416 GHz, big 1.8 GHz (see the speed
+	 * bin note in the cluster1 table; 1.992 GHz exists only for bin
+	 * vf0400 and needs 1.22 V, beyond this rail's 1.15 V maximum).
+	 *
+	 * The lowest point is 480 MHz instead of the vendor's 408 MHz: the
+	 * CPU PLLs are modelled as plain 24 MHz * N (N >= 20, post-divider
+	 * left at /1 by the firmware), so 480 MHz is the real floor. Its
+	 * 0.90 V sits within the vendor envelope (408 and 672 MHz both run
+	 * at 0.90 V on every speed bin).
+	 */
+	cluster0_opp: opp-table-cluster0 {
+		compatible = "operating-points-v2";
+		opp-shared;
+
+		opp-480000000 {
+			opp-hz = /bits/ 64 <480000000>;
+			opp-microvolt = <900000>;
+		};
+
+		opp-792000000 {
+			opp-hz = /bits/ 64 <792000000>;
+			opp-microvolt = <900000>;
+		};
+
+		opp-1008000000 {
+			opp-hz = /bits/ 64 <1008000000>;
+			opp-microvolt = <960000>;
+		};
+
+		opp-1224000000 {
+			opp-hz = /bits/ 64 <1224000000>;
+			opp-microvolt = <1050000>;
+		};
+
+		opp-1416000000 {
+			opp-hz = /bits/ 64 <1416000000>;
+			opp-microvolt = <1150000>;
+		};
+	};
+
+	cluster1_opp: opp-table-cluster1 {
+		compatible = "operating-points-v2";
+		opp-shared;
+
+		opp-480000000 {
+			opp-hz = /bits/ 64 <480000000>;
+			opp-microvolt = <900000>;
+		};
+
+		opp-1008000000 {
+			opp-hz = /bits/ 64 <1008000000>;
+			opp-microvolt = <900000>;
+		};
+
+		opp-1200000000 {
+			opp-hz = /bits/ 64 <1200000000>;
+			opp-microvolt = <920000>;
+		};
+
+		opp-1344000000 {
+			opp-hz = /bits/ 64 <1344000000>;
+			opp-microvolt = <960000>;
+		};
+
+		opp-1488000000 {
+			opp-hz = /bits/ 64 <1488000000>;
+			opp-microvolt = <1000000>;
+		};
+
+		opp-1584000000 {
+			opp-hz = /bits/ 64 <1584000000>;
+			opp-microvolt = <1050000>;
+		};
+
+		/*
+		 * 1680/1800 MHz are fused off on vf05xx speed bins (their
+		 * vendor-table entries are <0>: not allowed at any voltage).
+		 * This board's chip reads bin vf0100 from the SID DVFS word
+		 * (0x48 = 0x19 -> combi 0x01), which supports both. A generic
+		 * image for unknown silicon must drop these two entries or
+		 * gate them on the SID speed bin (sun50i-cpufreq-nvmem style).
+		 */
+		opp-1680000000 {
+			opp-hz = /bits/ 64 <1680000000>;
+			opp-microvolt = <1100000>;
+		};
+
+		opp-1800000000 {
+			opp-hz = /bits/ 64 <1800000000>;
+			opp-microvolt = <1150000>;
+		};
+	};
+
+	/*
+	 * GPU OPPs: the five speed-bin-independent points of the vendor
+	 * table (648 MHz and above are fused off on most bins, so they are
+	 * left out). All of them divide exactly from the fixed pll-periph0
+	 * outputs, so pll-gpu is never touched and powers down after the
+	 * first transition away from the U-Boot state (432 MHz on pll-gpu).
+	 *
+	 * The vendor table asks for 0.90 V on every point; this board's
+	 * vdd-gpu-sys rail (AXP717 DCDC2) is fixed at 0.92 V, so the OPPs
+	 * state 0.92 V and voltage transitions are no-ops. The value cannot
+	 * be dropped: the OPP core rejects a voltage-less table once
+	 * panfrost attaches the mali-supply regulator.
+	 */
+	gpu_opp_table: opp-table-gpu {
+		compatible = "operating-points-v2";
+
+		opp-150000000 {
+			opp-hz = /bits/ 64 <150000000>;
+			opp-microvolt = <920000>;
+		};
+
+		opp-200000000 {
+			opp-hz = /bits/ 64 <200000000>;
+			opp-microvolt = <920000>;
+		};
+
+		opp-300000000 {
+			opp-hz = /bits/ 64 <300000000>;
+			opp-microvolt = <920000>;
+		};
+
+		opp-400000000 {
+			opp-hz = /bits/ 64 <400000000>;
+			opp-microvolt = <920000>;
+		};
+
+		opp-600000000 {
+			opp-hz = /bits/ 64 <600000000>;
+			opp-microvolt = <920000>;
+		};
+	};
+};
+
+/* Little cluster (cpu0-3): AXP717 DCDC1 (vdd-cpul), up to 1.416 GHz. */
+&cpu0 {
+	cpu-supply = <&reg_dcdc1>;
+	operating-points-v2 = <&cluster0_opp>;
+};
+
+&cpu1 {
+	cpu-supply = <&reg_dcdc1>;
+	operating-points-v2 = <&cluster0_opp>;
+};
+
+&cpu2 {
+	cpu-supply = <&reg_dcdc1>;
+	operating-points-v2 = <&cluster0_opp>;
+};
+
+&cpu3 {
+	cpu-supply = <&reg_dcdc1>;
+	operating-points-v2 = <&cluster0_opp>;
+};
+
+/* Big cluster (cpu4-7): AXP323 DCDC1 (vdd-cpub), up to 1.8 GHz (bin vf0100). */
+&cpu4 {
+	cpu-supply = <&reg_dcdc1_323>;
+	operating-points-v2 = <&cluster1_opp>;
+};
+
+&cpu5 {
+	cpu-supply = <&reg_dcdc1_323>;
+	operating-points-v2 = <&cluster1_opp>;
+};
+
+&cpu6 {
+	cpu-supply = <&reg_dcdc1_323>;
+	operating-points-v2 = <&cluster1_opp>;
+};
+
+&cpu7 {
+	cpu-supply = <&reg_dcdc1_323>;
+	operating-points-v2 = <&cluster1_opp>;
+};
+
 &ehci0 {
 	status = "okay";
 };
@@ -225,6 +427,7 @@
 
 &gpu {
 	mali-supply = <&reg_dcdc2>;
+	operating-points-v2 = <&gpu_opp_table>;
 	status = "okay";
 };
 

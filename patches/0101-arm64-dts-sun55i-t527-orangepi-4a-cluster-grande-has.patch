@@ -1,0 +1,84 @@
+From f2c1ec59ad435ff9e9fc348713aec867e89c971b Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 04:25:21 +0200
+Subject: [PATCH 101/106] arm64: dts: sun55i-t527-orangepi-4a: cluster grande
+ hasta 1.8 GHz
+
+Amplia la tabla OPP del cluster grande con 1584 MHz@1.05V (valida en
+todos los speed bins del vendor) y 1680@1.10V / 1800@1.15V, que existen
+en todos los bins salvo vf05xx (ahi el vendor las marca <0>: prohibidas
+a cualquier voltaje). El chip de esta placa es bin vf0100 (palabra DVFS
+del SID en 0x48 = 0x19 -> combi 0x01 -> vf0100 segun el vf_mapping_table
+del BSP), que las soporta ambas. Todo dentro del rango actual del
+regulador (1800 MHz pide exactamente el maximo de 1.15V de vdd-cpub).
+1992 MHz queda fuera (solo bin vf0400 y a 1.22V, por encima del rail).
+
+Una imagen generica para silicio desconocido debe recortar a 1584 o
+seleccionar por bin del SID (estilo sun50i-cpufreq-nvmem); anotado en
+el propio DTS.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 32 ++++++++++++++++---
+ 1 file changed, 28 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index d7248287c..09964ccd5 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -238,9 +238,10 @@ / {
+ 	 * OPP tables, voltages taken verbatim from the vendor DT
+ 	 * (sun55iw3p1.dtsi), using the worst-case voltage across speed bins
+ 	 * for each frequency so a plain cpufreq-dt (no speed-bin nvmem) is
+-	 * safe on any chip. Capped conservatively for bring-up (little cluster
+-	 * at its 1.416 GHz max, big cluster at 1.488 GHz; the big cluster can
+-	 * go to ~2 GHz later once reg_dcdc1_323's max is raised past 1.15 V).
++	 * safe on any chip. Both clusters run to their vendor maximums for
++	 * this board's silicon: little 1.416 GHz, big 1.8 GHz (see the speed
++	 * bin note in the cluster1 table; 1.992 GHz exists only for bin
++	 * vf0400 and needs 1.22 V, beyond this rail's 1.15 V maximum).
+ 	 *
+ 	 * The lowest point is 480 MHz instead of the vendor's 408 MHz: the
+ 	 * CPU PLLs are modelled as plain 24 MHz * N (N >= 20, post-divider
+@@ -306,6 +307,29 @@ opp-1488000000 {
+ 			opp-hz = /bits/ 64 <1488000000>;
+ 			opp-microvolt = <1000000>;
+ 		};
++
++		opp-1584000000 {
++			opp-hz = /bits/ 64 <1584000000>;
++			opp-microvolt = <1050000>;
++		};
++
++		/*
++		 * 1680/1800 MHz are fused off on vf05xx speed bins (their
++		 * vendor-table entries are <0>: not allowed at any voltage).
++		 * This board's chip reads bin vf0100 from the SID DVFS word
++		 * (0x48 = 0x19 -> combi 0x01), which supports both. A generic
++		 * image for unknown silicon must drop these two entries or
++		 * gate them on the SID speed bin (sun50i-cpufreq-nvmem style).
++		 */
++		opp-1680000000 {
++			opp-hz = /bits/ 64 <1680000000>;
++			opp-microvolt = <1100000>;
++		};
++
++		opp-1800000000 {
++			opp-hz = /bits/ 64 <1800000000>;
++			opp-microvolt = <1150000>;
++		};
+ 	};
+ };
+ 
+@@ -330,7 +354,7 @@ &cpu3 {
+ 	operating-points-v2 = <&cluster0_opp>;
+ };
+ 
+-/* Big cluster (cpu4-7): AXP323 DCDC1 (vdd-cpub), capped at 1.488 GHz for now. */
++/* Big cluster (cpu4-7): AXP323 DCDC1 (vdd-cpub), up to 1.8 GHz (bin vf0100). */
+ &cpu4 {
+ 	cpu-supply = <&reg_dcdc1_323>;
+ 	operating-points-v2 = <&cluster1_opp>;
+-- 
+2.47.3
+

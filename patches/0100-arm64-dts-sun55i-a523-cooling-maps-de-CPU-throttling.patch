@@ -1,0 +1,146 @@
+From 513fdc10ae6a34594fd473543d307fa0ccbc98c5 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 04:14:42 +0200
+Subject: [PATCH 100/106] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20cooling-?=
+ =?UTF-8?q?maps=20de=20CPU=20(throttling=20t=C3=A9rmico)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+B5: ata los trips 'hot' de 90C de las zonas cpul/cpub (puestos en la
+Parte A del THS) al cooling-device de cpufreq de cada cluster, igual que
+el BSP (trip cpuX_target a 90C -> cpu0/cpu4, THERMAL_NO_LIMIT,
+contribution 1024). #cooling-cells en los 8 cpu@N como el BSP. Con esto
+la placa baja frecuencia sola por encima de 90C en vez de llegar a secas
+al trip critico de 110C. La zona de GPU tendra su cooling-map cuando
+exista devfreq de GPU.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../arm64/boot/dts/allwinner/sun55i-a523.dtsi | 33 +++++++++++++++++--
+ 1 file changed, 30 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index b534f6a96..4c8eb39c3 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -15,6 +15,7 @@
+ #include <dt-bindings/reset/sun55i-a523-r-ccu.h>
+ #include <dt-bindings/power/allwinner,sun55i-a523-ppu.h>
+ #include <dt-bindings/power/allwinner,sun55i-a523-pck-600.h>
++#include <dt-bindings/thermal/thermal.h>
+ 
+ / {
+ 	interrupt-parent = <&gic>;
+@@ -38,6 +39,7 @@ cpu0: cpu@0 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUL>;
+ 			clock-latency-ns = <244144>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu1: cpu@100 {
+@@ -47,6 +49,7 @@ cpu1: cpu@100 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUL>;
+ 			clock-latency-ns = <244144>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu2: cpu@200 {
+@@ -56,6 +59,7 @@ cpu2: cpu@200 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUL>;
+ 			clock-latency-ns = <244144>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu3: cpu@300 {
+@@ -65,6 +69,7 @@ cpu3: cpu@300 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUL>;
+ 			clock-latency-ns = <244144>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu4: cpu@400 {
+@@ -74,6 +79,7 @@ cpu4: cpu@400 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUB>;
+ 			clock-latency-ns = <244144>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu5: cpu@500 {
+@@ -83,6 +89,7 @@ cpu5: cpu@500 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUB>;
+ 			clock-latency-ns = <244144>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu6: cpu@600 {
+@@ -92,6 +99,7 @@ cpu6: cpu@600 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUB>;
+ 			clock-latency-ns = <244144>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu7: cpu@700 {
+@@ -101,6 +109,7 @@ cpu7: cpu@700 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUB>;
+ 			clock-latency-ns = <244144>;
++			#cooling-cells = <2>;
+ 		};
+ 	};
+ 
+@@ -133,9 +142,9 @@ timer {
+ 	thermal-zones {
+ 		/*
+ 		 * Trip temperatures come from the vendor DT (sun55iw3p1.dtsi).
+-		 * cooling-maps (cpufreq/devfreq throttling) are added together
+-		 * with DVFS; only the critical trip (safety shutdown) is active
+-		 * for now.
++		 * The CPU zones throttle their cluster's cpufreq policy from the
++		 * 90C "hot" trip, matching the vendor's cpuX_target trip point.
++		 * The GPU zone gets its cooling-map once GPU devfreq exists.
+ 		 */
+ 		cpul-thermal {
+ 			polling-delay-passive = <100>;
+@@ -161,6 +170,15 @@ cpul_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpul_hot>;
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT
++							  THERMAL_NO_LIMIT>;
++					contribution = <1024>;
++				};
++			};
+ 		};
+ 
+ 		cpub-thermal {
+@@ -187,6 +205,15 @@ cpub_crit: cpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&cpub_hot>;
++					cooling-device = <&cpu4 THERMAL_NO_LIMIT
++							  THERMAL_NO_LIMIT>;
++					contribution = <1024>;
++				};
++			};
+ 		};
+ 
+ 		gpu-thermal {
+-- 
+2.47.3
+

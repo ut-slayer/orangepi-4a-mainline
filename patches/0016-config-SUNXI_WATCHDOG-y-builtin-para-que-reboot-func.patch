@@ -1,8 +1,8 @@
-From 038e22809b0cae1331391ed349783c16bc978827 Mon Sep 17 00:00:00 2001
+From 5e516cb4c64ea3f8772aa66568d03a39615c9877 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 04:04:05 +0200
-Subject: [PATCH T527 16/66] config: SUNXI_WATCHDOG=y (builtin) para que
- 'reboot' funcione
+Subject: [PATCH 016/106] config: SUNXI_WATCHDOG=y (builtin) para que 'reboot'
+ funcione
 
 Sin restart handler, el reboot de mainline cae en PSCI SYSTEM_RESET
 del ATF BSP, que NO resetea: la placa se queda congelada en

@@ -1,7 +1,7 @@
-From 50b10cf996beb0fc895b7037e85477a6492333cd Mon Sep 17 00:00:00 2001
+From 1aee8ef2d750ca05024560b67a91e30faeb5b311 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 19:41:03 +0200
-Subject: [PATCH T527 04/66] dts: opi4a: /memory a 2GB (la placa es de 2GB, no
+Subject: [PATCH 004/106] dts: opi4a: /memory a 2GB (la placa es de 2GB, no
  4GB)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

@@ -1,7 +1,7 @@
-From 04d2b3955e44239c0aeff70099bf436f963297f1 Mon Sep 17 00:00:00 2001
+From 4a5351542694e236d3328da2d933734afd457e65 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 01:24:07 +0200
-Subject: [PATCH T527 07/66] dts: opi4a: habilitar Ethernet GMAC1/GMAC200 (PHY
+Subject: [PATCH 007/106] dts: opi4a: habilitar Ethernet GMAC1/GMAC200 (PHY
  YT8531, rgmii-id)
 
 Anade el nodo gmac1@4510000 (allwinner,sun55i-a523-gmac200) + rgmii1_pins

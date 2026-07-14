@@ -1,8 +1,8 @@
-From ae314b7ce38d73584d3fe2fd7aeea7f21a75a95b Mon Sep 17 00:00:00 2001
+From effb4893a96de2954530bf2b6e9aa2be08bf0eb0 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 14:28:10 +0200
-Subject: [PATCH T527 62/66] Revert "drm/sun4i: sun55i_de: pulso de reset del
- DE en mode_set (fix wedge MBUS)"
+Subject: [PATCH 062/106] Revert "drm/sun4i: sun55i_de: pulso de reset del DE
+ en mode_set (fix wedge MBUS)"
 
 This reverts commit 8ffd879ddd0df838fc49333b70714d0602e8be97.
 ---

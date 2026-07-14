@@ -1,9 +1,9 @@
-From ded463c362bd4f463f6acd45899a8a7dfa74d96a Mon Sep 17 00:00:00 2001
+From 8cb413758843d65bf7bf57fb20e7d84013f1a711 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 10 Jul 2026 02:43:18 +0200
-Subject: [PATCH T527 57/66] =?UTF-8?q?config:=20deshabilitar=20RESET=5FGPI?=
- =?UTF-8?q?O=20=E2=80=94=20rompe=20mmc-pwrseq-simple=20con=20#gpio-cells?=
- =?UTF-8?q?=3D3=20(WiFi=20AP6256=20en=20mmc1)?=
+Subject: [PATCH 057/106] =?UTF-8?q?config:=20deshabilitar=20RESET=5FGPIO?=
+ =?UTF-8?q?=20=E2=80=94=20rompe=20mmc-pwrseq-simple=20con=20#gpio-cells=3D?=
+ =?UTF-8?q?3=20(WiFi=20AP6256=20en=20mmc1)?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

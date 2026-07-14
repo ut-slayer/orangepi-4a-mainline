@@ -1,7 +1,7 @@
-From 9533a6cef29f76a9bb08be28c449f99a747ca7c8 Mon Sep 17 00:00:00 2001
+From edc03ee5a3605b001fdb9710f24fad42cb13c4db Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 10 Jul 2026 02:16:35 +0200
-Subject: [PATCH T527 56/66] arm64: dts: allwinner: audio HDMI en OPi4A (i2s2 +
+Subject: [PATCH 056/106] arm64: dts: allwinner: audio HDMI en OPi4A (i2s2 +
  mcu_dma + simple-card)
 
 Receta del BSP 5.15: I2S2@0x7114000 -> entrada I2S del DW-HDMI (cableado

@@ -1,0 +1,94 @@
+From b627de3ba0ef5e69d37eb375c8e87c798aedae62 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:51:29 +0200
+Subject: [PATCH 080/106] iommu/sun50i: guardas defensivas menores (auditoria
+ B9)
+
+- iotlb_sync_map: guarda !iommu (dominio paging recien creado y nunca
+  attachado -> iommu_map() derreferenciaba NULL en el spinlock; la
+  guarda gemela ya existia en flush_iotlb_all).
+- map: restaurar el -EINVAL para paddr fuera de la ventana plegable
+  [DRAM_BASE, +4G) (el guard 'beyond 4GB' de vanilla se perdio con el
+  pliegue; fuera de rango se almacenaba con alias silencioso).
+- detach_domain: flush TLB/PTW ANTES de liberar las tablas de paginas
+  (un walker caliente podia releer una PT liberada: UAF por DMA; el BSP
+  nunca libera PTs en runtime, la ventana es propia de mainline).
+- handle_pt_irq: ilog2(0) es indefinido si blame no trae ningun bit de
+  INT_MASTER_MASK (p.ej. master 6/DI) - clamp a 0.
+---
+ drivers/iommu/sun50i-iommu.c | 36 +++++++++++++++++++++++++++++++++++-
+ 1 file changed, 35 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/iommu/sun50i-iommu.c b/drivers/iommu/sun50i-iommu.c
+index 59e6a9451..50c8ab360 100644
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -548,6 +548,12 @@ static int sun50i_iommu_iotlb_sync_map(struct iommu_domain *domain,
+ 	struct sun50i_iommu *iommu = sun50i_domain->iommu;
+ 	unsigned long flags;
+ 
++	/* dominio recien creado y nunca attachado: iommu aun NULL (como en
++	 * flush_iotlb_all; sin esta guarda, iommu_map() sobre ese dominio
++	 * derreferencia NULL en el spinlock) */
++	if (!iommu)
++		return 0;
++
+ 	spin_lock_irqsave(&iommu->iommu_lock, flags);
+ 	sun50i_iommu_zap_range(iommu, iova, size);
+ 	spin_unlock_irqrestore(&iommu->iommu_lock, flags);
+@@ -766,6 +772,20 @@ static int sun50i_iommu_map(struct iommu_domain *domain, unsigned long iova,
+ 	u32 *page_table, *pte_addr;
+ 	int ret = 0;
+ 
++	/*
++	 * El pliegue del PTE solo representa [DRAM_BASE, DRAM_BASE+4G): un
++	 * paddr fuera (MMIO <1G, o >5G en un SoC futuro) se almacenaria con
++	 * alias silencioso. En el T527 no existe tal paddr; la guarda es
++	 * defensiva (sustituye al -EINVAL 'beyond 4GB' de vanilla).
++	 */
++	if (paddr < SUN50I_IOMMU_DRAM_BASE ||
++	    paddr - SUN50I_IOMMU_DRAM_BASE >= SZ_4G) {
++		dev_err_once(iommu->dev,
++			     "paddr %pa fuera de la ventana plegable del PTE\n",
++			     &paddr);
++		return -EINVAL;
++	}
++
+ 	page_table = sun50i_dte_get_page_table(sun50i_domain, iova, gfp);
+ 	if (IS_ERR(page_table)) {
+ 		ret = PTR_ERR(page_table);
+@@ -897,8 +917,19 @@ static int sun50i_iommu_attach_domain(struct sun50i_iommu *iommu,
+ static void sun50i_iommu_detach_domain(struct sun50i_iommu *iommu,
+ 				       struct sun50i_iommu_domain *sun50i_domain)
+ {
++	unsigned long flags;
+ 	unsigned int i;
+ 
++	/*
++	 * Invalidar TLB/PTW ANTES de liberar las tablas: un walker con la
++	 * macro-TLB/PTW caliente podria releer una PT ya liberada (UAF por
++	 * DMA) en la ventana hasta el disable del final. El BSP nunca libera
++	 * PTs en runtime, asi que esta ventana es propia de mainline.
++	 */
++	spin_lock_irqsave(&iommu->iommu_lock, flags);
++	sun50i_iommu_flush_all_tlb(iommu);
++	spin_unlock_irqrestore(&iommu->iommu_lock, flags);
++
+ 	for (i = 0; i < NUM_DT_ENTRIES; i++) {
+ 		u32 *page_table;
+ 		u32 *dte_addr;
+@@ -1052,7 +1083,10 @@ static phys_addr_t sun50i_iommu_handle_pt_irq(struct sun50i_iommu *iommu,
+ 
+ 	iova = iommu_read(iommu, addr_reg);
+ 	blame = iommu_read(iommu, blame_reg);
+-	master = ilog2(blame & IOMMU_INT_MASTER_MASK);
++	/* blame sin bit conocido (p.ej. master 6/DI, fuera de INT_MASTER_MASK
++	 * en este INT_ENABLE del BSP): ilog2(0) es indefinido - clamp a 0 */
++	blame &= IOMMU_INT_MASTER_MASK;
++	master = blame ? ilog2(blame) : 0;
+ 
+ 	/*
+ 	 * If the address is not in the page table, we can't get what
+-- 
+2.47.3
+

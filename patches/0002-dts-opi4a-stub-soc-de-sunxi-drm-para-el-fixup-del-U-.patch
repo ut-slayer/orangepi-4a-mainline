@@ -1,7 +1,7 @@
-From 0472736da7d7253ce3d9bdd9f7cc1ea34b3ac022 Mon Sep 17 00:00:00 2001
+From 2069210e5dd81e0d05ce6197069644bfa45f38b8 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 19:12:48 +0200
-Subject: [PATCH T527 02/66] dts: opi4a: stub /soc/{de,sunxi-drm} para el fixup
+Subject: [PATCH 002/106] dts: opi4a: stub /soc/{de,sunxi-drm} para el fixup
  del U-Boot BSP
 
 El bootm del U-Boot v2018.05-t527 llama sunxi_drm_kernel_para_flush() que

@@ -1,0 +1,25 @@
+From 3ee13dc6f0b743576a0920eda4f770f82af1e699 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 15:10:00 +0200
+Subject: [PATCH 081/106] config: refresco banner 6.18.38 (olddefconfig, cero
+ opciones nuevas)
+
+---
+ .config | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.config b/.config
+index 7bd92f1a7..3e11d8dae 100644
+--- a/.config
++++ b/.config
+@@ -1,6 +1,6 @@
+ #
+ # Automatically generated file; DO NOT EDIT.
+-# Linux/arm64 6.18.36 Kernel Configuration
++# Linux/arm64 6.18.38 Kernel Configuration
+ #
+ CONFIG_CC_VERSION_TEXT="aarch64-an1opi4a-linux-gnu-gcc (crosstool-NG 1.28.0) 15.2.0"
+ CONFIG_CC_IS_GCC=y
+-- 
+2.47.3
+

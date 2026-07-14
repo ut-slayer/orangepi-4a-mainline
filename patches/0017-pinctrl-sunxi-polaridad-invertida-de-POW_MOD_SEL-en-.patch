@@ -1,8 +1,8 @@
-From c8115e288051008412a55a6a4d1a723ac2aca63c Mon Sep 17 00:00:00 2001
+From f81e3c6ea90f9d50a1f83bd1486c05557ffd44a6 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 10:53:54 +0200
-Subject: [PATCH T527 17/66] pinctrl: sunxi: polaridad invertida de POW_MOD_SEL
- en A523/T527 (io_bias_reverse)
+Subject: [PATCH 017/106] pinctrl: sunxi: polaridad invertida de POW_MOD_SEL en
+ A523/T527 (io_bias_reverse)
 
 El fixup del probe dejaba los bancos bien, pero al aplicar pinconf de
 pines con vcc-pX-supply declarado, sunxi_pinctrl_set_io_bias_cfg

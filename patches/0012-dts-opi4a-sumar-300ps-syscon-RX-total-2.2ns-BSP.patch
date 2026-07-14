@@ -1,7 +1,7 @@
-From 1e44b16a5c5c045f93aed7560fa7e3d52f03604e Mon Sep 17 00:00:00 2001
+From 48d34e36a36c1224920a33c0d8ccd21e67a615b3 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 02:15:26 +0200
-Subject: [PATCH T527 12/66] dts: opi4a: sumar 300ps syscon RX (total ~2.2ns =
+Subject: [PATCH 012/106] dts: opi4a: sumar 300ps syscon RX (total ~2.2ns =
  BSP)
 
 Con PJ10 el RX revivio pero marginal (rx_packets subia de 1 en 1, 0 crc).

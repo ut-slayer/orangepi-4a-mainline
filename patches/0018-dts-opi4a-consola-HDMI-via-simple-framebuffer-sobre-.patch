@@ -1,8 +1,8 @@
-From 3d54a80d65feaf4c8072af53a104ef067233e3be Mon Sep 17 00:00:00 2001
+From ce79288895dc401ea8db14ace1e05413b0579ed6 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:16:55 +0200
-Subject: [PATCH T527 18/66] dts: opi4a: consola HDMI via simple-framebuffer
- sobre el FB de U-Boot (ETAPA A display)
+Subject: [PATCH 018/106] dts: opi4a: consola HDMI via simple-framebuffer sobre
+ el FB de U-Boot (ETAPA A display)
 
 Nodo simple-framebuffer en /chosen apuntando al FB que el U-Boot BSP deja
 pintado y escaneando tras bootm: 0xbbea2000 + 0x3fc000 (1360x768 ARGB8888,

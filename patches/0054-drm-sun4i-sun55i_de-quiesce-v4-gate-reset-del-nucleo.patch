@@ -1,7 +1,7 @@
-From 4c410dacadeed6b6ad7e0d5a5e4b03144db48087 Mon Sep 17 00:00:00 2001
+From 3542b726a577ef4f8a0a579817c70c8a701a95a9 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 18:49:27 +0200
-Subject: [PATCH T527 54/66] drm/sun4i: sun55i_de: quiesce v4 = gate+reset del
+Subject: [PATCH 054/106] drm/sun4i: sun55i_de: quiesce v4 = gate+reset del
  nucleo disp (fix definitivo modeset)
 
 El quiesce por RCQ (commit anterior) no podia funcionar: cuando el

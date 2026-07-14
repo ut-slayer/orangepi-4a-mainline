@@ -1,0 +1,45 @@
+From 2248ba57674e39384c41729dd12c515c96ceb175 Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 00:27:34 +0200
+Subject: [PATCH 085/106] drm/bridge: dw-hdmi: don't advertise OP_HPD when
+ polling the connector
+
+poll_hpd platforms (e.g. Allwinner A523) switch the connector to periodic
+polling because the HPD interrupt never fires. Advertising
+DRM_BRIDGE_OP_HPD there is currently harmless (dw-hdmi creates its own
+connector and sets connector->polled directly), but it is a latent trap:
+a future conversion to DRM_BRIDGE_ATTACH_NO_CONNECTOR + drm_bridge_connector
+would read OP_HPD and force DRM_CONNECTOR_POLL_HPD, silently overriding the
+polling and breaking hotplug. Gate OP_HPD on !poll_hpd so intent and
+capability stay consistent.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ drivers/gpu/drm/bridge/synopsys/dw-hdmi.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+index aef022058..62fae3fc6 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+@@ -3513,8 +3513,15 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
+ 	}
+ 
+ 	hdmi->bridge.driver_private = hdmi;
+-	hdmi->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID
+-			 | DRM_BRIDGE_OP_HPD;
++	hdmi->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID;
++	/*
++	 * Only advertise HPD when we actually rely on the HPD interrupt. On
++	 * poll_hpd platforms the IRQ never fires and the connector is polled
++	 * instead; claiming OP_HPD there would make a future drm_bridge_connector
++	 * conversion force DRM_CONNECTOR_POLL_HPD and silently break hotplug.
++	 */
++	if (!hdmi->plat_data->poll_hpd)
++		hdmi->bridge.ops |= DRM_BRIDGE_OP_HPD;
+ 	hdmi->bridge.interlace_allowed = true;
+ 	hdmi->bridge.ddc = hdmi->ddc;
+ 	hdmi->bridge.of_node = pdev->dev.of_node;
+-- 
+2.47.3
+

@@ -1,8 +1,8 @@
-From 60cebf988768ec0e1e01b4472eef50cb0fdabbaf Mon Sep 17 00:00:00 2001
+From 7bff47b42079c89b306a28592c0cc028505a9680 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 00:34:48 +0200
-Subject: [PATCH T527 50/66] iommu/sun50i: PTE con bits READABLE/WRITABLE del
- BSP en el v15 (pantalla negra sin faults)
+Subject: [PATCH 050/106] iommu/sun50i: PTE con bits READABLE/WRITABLE del BSP
+ en el v15 (pantalla negra sin faults)
 
 Con el fix del pliegue el IOMMU ya no crashea y sway crea el swapchain
 y flipa, pero la pantalla queda NEGRA (fbcon incluido): el walk no

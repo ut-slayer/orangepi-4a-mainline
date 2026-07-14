@@ -1,13 +1,17 @@
-From dab41865ea90294c2bd4d960261b75d0d8e2f168 Mon Sep 17 00:00:00 2001
-From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+From 9e70c8fae7d11d68ff9283960c955d80140fb062 Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:55 +0200
-Subject: [PATCH T527 36/66] arm64: dts: a523: pipeline de display HDMI
+Subject: [PATCH 036/106] arm64: dts: a523: pipeline de display HDMI
  (DE33/tcon-top/tcon-tv/dw-hdmi/phy) (minimyth2 2803)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+Parche original de la serie A523/H616 recopilada en minimyth2
+(autoria git = autor original). Port y adaptacion a 6.18/T527:
+AurealNix <juanmanuellopezcarrillo@gmail.com>.
 ---
  .../arm64/boot/dts/allwinner/sun55i-a523.dtsi | 211 ++++++++++++++++++
  1 file changed, 211 insertions(+)

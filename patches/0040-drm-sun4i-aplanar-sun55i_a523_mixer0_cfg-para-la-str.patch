@@ -1,7 +1,7 @@
-From 154a7abb306e483775323c8fa0627839dd3aab6b Mon Sep 17 00:00:00 2001
+From 5b11377e345256d6d0bc5544fab22019703b37a3 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:13:44 +0200
-Subject: [PATCH T527 40/66] drm/sun4i: aplanar sun55i_a523_mixer0_cfg para la
+Subject: [PATCH 040/106] drm/sun4i: aplanar sun55i_a523_mixer0_cfg para la
  struct de 6.18
 
 El initializer del parche usaba la sub-struct .lay_cfg del refactor DE33

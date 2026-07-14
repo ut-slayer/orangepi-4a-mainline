@@ -1,0 +1,55 @@
+From 0386581dff13701f91374b47e05599ec28cd507b Mon Sep 17 00:00:00 2001
+From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:33:22 +0200
+Subject: [PATCH 076/106] dts: opi4a: no-map en las 4 regiones de firmware
+ (auditoria M10)
+
+sec-sram1/2, bl31 y optee estaban reservadas pero SIN no-map (el
+comentario de cabecera decia que si): quedaban en el linear map y una
+lectura especulativa del CPU sobre RAM protegida por el firewall seguro
+puede disparar SErrors esporadicos aunque el kernel nunca las asigne.
+El kernel no habla con OP-TEE en este arbol (no hay nodo optee), asi
+que ninguna necesita mapeo. uboot_fb ya lo llevaba (obligatorio para
+simpledrm).
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts     | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 8d1051d24..292d354fc 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -96,20 +96,30 @@ reserved-memory {
+ 		 * SOLO bl31 dejaba que el kernel machacara OP-TEE/shm -> cuelgue tras
+ 		 * 2 latidos. Reservamos las 4 (igual que el BSP).
+ 		 */
++		/*
++		 * no-map en las cuatro: sin el, quedan en el linear map y una
++		 * lectura ESPECULATIVA del CPU sobre RAM protegida por el
++		 * firewall seguro puede disparar SErrors esporadicos aunque el
++		 * kernel nunca las asigne.
++		 */
+ 		sec-sram1@42350000 {
+ 			reg = <0x0 0x42350000 0x0 0x00230000>;
++			no-map;
+ 		};
+ 
+ 		sec-sram2@43000000 {
+ 			reg = <0x0 0x43000000 0x0 0x00094000>;
++			no-map;
+ 		};
+ 
+ 		bl31@48000000 {
+ 			reg = <0x0 0x48000000 0x0 0x01000000>;
++			no-map;
+ 		};
+ 
+ 		optee@4941d000 {
+ 			reg = <0x0 0x4941d000 0x0 0x00be3000>;
++			no-map;
+ 		};
+ 
+ 		/*
+-- 
+2.47.3
+

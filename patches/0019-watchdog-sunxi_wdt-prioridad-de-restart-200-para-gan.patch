@@ -1,7 +1,7 @@
-From 58a24f848f30f7f32a697628956da1ac4a965364 Mon Sep 17 00:00:00 2001
+From 3abf1b5ffa2036fe3910597c755c0ef3f5aaeeb9 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:32:33 +0200
-Subject: [PATCH T527 19/66] watchdog: sunxi_wdt: prioridad de restart 200 para
+Subject: [PATCH 019/106] watchdog: sunxi_wdt: prioridad de restart 200 para
  ganar a PSCI (reboot colgado en T527)
 
 El SYSTEM_RESET del ATF/BL31 del BSP no resetea: la llamada PSCI se queda

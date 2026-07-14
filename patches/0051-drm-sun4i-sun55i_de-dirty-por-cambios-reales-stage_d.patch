@@ -1,7 +1,7 @@
-From f48bfaefa37b529137750c5ff67f1a1ae0963b14 Mon Sep 17 00:00:00 2001
+From 1d5ffebc59a27f0eea75b4fa6ca99e557e115636 Mon Sep 17 00:00:00 2001
 From: AurealNix T527 <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 03:35:45 +0200
-Subject: [PATCH T527 51/66] drm/sun4i: sun55i_de: dirty por cambios reales
+Subject: [PATCH 051/106] drm/sun4i: sun55i_de: dirty por cambios reales
  (stage_dirty) + instrumentacion rcqdbg [WIP C4]
 
 - de_blk_write solo marca dirty si el valor CAMBIA (stage_dirty sw) y
