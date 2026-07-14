@@ -93,6 +93,9 @@ audio, red…). Si te ha servido para tu Orange Pi 4A, puedes invitarme a un caf
 
 ## Créditos
 
+- Port a mainline, fixes A523 e integración: **Juan Manuel López Carrillo**
+  (AurealNix).
 - Bring-up del pipeline de display: basado en la serie de **minimyth2 / Suess**
-  para Allwinner H728 (portada y adaptada al A523).
+  para Allwinner H728 (portada y adaptada al A523) — autoría original de
+  **Justin Suess** y **Jernej Škrabec** conservada en los parches.
 - BSP Allwinner 5.15 como fuente de verdad del hardware.
