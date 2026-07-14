@@ -1,5 +1,7 @@
 # FAQ — Orange Pi 4A mainline (Debian 13 image + kernel patches)
 
+🌐 **English** · [Español](FAQ.es.md)
+
 Honest answers, in the same spirit as the rest of this project: only what has
 been verified on real hardware is stated as fact. Untested things are marked
 untested. If you find any answer here that doesn't match your experience,
@@ -63,8 +65,10 @@ Works with software decoding. <!-- TODO: state what you verified, e.g.
 See the full status table in the README. Short version — working: HDMI KMS +
 audio + native HPD/hotplug, Mali-G57 via Panfrost (accelerated Plasma
 Wayland), WiFi 2.4/5 GHz, Bluetooth, gigabit ethernet, the 4 rear USB 2.0
-ports (HID + storage, hotplug), CPU cpufreq/DVFS and GPU devfreq (both with
-thermal throttling), reboot/poweroff, AFBC scanout.
+ports (all USB 2.0 — the SoC's USB3 lane is not wired on this board; HID +
+storage, hotplug), the THS thermal sensors (5 zones: cpu_l/cpu_b/gpu/npu/ddr),
+CPU cpufreq/DVFS and GPU devfreq (both with thermal throttling),
+reboot/poweroff, AFBC scanout.
 
 **Known not working / untested:**
 
@@ -72,7 +76,7 @@ thermal throttling), reboot/poweroff, AFBC scanout.
   bootloader auto-detects the RAM size and fills in `/memory` at boot
   (mechanism verified over UART on the 2GB board). I only own the 2GB
   variant — if you have the 4GB one, please confirm with `free -h` and open
-  an issue either way.
+  an issue either way. (The board ships only in 2GB and 4GB — there is no 1GB.)
 - Suspend/hibernate: untested.
 - Boot from eMMC / NVMe SSD: completely untested — I don't own an eMMC module
   or an NVMe drive, so everything has only been tested **from microSD**. If
@@ -94,8 +98,9 @@ Plasma Wayland desktop is smooth at 1080p; Chromium runs with GPU acceleration
 including WebGL.
 
 **Does it need a heatsink? Does it throttle?**
-CPU frequency scaling (cpufreq/DVFS) works: OPPs from 480 MHz to 1.8 GHz on
-both clusters (schedutil governor), with the A523 thermal sensors (THS) and
+CPU frequency scaling (cpufreq/DVFS) works: OPPs from 480 MHz up to
+1.416 GHz on the little cluster (cpu0-3) and up to 1.8 GHz on the big
+cluster (cpu4-7), schedutil governor, with the A523 thermal sensors (THS) and
 CPU cooling maps wired — under sustained load the chip throttles itself
 gracefully instead of cooking. The GPU scales too (Panfrost devfreq,
 150–600 MHz, simple_ondemand): it idles at 150 MHz and has its own cooling
@@ -103,6 +108,32 @@ map on the GPU thermal zone. In normal desktop use it runs cool;
 development was done <!-- TODO: confirm --> without active cooling.
 Measured temperatures: <!-- TODO: idle XX°C / sustained load XX°C
 (cat /sys/class/thermal/thermal_zone*/temp, stress-ng 10 min) -->
+
+**Is there swap / zram?**
+No — both are disabled by default. The board ships in different RAM sizes
+(2 GB / 4 GB), so swap/zram is left for you to set up to taste (`zram-tools`,
+a swapfile, whatever suits your variant). On the 2GB board, with Baloo off, it
+runs fine without swap for normal desktop use.
+
+## Desktop session & image tuning
+
+**Wayland or X11?**
+Wayland only. The image ships a Plasma **Wayland** session and everything is
+tested under it. The **X11 session is not supported** — I couldn't get it to
+work reliably on this stack.
+
+**Why is file indexing (Baloo) disabled? Why doesn't Discover check for updates
+automatically?**
+To keep RAM free on the 2GB board. Two Plasma background services are off by
+default:
+
+- **Baloo** — Plasma's file indexer (scans your `$HOME` to speed up searches).
+  Off; it costs RAM this board would rather spend elsewhere.
+- **Discover's automatic update check** — off; polling for updates alone eats
+  **>150 MB of RAM**. Updating still works normally via `apt` or by opening
+  Discover by hand.
+
+Re-enable either from System Settings if you have the 4GB variant and want them.
 
 ## Kernel & updates
 
@@ -162,7 +193,7 @@ hear about it.
 
 **Where do I report bugs?**
 GitHub issues. Please include: board variant (2GB/4GB), monitor model, what
-you did, and if it's a boot problem, a serial console log if you can get one
+you did, and if it's a boot problem, a serial-console log if you can get one
 (UART0, 115200) — it's the single most useful thing you can attach.
 
 **How can I support this?**
