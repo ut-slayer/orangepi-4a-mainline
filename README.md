@@ -130,6 +130,13 @@ network bring-up…). If it helped with your Orange Pi 4A, you can buy me a coff
   **taken from the BSP, not invented**; where mainline lacked support, driver logic was
   ported/adapted from it (CPU CCU, THS, DVFS/OPP tables, USB VBUS, poweroff, display).
 
+## License
+
+These patches derive from the Linux kernel and are distributed under the same
+terms: **GNU General Public License, version 2 (GPL-2.0-only)** — full text in
+[LICENSE](LICENSE). The Debian userspace in the image is stock Debian under its
+own respective licenses.
+
 ## A note on method
 
 Parts of this work were done **with the help of AI agents**. That is exactly why it stays
