@@ -63,7 +63,7 @@ Decisions made in the distributed image (these are not kernel patches):
 
 ```sh
 cd linux-6.18.38            # 6.18.38 vanilla
-git am /path/to/share-orangepi-4a/patches/00*.patch
+git am /path/to/share-orangepi-4a/patches/0*.patch
 cp /path/to/opi4a_blindboot_defconfig arch/arm64/configs/
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- opi4a_blindboot_defconfig
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image dtbs modules
