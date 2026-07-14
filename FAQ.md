@@ -30,10 +30,12 @@ Yes, from the first boot. SSH host keys are regenerated on first boot, so your
 board's keys are unique. The board gets its address via DHCP.
 
 **The first boot takes long / the screen stays on the boot logo — is it dead?**
-No. The desktop comes up in roughly **half a minute** from power-on. The very
-first boot is longer — it resizes the filesystem to fill your card and
-generates fresh SSH keys — so give it a minute the first time and don't pull
-the power.
+No. From a microSD, a full KDE Plasma desktop takes **about a minute** to come
+up from power-on — SD cards have slow random I/O and Plasma loads a lot of
+small files. It'll be noticeably quicker from eMMC or NVMe once those are
+supported. The very **first** boot is longer still: it resizes the filesystem
+to fill your card and generates fresh SSH keys — give it a couple of minutes
+that first time and don't pull the power.
 
 **The desktop appears with everything huge (wrong scale).**
 KDE may auto-pick a display scale on the very first session. Fix in one click:
