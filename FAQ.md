@@ -74,7 +74,10 @@ thermal throttling), reboot/poweroff, AFBC scanout.
   variant — if you have the 4GB one, please confirm with `free -h` and open
   an issue either way.
 - Suspend/hibernate: untested.
-- Boot from eMMC / NVMe: untested (v0.1 is SD-only). On the roadmap.
+- Boot from eMMC / NVMe SSD: completely untested — I don't own an eMMC module
+  or an NVMe drive, so everything has only been tested **from microSD**. If
+  you try either, please report back (works or not). Getting the hardware to
+  support this properly is the kind of thing the Ko-fi tips go towards.
 - GPIO header / I2C / SPI: untested.
 - NPU: the etnaviv driver recognizes it, but it is blacklisted by default
   (when loaded it registered itself as the main render device and broke GPU
