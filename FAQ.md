@@ -64,11 +64,11 @@ which works fine for typical desktop use. If mainline (cedrus) gains support
 for this SoC family someday, I'll integrate it.
 
 **YouTube?**
-Works with software decoding (there's no hardware VPU). 720p is watchable,
-including fullscreen — it holds up but software decode isn't free, so you'll
-see some dropped frames (~6% on a 25 fps video in my testing, fullscreen). Fine
-for casual viewing; not flawless. Higher resolutions lean harder on the CPU.
-The board stays cool doing it (~55–60 °C, half the CPU still idle).
+Works with software decoding (there's no hardware VPU). In a window, 720p is
+smooth — around 1% dropped frames in my testing. Fullscreen leans harder
+because the video gets scaled up (~6% dropped), so it holds up but isn't
+flawless. Fine for casual viewing either way; the board stays cool doing it
+(~55–60 °C, with half the CPU still idle). Higher resolutions lean harder still.
 
 ## Hardware support
 
