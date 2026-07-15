@@ -89,6 +89,10 @@ reboot/poweroff, AFBC scanout.
   (mechanism verified over UART on the 2GB board). I only own the 2GB
   variant — if you have the 4GB one, please confirm with `free -h` and open
   an issue either way. (The board ships only in 2GB and 4GB — there is no 1GB.)
+- Analog audio (the 3.5 mm headphone jack / line-out / mics): **not yet — work
+  in progress.** The A523's analog codec has no mainline driver; it is being
+  ported from the vendor BSP right now. For the time being sound comes out
+  over HDMI only.
 - Suspend/hibernate: untested.
 - Boot from eMMC / NVMe SSD: completely untested — I don't own an eMMC module
   or an NVMe drive, so everything has only been tested **from microSD**. If
@@ -121,10 +125,18 @@ load — nowhere near the 90 °C throttle trip. You don't need a heatsink for
 desktop use; add one only if you plan to hammer all cores for long stretches.
 
 **Is there swap / zram?**
-No — both are disabled by default. The board ships in different RAM sizes
-(2 GB / 4 GB), so swap/zram is left for you to set up to taste (`zram-tools`,
-a swapfile, whatever suits your variant). On the 2GB board, with Baloo off, it
-runs fine without swap for normal desktop use.
+No — both are disabled by default (the board ships in 2 GB and 4 GB variants,
+so it's left for you to choose). With Baloo off, the 2 GB board runs fine
+without swap for normal desktop use. If you want a cushion, there's a little
+gift script in the home folder — just run:
+
+```
+sudo ./add-swapfile.sh
+```
+
+It creates a 512 MB `/swapfile`, enables it, makes it permanent (survives
+reboots), and sets a gentle swappiness so it doesn't thrash the SD card. (Prefer zram or a bigger swap?
+Set it up however you like — the script is just a convenience.)
 
 ## Desktop session & image tuning
 

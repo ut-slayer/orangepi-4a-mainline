@@ -22,6 +22,7 @@ cabeceras de los parches.
 | **HDMI HPD / hotplug** (detección nativa del conector) | ✅ connected al arrancar + hotplug (enchufar/desenchufar) sin forzar |
 | **GPU Mali-G57** (Panfrost) | ✅ acelerada (Cinnamon / KDE Plasma Wayland) |
 | **Audio HDMI** (i2s2 → dw-hdmi) | ✅ salida PCM por la TV |
+| **Audio analógico** (jack de auriculares 3,5 mm / line-out / micros) | 🚧 **en progreso** — el códec del A523 no tiene driver en mainline; se está portando desde el BSP. De momento el sonido sale solo por HDMI |
 | **Ethernet GMAC1** (PHY YT8531, RGMII) | ✅ RX/TX |
 | **WiFi AP6256** (BCM43456, brcmfmac, SDIO) | ✅ scan 2.4/5 GHz, asociación |
 | **reboot / poweroff** (sunxi_wdt / AXP717) | ✅ |

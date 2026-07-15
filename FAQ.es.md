@@ -79,6 +79,10 @@ throttling térmico), reboot/poweroff, AFBC scanout.
   (mecanismo verificado por UART en la placa de 2 GB). Yo solo tengo la de
   2 GB — si tienes la de 4 GB, confírmalo con `free -h` y abre un *issue* en
   cualquier caso. (La placa solo viene en 2 GB y 4 GB — no hay de 1 GB.)
+- Audio analógico (jack de auriculares de 3,5 mm / line-out / micros): **aún
+  no — en progreso.** El códec analógico del A523 no tiene driver en mainline;
+  se está portando desde el BSP del vendor ahora mismo. De momento el sonido
+  sale solo por HDMI.
 - Suspensión/hibernación: sin probar.
 - Arranque desde eMMC / SSD NVMe: totalmente sin probar — no tengo módulo eMMC
   ni disco NVMe, así que todo se ha probado **solo desde microSD**. Si pruebas
@@ -113,10 +117,19 @@ Temperaturas medidas: <!-- TODO: reposo XX°C / carga sostenida XX°C
 (cat /sys/class/thermal/thermal_zone*/temp, stress-ng 10 min) -->
 
 **¿Hay swap / zram?**
-No — ambos van desactivados de serie. La placa viene en distintos tamaños de
-RAM (2 GB / 4 GB), así que el swap/zram se deja para que lo montes a tu gusto
-(`zram-tools`, un swapfile, lo que le pegue a tu variante). En la placa de 2 GB,
-con Baloo apagado, va bien sin swap para uso de escritorio normal.
+No — ambos van desactivados de serie (la placa viene en variantes de 2 GB y
+4 GB, así que se deja a tu elección). Con Baloo apagado, la placa de 2 GB va
+bien sin swap para uso de escritorio normal. Si quieres un colchón, hay un
+pequeño script de regalo en la carpeta home — basta con ejecutar:
+
+```
+sudo ./add-swapfile.sh
+```
+
+Crea un `/swapfile` de 512 MB, lo activa, lo deja permanente (sobrevive a los
+reinicios) y pone una *swappiness* suave para no machacar la SD. (¿Prefieres
+zram o un swap más grande? Móntalo como quieras — el script es solo una
+comodidad.)
 
 ## Sesión de escritorio y ajustes de la imagen
 
