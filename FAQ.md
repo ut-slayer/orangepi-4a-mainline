@@ -75,7 +75,8 @@ flawless. Fine for casual viewing either way; the board stays cool doing it
 ## Hardware support
 
 See the full status table in the README. Short version — working: HDMI KMS +
-audio + native HPD/hotplug, Mali-G57 via Panfrost (accelerated Plasma
+audio + native HPD/hotplug, the **3.5 mm headphone jack** (analog codec, with
+jack detection/hotplug), Mali-G57 via Panfrost (accelerated Plasma
 Wayland), WiFi 2.4/5 GHz, Bluetooth, gigabit ethernet, the 4 rear USB 2.0
 ports (all USB 2.0 — the SoC's USB3 lane is not wired on this board; HID +
 storage, hotplug), the THS thermal sensors (5 zones: cpu_l/cpu_b/gpu/npu/ddr),
@@ -89,10 +90,9 @@ reboot/poweroff, AFBC scanout.
   (mechanism verified over UART on the 2GB board). I only own the 2GB
   variant — if you have the 4GB one, please confirm with `free -h` and open
   an issue either way. (The board ships only in 2GB and 4GB — there is no 1GB.)
-- Analog audio (the 3.5 mm headphone jack / line-out / mics): **not yet — work
-  in progress.** The A523's analog codec has no mainline driver; it is being
-  ported from the vendor BSP right now. For the time being sound comes out
-  over HDMI only.
+- Analog line-out and microphone capture: wired in the codec driver but **not
+  bench-tested yet** (the board has no onboard speaker/mic to try them on).
+  The 3.5 mm **headphone** output and jack detection do work.
 - Suspend/hibernate: untested.
 - Boot from eMMC / NVMe SSD: completely untested — I don't own an eMMC module
   or an NVMe drive, so everything has only been tested **from microSD**. If

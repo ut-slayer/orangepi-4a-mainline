@@ -65,8 +65,9 @@ Chromium; 1080p depende del vídeo" -->
 ## Soporte de hardware
 
 Consulta la tabla completa de estado en el README. Versión corta — funcionando:
-HDMI KMS + audio + HPD/hotplug nativo, Mali-G57 por Panfrost (Plasma Wayland
-acelerado), WiFi 2.4/5 GHz, Bluetooth, ethernet gigabit, los 4 puertos USB 2.0
+HDMI KMS + audio + HPD/hotplug nativo, el **jack de auriculares de 3,5 mm**
+(códec analógico, con detección/hotplug de jack), Mali-G57 por Panfrost (Plasma
+Wayland acelerado), WiFi 2.4/5 GHz, Bluetooth, ethernet gigabit, los 4 puertos USB 2.0
 traseros (todos USB 2.0 — la línea USB3 del SoC no está cableada en esta placa;
 HID + almacenamiento, hotplug), los sensores térmicos THS (5 zonas:
 cpu_l/cpu_b/gpu/npu/ddr), cpufreq/DVFS de CPU y devfreq de GPU (ambos con
@@ -79,10 +80,10 @@ throttling térmico), reboot/poweroff, AFBC scanout.
   (mecanismo verificado por UART en la placa de 2 GB). Yo solo tengo la de
   2 GB — si tienes la de 4 GB, confírmalo con `free -h` y abre un *issue* en
   cualquier caso. (La placa solo viene en 2 GB y 4 GB — no hay de 1 GB.)
-- Audio analógico (jack de auriculares de 3,5 mm / line-out / micros): **aún
-  no — en progreso.** El códec analógico del A523 no tiene driver en mainline;
-  se está portando desde el BSP del vendor ahora mismo. De momento el sonido
-  sale solo por HDMI.
+- Line-out analógico y captura de micrófono: cableados en el driver del códec
+  pero **aún sin probar en banco** (la placa no tiene altavoz/micro integrados
+  donde probarlos). La salida de **auriculares** de 3,5 mm y la detección de
+  jack sí funcionan.
 - Suspensión/hibernación: sin probar.
 - Arranque desde eMMC / SSD NVMe: totalmente sin probar — no tengo módulo eMMC
   ni disco NVMe, así que todo se ha probado **solo desde microSD**. Si pruebas

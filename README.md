@@ -21,7 +21,7 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 | **HDMI HPD / hotplug** (native connector detection) | ✅ connected at boot + hotplug (plug/unplug) without forcing |
 | **Mali-G57 GPU** (Panfrost) | ✅ accelerated (Cinnamon / KDE Plasma Wayland) |
 | **HDMI audio** (i2s2 → dw-hdmi) | ✅ PCM output to the TV |
-| **Analog audio** (3.5 mm headphone jack / line-out / mics) | 🚧 **in progress** — the A523 codec has no mainline driver; being ported from the BSP. Sound is HDMI-only for now |
+| **Analog audio** (3.5 mm headphone jack + jack detect) | ✅ headphones + hotplug (custom `sun55i-a523-codec` driver ported from the BSP — no mainline driver exists otherwise). Line-out / mic capture wired but not yet bench-tested |
 | **Ethernet GMAC1** (YT8531 PHY, RGMII) | ✅ RX/TX |
 | **WiFi AP6256** (BCM43456, brcmfmac, SDIO) | ✅ 2.4/5 GHz scan, association |
 | **reboot / poweroff** (sunxi_wdt / AXP717) | ✅ |
