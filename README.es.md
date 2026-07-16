@@ -13,6 +13,9 @@ cabeceras de los parches.
 > Base del árbol de trabajo: `linux-6.18.38` vanilla. Estos parches se aplican
 > encima. `git format-patch --base` incluye el hash base en cada `.patch`.
 
+**Última imagen: v0.2** — el audio analógico / jack de auriculares de 3,5 mm ya
+funciona. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
+
 ## Qué funciona (confirmado en hardware)
 
 | Bloque | Estado |

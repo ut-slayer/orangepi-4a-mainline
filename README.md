@@ -12,6 +12,9 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 > Working-tree base: `linux-6.18.38` vanilla. These patches apply on top.
 > `git format-patch --base` embeds the base hash in every `.patch`.
 
+**Latest image: v0.2** — analog audio / 3.5 mm headphone jack now works. See
+[CHANGELOG.md](CHANGELOG.md) for release history.
+
 ## What works (confirmed on hardware)
 
 | Block | Status |

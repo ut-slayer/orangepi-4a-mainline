@@ -15,7 +15,7 @@ please open an issue.
 Write the `.img.xz` to a microSD card (8GB or larger) with balenaEtcher, or:
 
 ```
-xz -dc aurealnix-opi4a-debian13-v0.1.img.xz | sudo dd of=/dev/sdX bs=4M status=progress
+xz -dc aurealnix-opi4a-debian13-v0.2.img.xz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
 Verify the download first: `sha256sum -c` against the published checksum.
