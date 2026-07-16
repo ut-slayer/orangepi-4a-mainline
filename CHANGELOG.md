@@ -2,7 +2,13 @@
 
 🌐 **English** · [Español](CHANGELOG.es.md)
 
-## v0.2 — Analog audio (3.5 mm headphone jack)
+## v0.2 — Analog audio (3.5 mm headphone jack) + CLI/headless image
+
+**Two images now:** the full **Desktop** (KDE Plasma) and a new **CLI / headless**
+one (`...-cli-...`, ~146 MB, ~740 MB installed, boots in seconds) — server/headless
+use or a light base, with SSH + NetworkManager (`nmtui`), NTP on by default (no RTC
+battery), a local HDMI text console, and — unique to this board — **working analog
+audio via PipeWire running headless** (the jack works with no desktop session).
 
 **Highlights**
 

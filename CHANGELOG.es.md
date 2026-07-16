@@ -2,7 +2,14 @@
 
 🌐 [English](CHANGELOG.md) · **Español**
 
-## v0.2 — Audio analógico (jack de auriculares de 3,5 mm)
+## v0.2 — Audio analógico (jack de auriculares de 3,5 mm) + imagen CLI/headless
+
+**Ahora hay dos imágenes:** la **Desktop** completa (KDE Plasma) y una nueva
+**CLI / headless** (`...-cli-...`, ~146 MB, ~740 MB instalada, arranca en segundos)
+— para uso servidor/headless o como base ligera, con SSH + NetworkManager (`nmtui`),
+NTP activado de fábrica (la placa no tiene pila de RTC), consola de texto por HDMI, y
+—exclusivo de esta placa— **audio analógico funcionando por PipeWire en headless**
+(el jack va sin sesión de escritorio).
 
 **Novedades**
 
