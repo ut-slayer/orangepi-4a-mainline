@@ -140,6 +140,18 @@ Set it up however you like — the script is just a convenience.)
 
 ## Desktop session & image tuning
 
+**How does the board decide where sound comes out?**
+By default the output **follows what's connected**: plug headphones into the
+3.5 mm jack and sound moves to them; unplug and it returns to HDMI (the TV). If
+both are present, the headphone jack wins — plugging in is treated as your
+explicit choice. **Bluetooth headsets are respected**: the auto-switch only
+reacts to the wired jack, so connecting a BT headset works normally and is never
+overridden. This is done by a small user service (`aureal-audio-autoswitch`)
+because PipeWire doesn't move the default between the separate analog and HDMI
+cards on its own — verified on hardware. You can always pick the output manually
+in the system tray or *System Settings → Audio*, and you can turn the behaviour
+off with `systemctl --user disable --now aureal-audio-autoswitch`.
+
 **Wayland or X11?**
 Wayland only. The image ships a Plasma **Wayland** session and everything is
 tested under it. The **X11 session is not supported** — I couldn't get it to

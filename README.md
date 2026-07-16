@@ -53,6 +53,13 @@ Decisions made in the distributed image (these are not kernel patches):
 - **Discover update auto-check disabled** — the process that polls for updates
   eats **>150 MB of RAM** just for that. Updates via `apt` / manual Discover
   still work normally.
+- **Audio output follows what's connected** — a tiny user service
+  (`aureal-audio-autoswitch`) moves the default sink to the 3.5 mm headphone
+  jack when you plug in, and back to HDMI when you unplug. Bluetooth headsets
+  are respected (the service only reacts to the wired jack, never overriding a
+  BT or manual choice). PipeWire doesn't do this on its own here because the
+  analog codec and HDMI are two separate cards. Override anytime in the tray;
+  disable with `systemctl --user disable --now aureal-audio-autoswitch`.
 
 ## Contents
 

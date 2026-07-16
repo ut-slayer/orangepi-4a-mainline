@@ -134,6 +134,19 @@ comodidad.)
 
 ## Sesión de escritorio y ajustes de la imagen
 
+**¿Cómo decide la placa por dónde sale el sonido?**
+Por defecto la salida **sigue a lo que esté conectado**: enchufa unos auriculares
+en el jack de 3,5 mm y el sonido pasa a ellos; quítalos y vuelve al HDMI (la TV).
+Si están los dos, ganan los auriculares del jack — enchufar es tu elección
+explícita. **Los auriculares Bluetooth se respetan**: el auto-switch solo
+reacciona al jack de cable, así que conectar unos BT funciona con normalidad y no
+se pisa. Lo hace un pequeño servicio de usuario (`aureal-audio-autoswitch`)
+porque PipeWire por sí solo no mueve el sink por defecto entre las tarjetas
+analógica y HDMI (separadas) — comprobado en hardware. Siempre puedes elegir la
+salida a mano en la bandeja del sistema o en *Preferencias del sistema → Audio*, y
+puedes desactivar el comportamiento con
+`systemctl --user disable --now aureal-audio-autoswitch`.
+
 **¿Wayland o X11?**
 Solo Wayland. La imagen trae una sesión Plasma **Wayland** y todo está probado
 sobre ella. La **sesión X11 no está soportada** — no conseguí que funcionara de

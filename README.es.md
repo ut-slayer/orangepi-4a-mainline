@@ -54,6 +54,13 @@ Decisiones tomadas en la imagen distribuida (no son parches del kernel):
 - **Auto-comprobación de actualizaciones de Discover desactivada** — el proceso
   que sondea si hay actualizaciones se come **>150 MB de RAM** solo para eso. Las
   actualizaciones por `apt` / Discover manual siguen funcionando con normalidad.
+- **La salida de audio sigue a lo conectado** — un pequeño servicio de usuario
+  (`aureal-audio-autoswitch`) mueve el sink por defecto al jack de auriculares de
+  3,5 mm al enchufarlos, y de vuelta al HDMI al quitarlos. Los auriculares
+  Bluetooth se respetan (el servicio solo reacciona al jack de cable, nunca pisa
+  una elección BT o manual). PipeWire no lo hace solo aquí porque el códec
+  analógico y el HDMI son dos tarjetas distintas. Puedes cambiarlo a mano en la
+  bandeja; se desactiva con `systemctl --user disable --now aureal-audio-autoswitch`.
 
 ## Contenido
 
