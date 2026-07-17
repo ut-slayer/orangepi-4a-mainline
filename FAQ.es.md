@@ -75,20 +75,22 @@ throttling térmico), reboot/poweroff, AFBC scanout.
 
 **No funciona / sin probar:**
 
-- **Variante de 4 GB: se espera que funcione, sin confirmar en hardware real.**
-  El bootloader auto-detecta el tamaño de RAM y rellena `/memory` al arrancar
-  (mecanismo verificado por UART en la placa de 2 GB). Yo solo tengo la de
-  2 GB — si tienes la de 4 GB, confírmalo con `free -h` y abre un *issue* en
-  cualquier caso. (La placa solo viene en 2 GB y 4 GB — no hay de 1 GB.)
+- **Variante de 4 GB: confirmada funcionando.** El bootloader auto-detecta el
+  tamaño de RAM y rellena `/memory` al arrancar — verificado por UART en la
+  placa de 2 GB, y confirmado en una placa de 4 GB por un tester (`free -m`
+  reportó ~3,8 GB). (La placa solo viene en 2 GB y 4 GB — no hay de 1 GB.)
 - Line-out analógico y captura de micrófono: cableados en el driver del códec
   pero **aún sin probar en banco** (la placa no tiene altavoz/micro integrados
   donde probarlos). La salida de **auriculares** de 3,5 mm y la detección de
   jack sí funcionan.
 - Suspensión/hibernación: sin probar.
-- Arranque desde eMMC / SSD NVMe: totalmente sin probar — no tengo módulo eMMC
-  ni disco NVMe, así que todo se ha probado **solo desde microSD**. Si pruebas
-  alguno, cuéntame (funcione o no). Conseguir el hardware para soportar esto
-  bien es justo el tipo de cosa a la que van las propinas de Ko-fi.
+- eMMC: el módulo se **detecta y funciona a HS200** (lectura/escritura) —
+  confirmado en hardware real por un tester (una eMMC de 58 GB apareció como
+  `mmcblk2` y se usó como almacenamiento — ¡gracias a **JamesCL** por probar la eMMC y la placa de 4 GB! 🙏). **Arrancar desde eMMC** es un paso
+  aparte que aún no está cableado — la imagen está preparada para arrancar
+  desde microSD. **SSD NVMe / M.2:** aún sin probar (no tengo ninguno). Se
+  agradecen reportes — conseguir el hardware para probar esto bien es justo el
+  tipo de cosa a la que van las propinas de Ko-fi.
 - Cabecera GPIO / I2C / SPI: sin probar.
 - NPU: el driver etnaviv la reconoce, pero está en la blacklist por defecto
   (al cargarla se anunciaba como el dispositivo de render principal y rompía la

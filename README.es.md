@@ -34,8 +34,9 @@ funciona. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 | **Sensores térmicos THS** (5 zonas: cpu_l / cpu_b / gpu / npu / ddr) | ✅ lectura en sysfs/hwmon + trip crítico 110 °C |
 | **cpufreq/DVFS de CPU** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + throttling térmico a 90 °C | ✅ |
 | **devfreq/DVFS de GPU** (Panfrost, 150–600 MHz) + throttling térmico | ✅ |
+| **eMMC** (almacenamiento MMC) | ✅ detectada + lectura/escritura HS200 (confirmado por un tester); arrancar *desde* eMMC aún sin cablear |
 
-Decodificación de vídeo por hardware (VPU) **no** incluida (no hay driver en 6.18).
+Decodificación de vídeo por hardware (VPU) **no** incluida (no hay driver en 6.18). La **variante de 4 GB está confirmada funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la eMMC; el bootloader auto-detecta el tamaño de RAM).
 
 ## Notas de la imagen (Debian 13)
 

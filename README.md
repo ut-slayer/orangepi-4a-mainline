@@ -34,8 +34,9 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 | **CPU cpufreq/DVFS** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + thermal throttling at 90 °C | ✅ |
 | **Asymmetric CPU topology** (cpu-map + capacity-dmips-mhz 922/1024 + EAS energy model) | ✅ big cluster preferred for heavy tasks |
 | **GPU devfreq/DVFS** (Panfrost, 150–600 MHz) + thermal throttling | ✅ |
+| **eMMC** (MMC storage) | ✅ detected + HS200 read/write (confirmed by a tester); booting *from* eMMC not wired up yet |
 
-Hardware video decode (VPU) is **not** included (no driver in 6.18).
+Hardware video decode (VPU) is **not** included (no driver in 6.18). The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who also confirmed the eMMC; the bootloader auto-detects the RAM size).
 
 ## Image notes (Debian 13)
 

@@ -85,19 +85,20 @@ reboot/poweroff, AFBC scanout.
 
 **Known not working / untested:**
 
-- **4GB variant: expected to work, unconfirmed on real hardware.** The
-  bootloader auto-detects the RAM size and fills in `/memory` at boot
-  (mechanism verified over UART on the 2GB board). I only own the 2GB
-  variant — if you have the 4GB one, please confirm with `free -h` and open
-  an issue either way. (The board ships only in 2GB and 4GB — there is no 1GB.)
+- **4GB variant: confirmed working.** The bootloader auto-detects the RAM
+  size and fills in `/memory` at boot — verified over UART on the 2GB board,
+  and confirmed on a 4GB board by a tester (`free -m` reported ~3.8 GB).
+  (The board ships only in 2GB and 4GB — there is no 1GB.)
 - Analog line-out and microphone capture: wired in the codec driver but **not
   bench-tested yet** (the board has no onboard speaker/mic to try them on).
   The 3.5 mm **headphone** output and jack detection do work.
 - Suspend/hibernate: untested.
-- Boot from eMMC / NVMe SSD: completely untested — I don't own an eMMC module
-  or an NVMe drive, so everything has only been tested **from microSD**. If
-  you try either, please report back (works or not). Getting the hardware to
-  support this properly is the kind of thing the Ko-fi tips go towards.
+- eMMC: the module is **detected and works at HS200** (read/write) — confirmed
+  on real hardware by a tester (a 58 GB eMMC came up as `mmcblk2` and was used
+  as storage — thanks to **JamesCL** for testing the eMMC and the 4 GB board! 🙏). **Booting from eMMC** is a separate step that isn't wired up yet
+  — the image is set up to boot from microSD. **NVMe / M.2 SSD:** still untested
+  (I don't own one). Reports welcome either way — getting hardware to test this
+  properly is the kind of thing the Ko-fi tips go towards.
 - GPIO header / I2C / SPI: untested.
 - NPU: the etnaviv driver recognizes it, but it is blacklisted by default
   (when loaded it registered itself as the main render device and broke GPU
