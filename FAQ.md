@@ -60,10 +60,21 @@ support the Mali-G57 well enough yet. GL ES is what the desktop and most apps
 use, so day-to-day this isn't a problem.
 
 **Hardware video decode (VPU)?**
-Not available — there is no VPU driver in mainline 6.18 for this SoC, and
-writing one is not on my roadmap. Video plays through software decoding,
-which works fine for typical desktop use. If mainline (cedrus) gains support
-for this SoC family someday, I'll integrate it.
+Not available yet — there is no VPU driver in mainline for this SoC family, so
+video plays through software decoding, which works fine for typical desktop use.
+
+I originally decided **not** to work on the VPU, because I believed it couldn't
+help with YouTube (which uses VP9/AV1). **That turned out to be wrong**: the T527
+datasheet lists **VP9 hardware decode up to 4K@60**, and VP9 is YouTube's main
+codec. So I've changed my mind and have started digging into it. Very early days
+— no ETA and no promises. (AV1 is not supported in hardware by any Allwinner SoC,
+but YouTube serves VP9 to clients without AV1.)
+
+One important caveat on the approach: it uses **Allwinner's own userspace** (the
+CedarX / libcedarc libraries). On this SoC the codec programming logic lives in
+that closed vendor blob rather than in the kernel, so this would **not** be a
+fully open mainline V4L2 / cedrus driver — it's the vendor stack. If you want a
+fully open path, that's a different (and much larger) job.
 
 **YouTube?**
 Works with software decoding (there's no hardware VPU). In a window, 720p is

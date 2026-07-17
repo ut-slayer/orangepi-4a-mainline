@@ -53,10 +53,23 @@ forzar nada). Si aun así tu monitor no muestra nada, prueba primero otro cable
 o entrada HDMI, y luego abre un *issue* con el modelo del monitor.
 
 **¿Decodificación de vídeo por hardware (VPU)?**
-No disponible — no hay driver de VPU en mainline 6.18 para este SoC, y escribir
-uno no está en mi hoja de ruta. El vídeo se reproduce por decodificación
-software, que va bien para uso de escritorio normal. Si algún día mainline
-(cedrus) gana soporte para esta familia de SoC, lo integraré.
+Todavía no — no hay driver de VPU en mainline para esta familia de SoC, así que
+el vídeo se reproduce por decodificación software, que va bien para uso de
+escritorio normal.
+
+Al principio decidí **no** meterme con el VPU, porque creía que no serviría para
+YouTube (que usa VP9/AV1). **Resultó ser falso**: el datasheet del T527 lista
+**decodificación VP9 por hardware hasta 4K@60**, y VP9 es el códec principal de
+YouTube. Así que he cambiado de opinión y he empezado a investigarlo. Muy al
+principio — sin ETA y sin promesas. (AV1 no va por hardware en ningún SoC de
+Allwinner, pero YouTube sirve VP9 a los clientes que no tienen AV1.)
+
+Un matiz importante sobre el enfoque: usa el **userspace propio de Allwinner**
+(las librerías CedarX / libcedarc). En este SoC la lógica de programación del
+códec vive en ese blob cerrado del fabricante, no en el kernel, así que **no**
+sería un driver mainline V4L2 / cedrus totalmente abierto — es el stack del
+fabricante. Si lo que quieres es una vía 100% abierta, eso es otro trabajo (y
+mucho mayor).
 
 **¿YouTube?**
 Funciona por software. <!-- TODO: indicar lo verificado, p.ej. "720p fluido en
