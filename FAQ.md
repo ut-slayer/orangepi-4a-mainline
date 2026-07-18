@@ -89,10 +89,19 @@ See the full status table in the README. Short version — working: HDMI KMS +
 audio + native HPD/hotplug, the **3.5 mm headphone jack** (analog codec, with
 jack detection/hotplug), Mali-G57 via Panfrost (accelerated Plasma
 Wayland), WiFi 2.4/5 GHz, Bluetooth, gigabit ethernet, the 4 rear USB 2.0
-ports (all USB 2.0 — the SoC's USB3 lane is not wired on this board; HID +
+ports (all USB 2.0 — see "Why is there no USB 3.0?" below; HID +
 storage, hotplug), the THS thermal sensors (5 zones: cpu_l/cpu_b/gpu/npu/ddr),
 CPU cpufreq/DVFS and GPU devfreq (both with thermal throttling),
 reboot/poweroff, AFBC scanout.
+
+**Why is there no USB 3.0? All the USB-A ports are 2.0.**
+Board design, not a software limitation. The T527 has a **single high-speed
+SerDes lane**, driven by a combo PHY that can operate either as USB 3.0 *or*
+as PCIe — one or the other, never both at once. Orange Pi wired that lane to
+the **M.2 slot**, so the 4A spends it on NVMe instead of USB 3.0. Every USB
+port on the board is USB 2.0 (480 Mbps); the vendor Android/BSP images have
+the same limitation, and no kernel update can change it. If you need fast
+external storage on this board, the M.2 NVMe slot is the way.
 
 **Known not working / untested:**
 
@@ -107,9 +116,12 @@ reboot/poweroff, AFBC scanout.
 - eMMC: the module is **detected and works at HS200** (read/write) — confirmed
   on real hardware by a tester (a 58 GB eMMC came up as `mmcblk2` and was used
   as storage — thanks to **JamesCL** for testing the eMMC and the 4 GB board! 🙏). **Booting from eMMC** is a separate step that isn't wired up yet
-  — the image is set up to boot from microSD. **NVMe / M.2 SSD:** still untested
-  (I don't own one). Reports welcome either way — getting hardware to test this
-  properly is the kind of thing the Ko-fi tips go towards.
+  — the image is set up to boot from microSD. **NVMe / M.2 SSD: does not work
+  yet** — the kernel is still missing the T527 PCIe controller/PHY drivers, so
+  the bus doesn't enumerate and nothing shows up in `lspci` (thanks to the
+  tester who diagnosed exactly this and reported it!). PCIe bring-up is in
+  progress for a future release. I still don't own an NVMe drive to test with
+  — getting hardware for this is the kind of thing the Ko-fi tips go towards.
 - GPIO header / I2C / SPI: untested.
 - NPU: the etnaviv driver recognizes it, but it is blacklisted by default
   (when loaded it registered itself as the main render device and broke GPU

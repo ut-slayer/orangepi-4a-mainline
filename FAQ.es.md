@@ -81,10 +81,20 @@ Consulta la tabla completa de estado en el README. Versión corta — funcionand
 HDMI KMS + audio + HPD/hotplug nativo, el **jack de auriculares de 3,5 mm**
 (códec analógico, con detección/hotplug de jack), Mali-G57 por Panfrost (Plasma
 Wayland acelerado), WiFi 2.4/5 GHz, Bluetooth, ethernet gigabit, los 4 puertos USB 2.0
-traseros (todos USB 2.0 — la línea USB3 del SoC no está cableada en esta placa;
+traseros (todos USB 2.0 — ver "¿Por qué no hay USB 3.0?" más abajo;
 HID + almacenamiento, hotplug), los sensores térmicos THS (5 zonas:
 cpu_l/cpu_b/gpu/npu/ddr), cpufreq/DVFS de CPU y devfreq de GPU (ambos con
 throttling térmico), reboot/poweroff, AFBC scanout.
+
+**¿Por qué no hay USB 3.0? Todos los puertos USB-A son 2.0.**
+Es diseño de la placa, no una limitación del software. El T527 tiene **una
+única lane SerDes de alta velocidad**, gobernada por un PHY combo que puede
+funcionar como USB 3.0 *o* como PCIe — una cosa o la otra, nunca ambas a la
+vez. Orange Pi cableó esa lane a la **ranura M.2**, así que la 4A la gasta en
+NVMe en vez de en USB 3.0. Todos los puertos USB de la placa son USB 2.0
+(480 Mbps); las imágenes Android/BSP del fabricante tienen la misma
+limitación, y ninguna actualización del kernel puede cambiarlo. Si necesitas
+almacenamiento externo rápido en esta placa, el camino es la ranura M.2 NVMe.
 
 **No funciona / sin probar:**
 
@@ -101,9 +111,12 @@ throttling térmico), reboot/poweroff, AFBC scanout.
   confirmado en hardware real por un tester (una eMMC de 58 GB apareció como
   `mmcblk2` y se usó como almacenamiento — ¡gracias a **JamesCL** por probar la eMMC y la placa de 4 GB! 🙏). **Arrancar desde eMMC** es un paso
   aparte que aún no está cableado — la imagen está preparada para arrancar
-  desde microSD. **SSD NVMe / M.2:** aún sin probar (no tengo ninguno). Se
-  agradecen reportes — conseguir el hardware para probar esto bien es justo el
-  tipo de cosa a la que van las propinas de Ko-fi.
+  desde microSD. **SSD NVMe / M.2: aún NO funciona** — al kernel todavía le
+  faltan los drivers del controlador PCIe/PHY del T527, así que el bus no
+  enumera y no aparece nada en `lspci` (¡gracias al tester que diagnosticó
+  exactamente esto y lo reportó!). El bring-up de PCIe está en marcha para una
+  versión futura. Sigo sin tener un SSD NVMe con el que probar — conseguir el
+  hardware para esto es justo el tipo de cosa a la que van las propinas de Ko-fi.
 - Cabecera GPIO / I2C / SPI: sin probar.
 - NPU: el driver etnaviv la reconoce, pero está en la blacklist por defecto
   (al cargarla se anunciaba como el dispositivo de render principal y rompía la

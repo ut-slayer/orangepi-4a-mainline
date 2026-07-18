@@ -29,14 +29,14 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 | **WiFi AP6256** (BCM43456, brcmfmac, SDIO) | ✅ 2.4/5 GHz scan, association |
 | **reboot / poweroff** (sunxi_wdt / AXP717) | ✅ |
 | **AFBC scanout** (v350 AFBD decoder) | ✅ |
-| **USB** (4 rear Type-A ports — all USB 2.0: the board doesn't wire the SoC's USB3, the vendor leaves it disabled) | ✅ HID (keyboard/mouse) + mass storage + hotplug; the OTG pair works as host |
+| **USB** (4 rear Type-A ports — all USB 2.0: the SoC's single USB3/PCIe combo lane goes to the M.2 slot, so this board has no USB 3.0 at all; see the FAQ) | ✅ HID (keyboard/mouse) + mass storage + hotplug; the OTG pair works as host |
 | **THS thermal sensors** (5 zones: cpu_l / cpu_b / gpu / npu / ddr) | ✅ sysfs/hwmon readout + 110 °C critical trip |
 | **CPU cpufreq/DVFS** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + thermal throttling at 90 °C | ✅ |
 | **Asymmetric CPU topology** (cpu-map + capacity-dmips-mhz 922/1024 + EAS energy model) | ✅ big cluster preferred for heavy tasks |
 | **GPU devfreq/DVFS** (Panfrost, 150–600 MHz) + thermal throttling | ✅ |
 | **eMMC** (MMC storage) | ✅ detected + HS200 read/write (confirmed by a tester); booting *from* eMMC not wired up yet |
 
-Hardware video decode (VPU) is **not** included (no driver in 6.18). The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who also confirmed the eMMC; the bootloader auto-detects the RAM size).
+Hardware video decode (VPU) is **not** included (no driver in 6.18). **NVMe / M.2 does not work yet**: the kernel is still missing the T527 PCIe controller/PHY drivers, so the bus doesn't enumerate (diagnosed by a tester — PCIe bring-up is in progress). The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who also confirmed the eMMC; the bootloader auto-detects the RAM size).
 
 ## Image notes (Debian 13)
 

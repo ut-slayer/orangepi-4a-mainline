@@ -30,13 +30,13 @@ funciona. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 | **WiFi AP6256** (BCM43456, brcmfmac, SDIO) | ✅ scan 2.4/5 GHz, asociación |
 | **reboot / poweroff** (sunxi_wdt / AXP717) | ✅ |
 | **AFBC scanout** (decodificador AFBD del v350) | ✅ |
-| **USB** (4 puertos-A traseros — todos USB 2.0: la placa no cablea el USB3 del SoC, el vendor lo deja deshabilitado) | ✅ HID (teclado/ratón) + almacenamiento masivo + hotplug; el par OTG funciona como host |
+| **USB** (4 puertos-A traseros — todos USB 2.0: la única lane combo USB3/PCIe del SoC va a la ranura M.2, así que esta placa no tiene USB 3.0 en absoluto; ver FAQ) | ✅ HID (teclado/ratón) + almacenamiento masivo + hotplug; el par OTG funciona como host |
 | **Sensores térmicos THS** (5 zonas: cpu_l / cpu_b / gpu / npu / ddr) | ✅ lectura en sysfs/hwmon + trip crítico 110 °C |
 | **cpufreq/DVFS de CPU** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + throttling térmico a 90 °C | ✅ |
 | **devfreq/DVFS de GPU** (Panfrost, 150–600 MHz) + throttling térmico | ✅ |
 | **eMMC** (almacenamiento MMC) | ✅ detectada + lectura/escritura HS200 (confirmado por un tester); arrancar *desde* eMMC aún sin cablear |
 
-Decodificación de vídeo por hardware (VPU) **no** incluida (no hay driver en 6.18). La **variante de 4 GB está confirmada funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la eMMC; el bootloader auto-detecta el tamaño de RAM).
+Decodificación de vídeo por hardware (VPU) **no** incluida (no hay driver en 6.18). **NVMe / M.2 aún NO funciona**: al kernel le faltan los drivers del controlador PCIe/PHY del T527, así que el bus no enumera (diagnosticado por un tester — el bring-up de PCIe está en marcha). La **variante de 4 GB está confirmada funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la eMMC; el bootloader auto-detecta el tamaño de RAM).
 
 ## Notas de la imagen (Debian 13)
 
