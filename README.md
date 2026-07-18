@@ -142,6 +142,28 @@ network bring-up…). If it helped with your Orange Pi 4A, you can buy me a coff
   **taken from the BSP, not invented**; where mainline lacked support, driver logic was
   ported/adapted from it (CPU CCU, THS, DVFS/OPP tables, USB VBUS, poweroff, display).
 
+## Thanks — testers & community
+
+This project became real the day other people started putting it on their own
+boards. Thank you:
+
+- **JamesCL** (Armbian forum) — confirmed the **4 GB variant** and the
+  **eMMC (HS200)** with detailed reports (dmesg, lsblk), and is helping figure
+  out booting from eMMC.
+- **L. Jorge Soares** (Armbian forum) — first independent validation of both
+  v0.2 images (CLI and KDE: Wi-Fi, HDMI, YouTube, audio), plus serial-console
+  logs to help debug eMMC boot.
+- **bickns** (Armbian forum) — early feedback on the patch series and testing
+  it against Armbian builds.
+- **Nick_Sl** (Armbian forum) — asked for the CLI/headless image and
+  volunteered to test it. It exists because of that.
+- **defencedog** (GitHub) — maintainer of the other community repo for this
+  board, for the generous offer to collaborate and for sharing his VPU/GStreamer
+  work.
+
+If you test an image or a patch and report back — success *or* failure — you
+are doing bring-up with me, and your name belongs here too.
+
 ## License
 
 These patches derive from the Linux kernel and are distributed under the same

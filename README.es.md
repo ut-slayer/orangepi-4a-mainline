@@ -142,6 +142,27 @@ audio, red…). Si te ha servido para tu Orange Pi 4A, puedes invitarme a un caf
   soporte, la lógica de los drivers se portó/adaptó de ahí (CCU de CPU, THS, tablas OPP/DVFS,
   VBUS de USB, poweroff, display).
 
+## Agradecimientos — testers y comunidad
+
+Este proyecto se hizo de verdad el día en que otras personas empezaron a ponerlo
+en sus propias placas. Gracias:
+
+- **JamesCL** (foro de Armbian) — confirmó la **variante de 4 GB** y la
+  **eMMC (HS200)** con reportes detallados (dmesg, lsblk), y está ayudando a
+  descifrar el arranque desde eMMC.
+- **L. Jorge Soares** (foro de Armbian) — primera validación independiente de
+  las dos imágenes v0.2 (CLI y KDE: Wi-Fi, HDMI, YouTube, audio), además de logs
+  de consola serie para ayudar a depurar el arranque desde eMMC.
+- **bickns** (foro de Armbian) — feedback temprano sobre la serie de parches y
+  pruebas contra builds de Armbian.
+- **Nick_Sl** (foro de Armbian) — pidió la imagen CLI/headless y se ofreció a
+  probarla. Existe gracias a eso.
+- **defencedog** (GitHub) — mantenedor del otro repo comunitario de esta placa,
+  por su generosa oferta de colaborar y por compartir su trabajo de VPU/GStreamer.
+
+Si pruebas una imagen o un parche y reportas — éxito *o* fallo — estás haciendo
+bring-up conmigo, y tu nombre también pertenece aquí.
+
 ## Nota sobre el método
 
 Parte de este trabajo se hizo **con ayuda de agentes de IA**. Es justo por eso por lo que se
