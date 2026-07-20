@@ -5,7 +5,7 @@
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee%20%E2%98%95-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/aurealnix)
 
 **Mainline** support for the Orange Pi 4A (Allwinner **T527** SoC, A523 family /
-`sun55iw3`), on a **vanilla 6.18.38** kernel. A 106-patch series + `defconfig` +
+`sun55iw3`), on a **vanilla 6.18.38** kernel. A 131-patch series + `defconfig` +
 the board device-tree. The ports from the community minimyth2 series keep their
 original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 
@@ -14,6 +14,13 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 
 **Latest image: v0.2** — analog audio / 3.5 mm headphone jack now works. See
 [CHANGELOG.md](CHANGELOG.md) for release history.
+
+> **Heads-up:** the patch series has moved well ahead of the published images
+> (GPU clock fix, PCIe bring-up, hardware video decode…). **Refreshed Debian
+> images — Desktop and CLI — built on this kernel are in preparation.** No date
+> promised; they land on the [Releases](../../releases) page when they are
+> tested. In the meantime you can build the current kernel yourself with the
+> patches here.
 
 ## What works (confirmed on hardware)
 
@@ -78,7 +85,7 @@ Decisions made in the distributed image (these are not kernel patches):
 
 ## Contents
 
-- `patches/` — `git format-patch` series (0001–0106).
+- `patches/` — `git format-patch` series (0001–0131).
 - `opi4a_blindboot_defconfig` — for `arch/arm64/configs/`.
 - `sun55i-t527-orangepi-4a.dts` — board device-tree.
 
