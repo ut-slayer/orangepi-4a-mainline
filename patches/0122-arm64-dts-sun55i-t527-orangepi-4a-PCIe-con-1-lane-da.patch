@@ -1,7 +1,7 @@
 From 779042fcbbdf2ff88fea3568a10a418566835aea Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 18 Jul 2026 06:01:18 +0200
-Subject: [PATCH 122/131] arm64: dts: sun55i-t527-orangepi-4a: PCIe con 1 lane
+Subject: [PATCH 122/129] arm64: dts: sun55i-t527-orangepi-4a: PCIe con 1 lane
  (dato del BSP)
 
 El parche de armbian ponia num-lanes = <2>, pero la fuente de verdad

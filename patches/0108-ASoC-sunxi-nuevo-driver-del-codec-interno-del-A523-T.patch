@@ -1,7 +1,7 @@
 From c9f3a66c106fd00d0f718de17e8e34ee78e77f70 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 15 Jul 2026 17:04:27 +0200
-Subject: [PATCH 108/131] ASoC: sunxi: nuevo driver del codec interno del
+Subject: [PATCH 108/129] ASoC: sunxi: nuevo driver del codec interno del
  A523/T527 (sun55i-a523-codec)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

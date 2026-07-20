@@ -1,7 +1,7 @@
 From 2281838e87ac7565dac037441668c790cf24d626 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 23 Jun 2026 12:57:24 +0200
-Subject: [PATCH 005/131] dts: opi4a: reservar BL31 @0x48000000 (16MB no-map)
+Subject: [PATCH 005/129] dts: opi4a: reservar BL31 @0x48000000 (16MB no-map)
 
 El BSP reserva esa region para BL31 (ATF, monitor EL3/PSCI). El DTB mainline
 no reservaba nada y su /memory(2GB) la abarca -> el kernel la usa como RAM y

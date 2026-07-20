@@ -1,7 +1,7 @@
 From 4dccd4f40c35b96a737c5a0a3ca71e64ade05a7c Mon Sep 17 00:00:00 2001
 From: Marvin Wewer <mwewer37@proton.me>
 Date: Tue, 9 Dec 2025 16:43:16 +0000
-Subject: [PATCH 117/131] clk: sunxi-ng: add A523 USB3 ref clock and reset
+Subject: [PATCH 117/129] clk: sunxi-ng: add A523 USB3 ref clock and reset
 
 Signed-off-by: Marvin Wewer <mwewer37@proton.me>
 [aplicado a display-kms: CLK_USB3_REF reasignado de 180 a 181 porque esta

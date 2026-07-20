@@ -1,7 +1,7 @@
 From 4da3cc85a5450bff8d2e34ed5233a3cf44bb4444 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 23:21:10 +0200
-Subject: [PATCH 082/131] arm64: dts: sun55i-t527-orangepi-4a: keep OTG VBUS
+Subject: [PATCH 082/129] arm64: dts: sun55i-t527-orangepi-4a: keep OTG VBUS
  always-on (fix 2 USB ports)
 
 The usbc0 complex feeds the two left-hand rear USB-A ports, powered by the

@@ -1,7 +1,7 @@
 From a5b246124fdc2aebdd0c727258e1399ec5632f2d Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:25:39 +0200
-Subject: [PATCH 072/131] iommu/sun50i: tanda de fixes de la auditoria
+Subject: [PATCH 072/129] iommu/sun50i: tanda de fixes de la auditoria
  (A6/M5/M6/M7/M8)
 
 A6: restaurar SLAB_CACHE_DMA32 en el pool de tablas L2 y reactivar el

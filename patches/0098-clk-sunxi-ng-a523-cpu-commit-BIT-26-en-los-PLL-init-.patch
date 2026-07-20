@@ -1,7 +1,7 @@
 From cfafa4127a4f3553948999262f3a479b6a58a0e8 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 03:12:14 +0200
-Subject: [PATCH 098/131] clk: sunxi-ng: a523 cpu: commit BIT(26) en los PLL +
+Subject: [PATCH 098/129] clk: sunxi-ng: a523 cpu: commit BIT(26) en los PLL +
  init de probe del BSP
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

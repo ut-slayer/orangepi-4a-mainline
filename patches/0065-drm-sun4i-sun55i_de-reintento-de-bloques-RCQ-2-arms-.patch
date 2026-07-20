@@ -1,7 +1,7 @@
 From f25067eca07c4ca506df7f26e5659ec0fb851be1 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 15:25:57 +0200
-Subject: [PATCH 065/131] drm/sun4i: sun55i_de: reintento de bloques RCQ (2
+Subject: [PATCH 065/129] drm/sun4i: sun55i_de: reintento de bloques RCQ (2
  arms por cambio staged)
 
 Un load del RCQ puede dropear bloques individuales (el motivo original

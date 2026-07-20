@@ -1,7 +1,7 @@
 From 0c066807dac85b72652b4f079db6ce4b4d84709c Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:55 +0200
-Subject: [PATCH 034/131] drm/sun4i: sun55i_de: bypass del VSU en capas sin
+Subject: [PATCH 034/129] drm/sun4i: sun55i_de: bypass del VSU en capas sin
  escalado (minimyth2 2729)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2

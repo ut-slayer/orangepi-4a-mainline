@@ -4,7 +4,7 @@
 
 ## 2026-07-20 — patch series update (no new image yet)
 
-131 patches (was 106). Everything below has been running on the board for a full
+129 patches (was 106). Everything below has been running on the board for a full
 day without regressions. **No new image is published yet** — these are kernel
 patches; the next image release will fold them in.
 

@@ -1,7 +1,7 @@
 From 4f4365a3ca5ec5c050fd01fcbd76dbfb4044e25b Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 14:28:10 +0200
-Subject: [PATCH 062/131] Revert "drm/sun4i: sun55i_de: pulso de reset del DE
+Subject: [PATCH 062/129] Revert "drm/sun4i: sun55i_de: pulso de reset del DE
  en mode_set (fix wedge MBUS)"
 
 This reverts commit 8ffd879ddd0df838fc49333b70714d0602e8be97.

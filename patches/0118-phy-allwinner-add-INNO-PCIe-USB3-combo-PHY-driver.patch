@@ -1,7 +1,7 @@
 From 38f5f2840a96348a7d14f471402f8259cad12b0b Mon Sep 17 00:00:00 2001
 From: Marvin Wewer <mwewer37@proton.me>
 Date: Fri, 27 Jun 2025 12:40:09 +0200
-Subject: [PATCH 118/131] phy: allwinner: add INNO PCIe/USB3 combo PHY driver
+Subject: [PATCH 118/129] phy: allwinner: add INNO PCIe/USB3 combo PHY driver
 
 Signed-off-by: Marvin Wewer <mwewer37@proton.me>
 [aplicado a display-kms: los hunks de Kconfig/Makefile venian contra el

@@ -1,7 +1,7 @@
 From 0a3e7caeff2258dadfccb5ab688c2447ecda2736 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 17 Jul 2026 14:54:32 +0200
-Subject: [PATCH 114/131] iommu: sun50i: A523: translate the VPU masters
+Subject: [PATCH 114/129] iommu: sun50i: A523: translate the VPU masters
  (VE0/VE1, bits 2-3)
 
 The A523 variant keeps the BSP opt-in bypass scheme: every master is

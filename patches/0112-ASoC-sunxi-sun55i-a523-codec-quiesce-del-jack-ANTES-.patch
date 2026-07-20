@@ -1,7 +1,7 @@
 From 40e6ad1c50d327d3a3dae656406f327cbf81097c Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 16 Jul 2026 00:45:59 +0200
-Subject: [PATCH 112/131] ASoC: sunxi: sun55i-a523-codec: quiesce del jack
+Subject: [PATCH 112/129] ASoC: sunxi: sun55i-a523-codec: quiesce del jack
  ANTES de destruir la card
 
 Auditoria del port: devm_add_action_or_reset(quiesce) se registraba antes

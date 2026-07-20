@@ -1,7 +1,7 @@
 From 7bce05fce5f2d5b8047020ac86a43a0c8c01ba3b Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 01:08:59 +0200
-Subject: [PATCH 087/131] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20a=C3=B1a?=
+Subject: [PATCH 087/129] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20a=C3=B1a?=
  =?UTF-8?q?dir=20THS=20y=20thermal-zones?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

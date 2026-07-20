@@ -1,7 +1,7 @@
 From 020badb8b4f383da8b4083e5fafe5d80c564ace7 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 01:46:18 +0200
-Subject: [PATCH 009/131] dts: opi4a: RGMII rx-id (la PHY pone el delay de RX)
+Subject: [PATCH 009/129] dts: opi4a: RGMII rx-id (la PHY pone el delay de RX)
 
 rx_packets=0 con phy-mode rgmii (RX sin delay: la PCB no lo aporta y el
 syscon no basta). La PHY YT8531 pone ~2ns de delay de RX via rgmii-rxid;

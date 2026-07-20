@@ -1,7 +1,7 @@
 From 518fb6f7bcc84e68cced84f58e2813f24d9a8e10 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 19 Jul 2026 03:34:31 +0200
-Subject: [PATCH 126/131] config: activar INPUT_JOYDEV=y (los sticks del mapper
+Subject: [PATCH 126/129] config: activar INPUT_JOYDEV=y (los sticks del mapper
  de gamepad del AN1)
 
 El aurealnix-gamemap esta disenado joydev-first (/dev/input/jsN, ioctls

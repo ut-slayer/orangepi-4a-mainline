@@ -1,7 +1,7 @@
 From d12b305c668acf86513bce8f4696569b8c5e209b Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:51:29 +0200
-Subject: [PATCH 078/131] drm/sun4i: sun55i_de: retries autosuficientes sin
+Subject: [PATCH 078/129] drm/sun4i: sun55i_de: retries autosuficientes sin
  vblank IRQ + guardas AFBD (auditoria M3/B5/B12)
 
 M3: los retries del arm (arms_left/full_arms_left) y el envejecimiento

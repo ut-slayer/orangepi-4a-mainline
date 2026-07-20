@@ -1,7 +1,7 @@
 From f83d11cbc9c09be253946509168f464fe6bbc94d Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 15 Jul 2026 17:04:50 +0200
-Subject: [PATCH 111/131] config: activar SND_SUN55I_A523_CODEC=m (codec
+Subject: [PATCH 111/129] config: activar SND_SUN55I_A523_CODEC=m (codec
  analogico A523)
 
 Como el resto del audio (SND_SUN4I_I2S=m), en modulo. Arrastra el PCM

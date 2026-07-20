@@ -1,7 +1,7 @@
 From 9594a0302e796afcd43e2016cbf088b669549581 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 15 Jul 2026 17:04:50 +0200
-Subject: [PATCH 110/131] arm64: dts: sun55i-t527-orangepi-4a: habilitar el
+Subject: [PATCH 110/129] arm64: dts: sun55i-t527-orangepi-4a: habilitar el
  codec analogico (jack 3,5mm)
 
 Habilita el codec interno con los valores de placa del nodo &codec del

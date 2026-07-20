@@ -1,7 +1,7 @@
 From bf2801d45415406e536353985d5d7d20e357aab4 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 12 Jul 2026 15:01:02 +0200
-Subject: [PATCH 067/131] drm/sun4i: sun55i_de: AFBC apagado por defecto
+Subject: [PATCH 067/129] drm/sun4i: sun55i_de: AFBC apagado por defecto
  (modparam afbc, decode WIP)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

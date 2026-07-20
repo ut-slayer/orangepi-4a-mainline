@@ -1,7 +1,7 @@
 From bb780936b01979679ef0897b9170d198917597db Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 18:49:27 +0200
-Subject: [PATCH 054/131] drm/sun4i: sun55i_de: quiesce v4 = gate+reset del
+Subject: [PATCH 054/129] drm/sun4i: sun55i_de: quiesce v4 = gate+reset del
  nucleo disp (fix definitivo modeset)
 
 El quiesce por RCQ (commit anterior) no podia funcionar: cuando el

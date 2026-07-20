@@ -1,7 +1,7 @@
 From b3578f91aa6255cfe66b140b02ca6605e91998e0 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 03:12:13 +0200
-Subject: [PATCH 097/131] clk: sunxi-ng: handshake de update de factores
+Subject: [PATCH 097/129] clk: sunxi-ng: handshake de update de factores
  (CCU_FEATURE_CLEAR_MOD)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

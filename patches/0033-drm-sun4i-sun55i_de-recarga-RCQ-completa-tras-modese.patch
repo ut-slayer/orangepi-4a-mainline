@@ -1,7 +1,7 @@
 From 16ae362e08fb068f52a6d93f871fb6168c062460 Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:55 +0200
-Subject: [PATCH 033/131] drm/sun4i: sun55i_de: recarga RCQ completa tras
+Subject: [PATCH 033/129] drm/sun4i: sun55i_de: recarga RCQ completa tras
  modeset (minimyth2 2728)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2

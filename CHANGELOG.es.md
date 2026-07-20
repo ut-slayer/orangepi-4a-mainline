@@ -4,7 +4,7 @@
 
 ## 2026-07-20 — actualización de la serie de parches (todavía sin imagen nueva)
 
-131 parches (antes 106). Todo lo de abajo lleva un día entero corriendo en la
+129 parches (antes 106). Todo lo de abajo lleva un día entero corriendo en la
 placa sin regresiones. **Aún no se publica imagen nueva** — esto son parches de
 kernel; la próxima release de imagen los incorporará.
 

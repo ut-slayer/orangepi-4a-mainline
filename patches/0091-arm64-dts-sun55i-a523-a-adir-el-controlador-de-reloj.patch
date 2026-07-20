@@ -1,7 +1,7 @@
 From c29fbc90369790458c5a74bd7904eb9e8a26a245 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 01:59:05 +0200
-Subject: [PATCH 091/131] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20a=C3=B1a?=
+Subject: [PATCH 091/129] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20a=C3=B1a?=
  =?UTF-8?q?dir=20el=20controlador=20de=20reloj=20de=20CPU?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

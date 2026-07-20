@@ -1,7 +1,7 @@
 From 40dd9044819fad6924a129206bf051418518229f Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 05:09:01 +0200
-Subject: [PATCH 105/131] arm64: dts: sun55i-a523: GPU como cooling device de
+Subject: [PATCH 105/129] arm64: dts: sun55i-a523: GPU como cooling device de
  su zona termica
 
 La GPU pasa a ser refrigerable: #cooling-cells en el nodo gpu y

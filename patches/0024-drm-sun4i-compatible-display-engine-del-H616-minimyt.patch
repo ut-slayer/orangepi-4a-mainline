@@ -1,7 +1,7 @@
 From 0d88879eb474578f4fd3fb7fb9801a3ac0fdeeec Mon Sep 17 00:00:00 2001
 From: Jernej Skrabec <jernej.skrabec@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:05 +0200
-Subject: [PATCH 024/131] drm/sun4i: compatible display-engine del H616
+Subject: [PATCH 024/129] drm/sun4i: compatible display-engine del H616
  (minimyth2 2407)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2

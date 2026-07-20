@@ -1,7 +1,7 @@
 From 4cf691ba7fa85204f8ae144f011d53b2e1279b08 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:09:42 +0200
-Subject: [PATCH 038/131] dts: opi4a: habilitar el pipeline HDMI KMS + CMA en
+Subject: [PATCH 038/129] dts: opi4a: habilitar el pipeline HDMI KMS + CMA en
  DRAM baja
 
 Enable de &de/&hdmi + hdmi-connector (adaptado de minimyth2 2903, que

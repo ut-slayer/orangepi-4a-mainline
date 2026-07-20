@@ -1,7 +1,7 @@
 From ddbedd4335835021e0ca2aa4fb9ecc57b94a7f51 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 01:24:07 +0200
-Subject: [PATCH 007/131] dts: opi4a: habilitar Ethernet GMAC1/GMAC200 (PHY
+Subject: [PATCH 007/129] dts: opi4a: habilitar Ethernet GMAC1/GMAC200 (PHY
  YT8531, rgmii-id)
 
 Anade el nodo gmac1@4510000 (allwinner,sun55i-a523-gmac200) + rgmii1_pins

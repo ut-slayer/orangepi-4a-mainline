@@ -1,7 +1,7 @@
 From 1be6b9ffed7ea5028ea907081d1d011c1859ec0c Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 01:08:59 +0200
-Subject: [PATCH 086/131] =?UTF-8?q?thermal:=20sun8i:=20a=C3=B1adir=20sopor?=
+Subject: [PATCH 086/129] =?UTF-8?q?thermal:=20sun8i:=20a=C3=B1adir=20sopor?=
  =?UTF-8?q?te=20del=20THS=20del=20A523=20(T527)?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

@@ -1,7 +1,7 @@
 From 62cd7bad9dae73c0c77ba6baeb737f1195cfc9d9 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 19:41:03 +0200
-Subject: [PATCH 004/131] dts: opi4a: /memory a 2GB (la placa es de 2GB, no
+Subject: [PATCH 004/129] dts: opi4a: /memory a 2GB (la placa es de 2GB, no
  4GB)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

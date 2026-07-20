@@ -1,7 +1,7 @@
 From 6275fa543f28aabef0a1c9d3793baea2e75aea93 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:33:21 +0200
-Subject: [PATCH 075/131] clk: sunxi-ng: a523: NO_REPARENT en el TMDS del HDMI
+Subject: [PATCH 075/129] clk: sunxi-ng: a523: NO_REPARENT en el TMDS del HDMI
  (protege CLK_DE, auditoria M11)
 
 El mux del TMDS (0xb00) lista los 4 PLLs de video y con solo

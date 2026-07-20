@@ -1,7 +1,7 @@
 From 588ed543e055c0c644aff39cea71bdd76334e848 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 19 Jul 2026 22:31:18 +0200
-Subject: [PATCH 128/131] clk: sunxi-ng: sun55i-a523: GPU clock divider is
+Subject: [PATCH 128/129] clk: sunxi-ng: sun55i-a523: GPU clock divider is
  fractional, not linear
 
 The GPU mod clock (0x670) was modelled as a linear M+1 divider, but the

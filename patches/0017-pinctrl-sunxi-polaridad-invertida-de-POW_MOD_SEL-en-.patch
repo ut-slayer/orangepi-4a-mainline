@@ -1,7 +1,7 @@
 From 28294563fd449e9d20134c1384d3553d9d91902c Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 10:53:54 +0200
-Subject: [PATCH 017/131] pinctrl: sunxi: polaridad invertida de POW_MOD_SEL en
+Subject: [PATCH 017/129] pinctrl: sunxi: polaridad invertida de POW_MOD_SEL en
  A523/T527 (io_bias_reverse)
 
 El fixup del probe dejaba los bancos bien, pero al aplicar pinconf de

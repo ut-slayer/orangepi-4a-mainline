@@ -1,7 +1,7 @@
 From 8399073660450b013cfe9d789a93e0cadbfd19f6 Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:55 +0200
-Subject: [PATCH 036/131] arm64: dts: a523: pipeline de display HDMI
+Subject: [PATCH 036/129] arm64: dts: a523: pipeline de display HDMI
  (DE33/tcon-top/tcon-tv/dw-hdmi/phy) (minimyth2 2803)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2

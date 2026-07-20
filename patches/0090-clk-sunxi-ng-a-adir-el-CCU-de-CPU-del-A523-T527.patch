@@ -1,7 +1,7 @@
 From 64d8dfa4e1c6642f89d039ca2ee8915865d5c114 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 01:59:05 +0200
-Subject: [PATCH 090/131] =?UTF-8?q?clk:=20sunxi-ng:=20a=C3=B1adir=20el=20C?=
+Subject: [PATCH 090/129] =?UTF-8?q?clk:=20sunxi-ng:=20a=C3=B1adir=20el=20C?=
  =?UTF-8?q?CU=20de=20CPU=20del=20A523/T527?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

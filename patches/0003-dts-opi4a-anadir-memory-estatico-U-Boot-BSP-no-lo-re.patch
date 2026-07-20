@@ -1,7 +1,7 @@
 From 217ca4bd109291af061303c699e2d5f1e01007bf Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 19:35:07 +0200
-Subject: [PATCH 003/131] dts: opi4a: anadir /memory estatico (U-Boot BSP no lo
+Subject: [PATCH 003/129] dts: opi4a: anadir /memory estatico (U-Boot BSP no lo
  rellena)
 
 El U-Boot v2018.05-t527 no rellena /memory en el FDT (asume DTB con memory

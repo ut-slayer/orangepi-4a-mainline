@@ -1,7 +1,7 @@
 From a8e553b9e99369aacf9ed20b26d4359e8280c539 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 18 Jul 2026 06:01:56 +0200
-Subject: [PATCH 123/131] config: activar PCIE_SUN55I_RC=y + AW_INNO_COMBOPHY=y
+Subject: [PATCH 123/129] config: activar PCIE_SUN55I_RC=y + AW_INNO_COMBOPHY=y
  (PCIe T527)
 
 Controlador PCIe RC sunxi y combo PHY Inno built-in, como el resto del

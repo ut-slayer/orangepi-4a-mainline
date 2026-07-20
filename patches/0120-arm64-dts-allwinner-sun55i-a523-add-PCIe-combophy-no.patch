@@ -1,7 +1,7 @@
 From a1acc1b2ee62cbe93a1307596d176dea5a5eca5b Mon Sep 17 00:00:00 2001
 From: Marvin Wewer <mwewer37@proton.me>
 Date: Mon, 5 Jan 2026 21:41:18 +0000
-Subject: [PATCH 120/131] arm64: dts: allwinner: sun55i-a523: add PCIe/combophy
+Subject: [PATCH 120/129] arm64: dts: allwinner: sun55i-a523: add PCIe/combophy
  nodes
 
 Signed-off-by: Marvin Wewer <mwewer37@proton.me>
