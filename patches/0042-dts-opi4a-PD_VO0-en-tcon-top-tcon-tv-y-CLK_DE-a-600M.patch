@@ -1,7 +1,7 @@
 From 7aad6b373488785e419dc1d51c0ef0a2589a7ab3 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:22:09 +0200
-Subject: [PATCH 042/106] dts: opi4a: PD_VO0 en tcon-top/tcon-tv y CLK_DE a
+Subject: [PATCH 042/131] dts: opi4a: PD_VO0 en tcon-top/tcon-tv y CLK_DE a
  600MHz como el BSP
 
 Hallazgos de la auditoria vs BSP: el dtsi de la serie no reclama la isla
@@ -45,6 +45,3 @@ index 98aca4c7f..8025a1b72 100644
 +	assigned-clock-parents = <&ccu CLK_PLL_VIDEO3_4X>;
 +	assigned-clock-rates = <600000000>;
 +};
--- 
-2.47.3
-

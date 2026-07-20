@@ -33,10 +33,15 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 | **THS thermal sensors** (5 zones: cpu_l / cpu_b / gpu / npu / ddr) | ✅ sysfs/hwmon readout + 110 °C critical trip |
 | **CPU cpufreq/DVFS** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + thermal throttling at 90 °C | ✅ |
 | **Asymmetric CPU topology** (cpu-map + capacity-dmips-mhz 922/1024 + EAS energy model) | ✅ big cluster preferred for heavy tasks |
-| **GPU devfreq/DVFS** (Panfrost, 150–600 MHz) + thermal throttling | ✅ |
+| **GPU devfreq/DVFS** (Panfrost, 150–600 MHz) + thermal throttling | ✅ and now **at the right frequencies** — the A523 GPU divider turned out to be a *cycle-masking* (fractional) one, `rate = source × (16−M)/16`, not a linear divider; measured with the Mali cycle counter |
 | **eMMC** (MMC storage) | ✅ detected + HS200 read/write (confirmed by a tester); booting *from* eMMC not wired up yet |
+| **PCIe / M.2** (DesignWare RC + Innosilicon combo PHY) | ✅ controller and PHY probe, link training runs and the **root port enumerates** — verified here with an **empty** slot. **NVMe with a real drive is still untested** (no drive on hand — testers very welcome) |
 
-Hardware video decode (VPU) is **not** included (no driver in 6.18). **NVMe / M.2 does not work yet**: the kernel is still missing the T527 PCIe controller/PHY drivers, so the bus doesn't enumerate (diagnosed by a tester — PCIe bring-up is in progress). The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who also confirmed the eMMC; the bootloader auto-detects the RAM size).
+Hardware video decode (VPU) is **not** usable yet: this tree ships the `cedar-ve`
+userspace shim and its device-tree/IOMMU plumbing, but the decoding stack around
+it is still early exploration — treat it as work in progress, not a feature.
+The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who
+also confirmed the eMMC; the bootloader auto-detects the RAM size).
 
 ## Image notes (Debian 13)
 
@@ -137,6 +142,11 @@ network bring-up…). If it helped with your Orange Pi 4A, you can buy me a coff
 - Display pipeline bring-up: based on the **minimyth2 / Suess** series for
   Allwinner H728 (ported and adapted to the A523) — original authorship by
   **Justin Suess** and **Jernej Škrabec** kept in the patches.
+- PCIe controller + Innosilicon combo PHY: from the **Armbian** series by
+  **Marvin Wewer** (forward-ported to 6.18 here, with a 1-lane fix from the
+  BSP and this board's device-tree wiring) — his authorship kept in the patches.
+- The **cycle-masking GPU divider** was found thanks to **Chen-Yu Tsai**, who
+  pointed out the fractional semantics while reviewing an upstream patch.
 - **Allwinner 5.15 BSP** (vendor kernel, `sun55iw3`) used throughout as the hardware
   reference and guide: register semantics, device-tree values and sensor calibration were
   **taken from the BSP, not invented**; where mainline lacked support, driver logic was

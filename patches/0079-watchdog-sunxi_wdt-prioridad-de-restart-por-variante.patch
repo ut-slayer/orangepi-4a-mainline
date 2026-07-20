@@ -1,7 +1,7 @@
 From f12ef26c256fc79c90986181cecdb52c4e55c166 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:51:29 +0200
-Subject: [PATCH 079/106] watchdog: sunxi_wdt: prioridad de restart por
+Subject: [PATCH 079/131] watchdog: sunxi_wdt: prioridad de restart por
  variante (auditoria M12)
 
 La prioridad 200 (para ganar al PSCI colgado del ATF BSP del T527)
@@ -63,6 +63,3 @@ index ce209563c..7188d01f7 100644
  
  	watchdog_set_drvdata(&sunxi_wdt->wdt_dev, sunxi_wdt);
  
--- 
-2.47.3
-

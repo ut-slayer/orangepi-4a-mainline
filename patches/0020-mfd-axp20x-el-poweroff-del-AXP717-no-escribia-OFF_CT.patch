@@ -1,7 +1,7 @@
 From 77a1c20d8385b627a7018c5689e87b70e82944e4 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:32:34 +0200
-Subject: [PATCH 020/106] mfd: axp20x: el poweroff del AXP717 no escribia
+Subject: [PATCH 020/131] mfd: axp20x: el poweroff del AXP717 no escribia
  OFF_CTRL (rango no writeable)
 
 axp20x_power_off() escribe AXP20X_OFF_CTRL (0x32) para el AXP717 (rama
@@ -36,6 +36,3 @@ index c5f0ebae3..3e51d135c 100644
  	regmap_reg_range(AXP717_IRQ0_EN, AXP717_IRQ4_EN),
  	regmap_reg_range(AXP717_IRQ0_STATE, AXP717_IRQ4_STATE),
  	regmap_reg_range(AXP717_TS_PIN_CFG, AXP717_TS_PIN_CFG),
--- 
-2.47.3
-

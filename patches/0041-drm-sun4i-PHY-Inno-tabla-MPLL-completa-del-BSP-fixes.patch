@@ -1,7 +1,7 @@
 From 352d77da70667e02cae743e969d8247d43dce06a Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:15:29 +0200
-Subject: [PATCH 041/106] drm/sun4i: PHY Inno: tabla MPLL completa del BSP +
+Subject: [PATCH 041/131] drm/sun4i: PHY Inno: tabla MPLL completa del BSP +
  fixes de auditoria
 
 - Restaurar las 12 entradas prePLL/postPLL que el parche recorto
@@ -71,6 +71,3 @@ index 638a42c4c..ad79c1964 100644
  			return &sun55i_a523_inno_elec[i];
  	return &sun55i_a523_inno_elec[0];
  }
--- 
-2.47.3
-

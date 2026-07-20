@@ -1,7 +1,7 @@
 From 936a6704d3ff1496d82b20128d0a326e3714433d Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 15:10:00 +0200
-Subject: [PATCH 081/106] config: refresco banner 6.18.38 (olddefconfig, cero
+Subject: [PATCH 081/131] config: refresco banner 6.18.38 (olddefconfig, cero
  opciones nuevas)
 
 ---
@@ -20,6 +20,3 @@ index 7bd92f1a7..3e11d8dae 100644
  #
  CONFIG_CC_VERSION_TEXT="aarch64-an1opi4a-linux-gnu-gcc (crosstool-NG 1.28.0) 15.2.0"
  CONFIG_CC_IS_GCC=y
--- 
-2.47.3
-

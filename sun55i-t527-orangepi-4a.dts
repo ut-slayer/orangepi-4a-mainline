@@ -725,6 +725,21 @@
 	};
 };
 
+&combophy {
+	resets = <&ccu RST_BUS_PCIE_USB3>;
+	phy_use_sel = <0>; /* 0:PCIE; 1:USB3 */
+	status = "okay";
+};
+
+&pcie {
+	reset-gpios = <&pio 7 11 GPIO_ACTIVE_HIGH>; /* PH11, PERST# */
+	wake-gpios = <&pio 7 12 GPIO_ACTIVE_HIGH>;  /* PH12, WAKE# */
+	num-lanes = <1>;
+	clk-freq-100M;
+	pcie3v3-supply = <&reg_pcie_vcc3v3>;
+	status = "okay";
+};
+
 &usb_otg {
 	/*
 	 * The OTG controller is connected to one of the type-A ports.
@@ -921,4 +936,22 @@
 			sound-dai = <&hdmi>;
 		};
 	};
+};
+
+/*
+ * AUDIO ANALOGICO (codec interno del A523, receta del BSP 5.15): jack de
+ * 3,5 mm (HPOUT + jack-detect por IRQ 190), line-out, 3 entradas de mic y
+ * amplificador externo de altavoz en PH6 (activo alto, sin retardo, nodo
+ * BSP pa-pin-0). Los reguladores son los del nodo &codec del dts BSP de la
+ * placa: avcc=aldo4 1.8V, vdd=cldo3 3.3V, cpvin=cldo1 1.8V (bomba de carga
+ * del HP). Ganancias/volumenes de la placa == defaults del driver BSP, van
+ * cableados en el driver. jack-det-level=1 y threshold=8 son los defaults
+ * del driver mainline, no hace falta declararlos.
+ */
+&codec {
+	avcc-supply = <&reg_aldo4>;
+	vdd-supply = <&reg_cldo3>;
+	cpvin-supply = <&reg_cldo1>;
+	allwinner,pa-gpios = <&pio 7 6 GPIO_ACTIVE_HIGH>; /* PH6 */
+	status = "okay";
 };

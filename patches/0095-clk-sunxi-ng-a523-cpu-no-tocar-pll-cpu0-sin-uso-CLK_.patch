@@ -1,7 +1,7 @@
 From 1e57c7e1c0b99468f9456959dd7cabbb44ef1d08 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 02:29:47 +0200
-Subject: [PATCH 095/106] clk: sunxi-ng: a523 cpu: no tocar pll-cpu0 sin uso
+Subject: [PATCH 095/131] clk: sunxi-ng: a523 cpu: no tocar pll-cpu0 sin uso
  (CLK_IGNORE_UNUSED)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -31,6 +31,3 @@ index 9091548dd..73d29edd6 100644
  							   CLK_SET_RATE_UNGATE),
  	},
  };
--- 
-2.47.3
-

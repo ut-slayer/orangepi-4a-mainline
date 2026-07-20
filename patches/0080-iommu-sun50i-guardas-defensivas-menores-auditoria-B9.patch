@@ -1,7 +1,7 @@
 From dfd066ecd08e6e30d340c4294917fdca225671cb Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:51:29 +0200
-Subject: [PATCH 080/106] iommu/sun50i: guardas defensivas menores (auditoria
+Subject: [PATCH 080/131] iommu/sun50i: guardas defensivas menores (auditoria
  B9)
 
 - iotlb_sync_map: guarda !iommu (dominio paging recien creado y nunca
@@ -89,6 +89,3 @@ index 59e6a9451..50c8ab360 100644
  
  	/*
  	 * If the address is not in the page table, we can't get what
--- 
-2.47.3
-

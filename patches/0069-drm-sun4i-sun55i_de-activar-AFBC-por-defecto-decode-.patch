@@ -1,7 +1,7 @@
 From 169f981228f93c879fc3d60cdb29d1a693cc5153 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 12 Jul 2026 15:26:26 +0200
-Subject: [PATCH 069/106] drm/sun4i: sun55i_de: activar AFBC por defecto
+Subject: [PATCH 069/131] drm/sun4i: sun55i_de: activar AFBC por defecto
  (decode 32x8 confirmado)
 
 Confirmado visualmente (usuario, 2026-07-12): escritorio Plasma Wayland
@@ -41,6 +41,3 @@ index bf746cf4e..9bacff5b4 100644
  
  bool sun55i_de_afbc_mod_supported(u32 drm_fmt, u64 modifier)
  {
--- 
-2.47.3
-

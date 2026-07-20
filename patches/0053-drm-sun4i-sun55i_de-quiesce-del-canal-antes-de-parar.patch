@@ -1,7 +1,7 @@
 From ebe405bdcdfaf8d8dbe43b097a1bc5a0a6ee63b7 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 18:29:06 +0200
-Subject: [PATCH 053/106] drm/sun4i: sun55i_de: quiesce del canal antes de
+Subject: [PATCH 053/131] drm/sun4i: sun55i_de: quiesce del canal antes de
  parar el TCON (fix fault/wedge en modeset)
 
 El disable stageado por el commit atomico solo latchea con un RCQ FINISH,
@@ -220,6 +220,3 @@ index cc0dbb81c..a61178bde 100644
 +		engine->ops->quiesce(engine);
 +}
  #endif /* _SUNXI_ENGINE_H_ */
--- 
-2.47.3
-

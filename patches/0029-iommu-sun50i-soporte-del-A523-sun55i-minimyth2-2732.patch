@@ -1,7 +1,7 @@
 From 30ea16ad8ddb53efe6d17aaa1a21229d6085b28d Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:07 +0200
-Subject: [PATCH 029/106] iommu/sun50i: soporte del A523/sun55i (minimyth2
+Subject: [PATCH 029/131] iommu/sun50i: soporte del A523/sun55i (minimyth2
  2732)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
@@ -162,6 +162,3 @@ index 422a03d5f..5473c4b7d 100644
  	{ /* sentinel */ },
  };
  MODULE_DEVICE_TABLE(of, sun50i_iommu_dt);
--- 
-2.47.3
-

@@ -1,7 +1,7 @@
 From d2eb661025b44df4f32e54a4069b172a5f302421 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 12 Jul 2026 15:19:23 +0200
-Subject: [PATCH 068/106] drm/sun4i: sun55i_de: AFBC RGB en 32x8 (modo probado
+Subject: [PATCH 068/131] drm/sun4i: sun55i_de: AFBC RGB en 32x8 (modo probado
  del vendor)
 
 El decode del AFBD salia basura (negro + cuadrados) con contenido real
@@ -129,6 +129,3 @@ index c7461fee8..a4e116e9f 100644
  	DRM_FORMAT_MOD_INVALID
  };
  
--- 
-2.47.3
-

@@ -1,0 +1,55 @@
+From 34b086525cdbb605a3b17c106c535b520748a937 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 19 Jul 2026 22:32:47 +0200
+Subject: [PATCH 129/131] clk: sunxi-ng: sun55i-a523: reparent GPU while
+ pll-gpu changes rate
+
+Register the existing sunxi-ng mux notifier on pll-gpu so the GPU mod
+clock is parked on the fixed pll-periph0-600M output while the PLL is
+being reprogrammed, and switched back once it has locked, following the
+cpux precedent of other sunxi SoCs.  The mux switch is glitch-free per
+the T527 manual (GPU_CLK_REG, "The clock selection supports glitch-free
+switch").
+
+Nothing retunes pll-gpu at runtime today (the mux does not propagate
+rate requests and all standard OPPs resolve to pll-periph0 outputs),
+but the higher speed-bin operating points (648-792 MHz) will need
+pll-gpu as a live parent, and any direct clk_set_rate() on the PLL is
+now safe.
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+index a6ced170e..2817cf7ae 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+@@ -1721,6 +1721,17 @@ static const u32 pll_regs[] = {
+ 	SUN55I_A523_PLL_NPU_REG,
+ };
+ 
++/*
++ * Park the GPU on the fixed pll-periph0-600M output while pll-gpu
++ * changes rate; the mux switch is glitch-free (T527 manual, GPU_CLK_REG).
++ */
++static struct ccu_mux_nb sun55i_a523_gpu_nb = {
++	.common		= &gpu_clk.common,
++	.cm		= &gpu_clk.mux,
++	.delay_us	= 1,
++	.bypass_index	= 1, /* pll-periph0-600M */
++};
++
+ static int sun55i_a523_ccu_probe(struct platform_device *pdev)
+ {
+ 	void __iomem *reg;
+@@ -1752,6 +1763,10 @@ static int sun55i_a523_ccu_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return ret;
+ 
++	/* Reparent the GPU during pll-gpu rate changes */
++	ccu_mux_notifier_register(pll_gpu_clk.common.hw.clk,
++				  &sun55i_a523_gpu_nb);
++
+ 	return 0;
+ }
+ 

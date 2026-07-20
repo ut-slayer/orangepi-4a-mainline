@@ -1,0 +1,28 @@
+From bf6225cadf18e559d0af8f19f207d6d6203dcdfb Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 19 Jul 2026 02:22:55 +0200
+Subject: [PATCH 125/131] config: activar INPUT_UINPUT=y (uinput para el
+ frontend AN1)
+
+/dev/uinput hace falta en la imagen AN1 (dispositivos de entrada
+virtuales: remapeo de mandos, teclado virtual). Builtin (=y) para que el
+nodo exista desde el boot sin modules-load; INPUT_MISC ya estaba =y.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .config | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.config b/.config
+index 8ce33489e..0afbae6d2 100644
+--- a/.config
++++ b/.config
+@@ -3390,7 +3390,7 @@ CONFIG_INPUT_MISC=y
+ CONFIG_INPUT_TPS65219_PWRBUTTON=m
+ # CONFIG_INPUT_TPS6594_PWRBUTTON is not set
+ # CONFIG_INPUT_AXP20X_PEK is not set
+-# CONFIG_INPUT_UINPUT is not set
++CONFIG_INPUT_UINPUT=y
+ # CONFIG_INPUT_PCF8574 is not set
+ CONFIG_INPUT_PWM_BEEPER=m
+ CONFIG_INPUT_PWM_VIBRA=m

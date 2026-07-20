@@ -1,7 +1,7 @@
 From 8102f8bf0ae7cdee9475421f057a3a884756308b Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 14:34:32 +0200
-Subject: [PATCH 063/106] drm/sun4i: sun55i_de: fix wedge v2 = modelo BSP:
+Subject: [PATCH 063/131] drm/sun4i: sun55i_de: fix wedge v2 = modelo BSP:
  RST_BUS_DE en quiesce/enable
 
 Un fault del puerto MBUS del DE durante el teardown de una sesion deja
@@ -420,6 +420,3 @@ index f0816aa59..5b1a564b7 100644
 +		engine->ops->enable(engine, mode);
 +}
  #endif /* _SUNXI_ENGINE_H_ */
--- 
-2.47.3
-

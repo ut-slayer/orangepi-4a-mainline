@@ -1,0 +1,26 @@
+From f83d11cbc9c09be253946509168f464fe6bbc94d Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 15 Jul 2026 17:04:50 +0200
+Subject: [PATCH 111/131] config: activar SND_SUN55I_A523_CODEC=m (codec
+ analogico A523)
+
+Como el resto del audio (SND_SUN4I_I2S=m), en modulo. Arrastra el PCM
+dmaengine generico que ya estaba habilitado.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .config | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/.config b/.config
+index da4e2b24d..20664a3d5 100644
+--- a/.config
++++ b/.config
+@@ -5770,6 +5770,7 @@ CONFIG_SND_SOC_SDCA_OPTIONAL=m
+ CONFIG_SND_SUN8I_CODEC=m
+ CONFIG_SND_SUN8I_CODEC_ANALOG=m
+ CONFIG_SND_SUN50I_CODEC_ANALOG=m
++CONFIG_SND_SUN55I_A523_CODEC=m
+ CONFIG_SND_SUN4I_I2S=m
+ CONFIG_SND_SUN4I_SPDIF=m
+ # CONFIG_SND_SUN50I_DMIC is not set

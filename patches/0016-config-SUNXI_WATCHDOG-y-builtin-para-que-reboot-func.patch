@@ -1,7 +1,7 @@
 From 258badcee23bf28611840b976bad08efb7cc230e Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 04:04:05 +0200
-Subject: [PATCH 016/106] config: SUNXI_WATCHDOG=y (builtin) para que 'reboot'
+Subject: [PATCH 016/131] config: SUNXI_WATCHDOG=y (builtin) para que 'reboot'
  funcione
 
 Sin restart handler, el reboot de mainline cae en PSCI SYSTEM_RESET
@@ -102,6 +102,3 @@ index d1c8eb45c..812a775c7 100644
  # CONFIG_FB_SSD1307 is not set
  # CONFIG_FB_SM712 is not set
  CONFIG_FB_CORE=y
--- 
-2.47.3
-

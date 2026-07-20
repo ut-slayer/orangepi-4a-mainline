@@ -1,0 +1,67 @@
+From 4dccd4f40c35b96a737c5a0a3ca71e64ade05a7c Mon Sep 17 00:00:00 2001
+From: Marvin Wewer <mwewer37@proton.me>
+Date: Tue, 9 Dec 2025 16:43:16 +0000
+Subject: [PATCH 117/131] clk: sunxi-ng: add A523 USB3 ref clock and reset
+
+Signed-off-by: Marvin Wewer <mwewer37@proton.me>
+[aplicado a display-kms: CLK_USB3_REF reasignado de 180 a 181 porque esta
+rama ya usa 180 para CLK_HDMI (bring-up de display propio); el id es local
+al arbol, el dtb se genera del mismo arbol. Resto identico al parche de
+armbian/build sunxi-6.18 (PR #9280/#9321). Registro 0x0A84 y parents
+dcxo24M/pll-periph0-200m/pll-periph1-200m contrastados con el BSP 5.15
+(bsp/drivers/clk/sunxi-ng/ccu-sun55iw3.c:915-921).]
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523.c      | 12 +++++++++++-
+ include/dt-bindings/clock/sun55i-a523-ccu.h |  1 +
+ 2 files changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+index 5678d1acb..9ec0ca09e 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+@@ -1230,6 +1230,14 @@ static SUNXI_CCU_MUX_DATA_WITH_GATE(fanout2_clk, "fanout2", fanout_parents,
+ 				    BIT(23),	/* gate */
+ 				    0);
+ 
++static const struct clk_parent_data usb3_ref_parents[] = { { .fw_name = "hosc" }, { .hw = &pll_periph0_200M_clk.hw }, { .hw = &pll_periph1_200M_clk.hw } };
++static SUNXI_CCU_M_DATA_WITH_MUX_GATE(usb3_ref_clk, "usb3-ref",
++		usb3_ref_parents, 0x0A84,
++		0, 5,	/* M */
++		24, 3,	/* mux */
++		BIT(31),	/* gate */
++		0);
++
+ /*
+  * Contains all clocks that are controlled by a hardware register. They
+  * have a (sunxi) .common member, which needs to be initialised by the common
+@@ -1399,6 +1407,7 @@ static struct ccu_common *sun55i_a523_ccu_clks[] = {
+ 	&fanout0_clk.common,
+ 	&fanout1_clk.common,
+ 	&fanout2_clk.common,
++	&usb3_ref_clk.common,
+ };
+ 
+ static struct clk_hw_onecell_data sun55i_a523_hw_clks = {
+@@ -1584,8 +1593,9 @@ static struct clk_hw_onecell_data sun55i_a523_hw_clks = {
+ 		[CLK_FANOUT1]		= &fanout1_clk.common.hw,
+ 		[CLK_FANOUT2]		= &fanout2_clk.common.hw,
+ 		[CLK_NPU]		= &npu_clk.common.hw,
++		[CLK_USB3_REF]		= &usb3_ref_clk.common.hw,
+ 	},
+-	.num	= CLK_HDMI + 1,
++	.num	= CLK_USB3_REF + 1,
+ };
+ 
+ static struct ccu_reset_map sun55i_a523_ccu_resets[] = {
+diff --git a/include/dt-bindings/clock/sun55i-a523-ccu.h b/include/dt-bindings/clock/sun55i-a523-ccu.h
+index dfab31757..52143df78 100644
+--- a/include/dt-bindings/clock/sun55i-a523-ccu.h
++++ b/include/dt-bindings/clock/sun55i-a523-ccu.h
+@@ -187,5 +187,6 @@
+ #define CLK_FANOUT2		178
+ #define CLK_NPU			179
+ #define CLK_HDMI		180
++#define CLK_USB3_REF		181
+ 
+ #endif /* _DT_BINDINGS_CLK_SUN55I_A523_CCU_H_ */

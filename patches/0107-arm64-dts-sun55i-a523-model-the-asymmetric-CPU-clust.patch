@@ -1,0 +1,130 @@
+From b0ea7b400e5e95970c25bbd5f5c864b9ec8acb0e Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 15:07:37 +0200
+Subject: [PATCH 107/131] arm64: dts: sun55i-a523: model the asymmetric CPU
+ clusters (capacity + cpu-map)
+
+The A523/T527 is a DynamIQ octa-Cortex-A55 split into two asymmetric
+clusters: cpu0-3 (little, max 1.4 GHz) and cpu4-7 (big, max 1.8 GHz, more
+cache/DSU weight). cpufreq already scaled them via separate PLLs/OPP
+tables, but the CPU nodes were otherwise identical, so the scheduler saw
+8 equal cores: no capacity hint, no topology, no energy model. Heavy
+tasks were not preferentially placed on the big cluster.
+
+Add, verbatim from the Allwinner BSP (sun55iw3p1.dtsi):
+ - capacity-dmips-mhz = 922 (little) / 1024 (big)
+ - dynamic-power-coefficient = 286 / 354 (for the EAS energy model)
+ - cpu-map with cluster0 {cpu0-3} and cluster1 {cpu4-7}
+
+DT-only. cpu-idle-states and the DSU frequency domain (dsufreq) are left
+for a follow-up (idle was disabled during bring-up and needs testing).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../arm64/boot/dts/allwinner/sun55i-a523.dtsi | 42 +++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index 1618e8f5a..be6e4e95d 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -39,6 +39,8 @@ cpu0: cpu@0 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUL>;
+ 			clock-latency-ns = <244144>;
++			capacity-dmips-mhz = <922>;
++			dynamic-power-coefficient = <286>;
+ 			#cooling-cells = <2>;
+ 		};
+ 
+@@ -49,6 +51,7 @@ cpu1: cpu@100 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUL>;
+ 			clock-latency-ns = <244144>;
++			capacity-dmips-mhz = <922>;
+ 			#cooling-cells = <2>;
+ 		};
+ 
+@@ -59,6 +62,7 @@ cpu2: cpu@200 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUL>;
+ 			clock-latency-ns = <244144>;
++			capacity-dmips-mhz = <922>;
+ 			#cooling-cells = <2>;
+ 		};
+ 
+@@ -69,6 +73,7 @@ cpu3: cpu@300 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUL>;
+ 			clock-latency-ns = <244144>;
++			capacity-dmips-mhz = <922>;
+ 			#cooling-cells = <2>;
+ 		};
+ 
+@@ -79,6 +84,8 @@ cpu4: cpu@400 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUB>;
+ 			clock-latency-ns = <244144>;
++			capacity-dmips-mhz = <1024>;
++			dynamic-power-coefficient = <354>;
+ 			#cooling-cells = <2>;
+ 		};
+ 
+@@ -89,6 +96,7 @@ cpu5: cpu@500 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUB>;
+ 			clock-latency-ns = <244144>;
++			capacity-dmips-mhz = <1024>;
+ 			#cooling-cells = <2>;
+ 		};
+ 
+@@ -99,6 +107,7 @@ cpu6: cpu@600 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUB>;
+ 			clock-latency-ns = <244144>;
++			capacity-dmips-mhz = <1024>;
+ 			#cooling-cells = <2>;
+ 		};
+ 
+@@ -109,8 +118,41 @@ cpu7: cpu@700 {
+ 			enable-method = "psci";
+ 			clocks = <&cpu_ccu CLK_CPUB>;
+ 			clock-latency-ns = <244144>;
++			capacity-dmips-mhz = <1024>;
+ 			#cooling-cells = <2>;
+ 		};
++
++		cpu-map {
++			cluster0 {
++				core0 {
++					cpu = <&cpu0>;
++				};
++				core1 {
++					cpu = <&cpu1>;
++				};
++				core2 {
++					cpu = <&cpu2>;
++				};
++				core3 {
++					cpu = <&cpu3>;
++				};
++			};
++
++			cluster1 {
++				core0 {
++					cpu = <&cpu4>;
++				};
++				core1 {
++					cpu = <&cpu5>;
++				};
++				core2 {
++					cpu = <&cpu6>;
++				};
++				core3 {
++					cpu = <&cpu7>;
++				};
++			};
++		};
+ 	};
+ 
+ 	osc24M: osc24M-clk {

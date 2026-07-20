@@ -1,0 +1,51 @@
+From ba0e354ca24bdd5cbf3c869c92b70d9631c429dc Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 15 Jul 2026 17:04:49 +0200
+Subject: [PATCH 109/131] arm64: dts: sun55i-a523: nodo del codec de audio
+ interno (codec@7110000)
+
+Nodo del codec analogico del A523/T527 para el driver sun55i-a523-codec,
+traducido del nodo codec@7110000 del sun55iw3p1.dtsi del BSP 5.15:
+reg 0x07110000 (0x350 para cubrir POWER_AN_CTL en 0x348; el BSP declara
+0x348 por un off-by-one que salva el ioremap por paginas), IRQ GIC_SPI 190
+(jack), reset RST_BUS_MCU_AUDIO_CODEC y relojes bus/dac/adc del mcu_ccu
+(equivalencias BSP->mainline: CLK_BUS_MCU_AUDIO_CODEC=21,
+CLK_MCU_AUDIO_CODEC_DAC=19, CLK_MCU_AUDIO_CODEC_ADC=20). Los DMA tx/rx
+van al mcu_dma request 7 (nodo codec_plat del BSP: dmas = <&dma1 7>).
+
+Los relojes clk_pll_peri0_2x/clk_dsp_src/clk_dsp_core del nodo BSP se
+quedan fuera: el driver del codec BSP no los usa (snd_sunxi_clk_init solo
+pide bus/plls de audio/dac/adc); son de la ruta DSP del MCU. Los PLL
+padres (pll-audio0-4x, pll-audio1-div2/div5) tampoco se referencian:
+el CCF los gestiona via CLK_SET_RATE_PARENT del mcu-ccu.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index be6e4e95d..28839daec 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -1226,6 +1226,20 @@ mcu_ccu: clock-controller@7102000 {
+ 			#reset-cells = <1>;
+ 		};
+ 
++		codec: codec@7110000 {
++			compatible = "allwinner,sun55i-a523-codec";
++			reg = <0x07110000 0x350>;
++			interrupts = <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&mcu_ccu CLK_BUS_MCU_AUDIO_CODEC>,
++				 <&mcu_ccu CLK_MCU_AUDIO_CODEC_DAC>,
++				 <&mcu_ccu CLK_MCU_AUDIO_CODEC_ADC>;
++			clock-names = "bus", "dac", "adc";
++			resets = <&mcu_ccu RST_BUS_MCU_AUDIO_CODEC>;
++			dmas = <&mcu_dma 7>, <&mcu_dma 7>;
++			dma-names = "tx", "rx";
++			status = "disabled";
++		};
++
+ 		i2s2: i2s@7114000 {
+ 			compatible = "allwinner,sun55i-a523-i2s",
+ 				     "allwinner,sun50i-r329-i2s";

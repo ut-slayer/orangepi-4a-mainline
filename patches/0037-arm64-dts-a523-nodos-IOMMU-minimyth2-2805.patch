@@ -1,7 +1,7 @@
 From cff193ed361b760a6f004de4e71bb932d6f1ae20 Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:56 +0200
-Subject: [PATCH 037/106] arm64: dts: a523: nodos IOMMU (minimyth2 2805)
+Subject: [PATCH 037/131] arm64: dts: a523: nodos IOMMU (minimyth2 2805)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
@@ -45,6 +45,3 @@ index 97f9944c3..ede603c8e 100644
  		wdt: watchdog@2050000 {
  			compatible = "allwinner,sun55i-a523-wdt";
  			reg = <0x2050000 0x20>;
--- 
-2.47.3
-

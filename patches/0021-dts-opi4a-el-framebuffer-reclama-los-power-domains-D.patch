@@ -1,7 +1,7 @@
 From be2177620ea2600b43f9c068558f57cbf8c0f7f4 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:54:30 +0200
-Subject: [PATCH 021/106] dts: opi4a: el framebuffer reclama los power domains
+Subject: [PATCH 021/131] dts: opi4a: el framebuffer reclama los power domains
  DE y VO0 del pck600
 
 Al cargar panfrost como modulo, TODOS los consumidores del pck600 quedan
@@ -38,6 +38,3 @@ index fec24dc58..ed13857b3 100644
  		};
  	};
  
--- 
-2.47.3
-

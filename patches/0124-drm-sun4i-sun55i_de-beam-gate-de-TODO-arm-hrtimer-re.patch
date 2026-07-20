@@ -1,0 +1,441 @@
+From 8bbd99de2764a55ddc21b4fcd356e1fe6624aa3a Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 18 Jul 2026 21:39:21 +0200
+Subject: [PATCH 124/131] drm/sun4i: sun55i_de: beam-gate de TODO arm + hrtimer
+ re-anclado al haz (fix wedge scanout)
+
+Causa raiz del frame clavado del 2026-07-18 (transiciones direct-scanout
+de wlroots): el retry budget (arms_left=2) dejaba arm_pending vivo tras
+cada arm, do_arm arrancaba el hrtimer de fallback y vblank_quirk se
+saltaba el arm beam-gated mientras el timer estuviera activo -> con
+commits sostenidos a 60fps el hrtimer era el UNICO camino de arm, en
+lazo abierto (line_total*ns_per_line truncado, CLOCK_MONOTONIC vs el
+dotclock real del PLL): el punto de arm derivaba por todo el frame y los
+bloques AHB se aplicaban en pleno scanout/prefetch del DE. Un toggle
+OVL<->AFBD aplicado a mitad de fetch cuelga el latch de config del canal
+(pantalla con el frame viejo para siempre; grim/composicion perfectos).
+
+Tres cambios, todos en el mismo mecanismo:
+
+1. do_arm() beam-gatea TODOS los arms: relee la linea real del TCON y
+   difiere al proximo target si el haz salio de la ventana segura
+   [0, line_active), acotado a 3 saltos (un contador roto solo puede
+   retrasar la cadena, nunca pararla). Devuelve las lineas de espera;
+   la programacion del timer pasa a los llamantes.
+
+2. Cada salto del hrtimer se re-ancla al haz (sun55i_de_lines_to_target
+   sobre el contador real) en vez del forward ciego de un frame; y
+   vblank_quirk RECLAMA el timer en vuelo (hrtimer_try_to_cancel) para
+   volver a ser el camino primario anclado al vblank real.
+
+3. commit() arranca el hrtimer de respaldo si no hay ninguno activo: el
+   arm inicial ya no depende al 100% del vblank IRQ del TCON (si el IRQ
+   muere, antes quedaba arm_pending eterno: commits coalesciendo, holds
+   sin envejecer y el DE escaneando el fb viejo sin un solo error en
+   dmesg). pr_warn a los 120 commits sin arm para delatar el atasco.
+
+Diagnostico nuevo: /sys/module/sun8i_mixer/parameters/arm_gated.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 184 +++++++++++++++++++++++-------
+ drivers/gpu/drm/sun4i/sun55i_de.h |  34 ++++--
+ 2 files changed, 166 insertions(+), 52 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 1511d1ac5..9d5a209a0 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -286,6 +286,7 @@ static unsigned int dbg_arm_late;	/* hrtimer-deferred arms scheduled */
+ static unsigned int dbg_commits;	/* commits staged */
+ static unsigned int dbg_coalesced;	/* stages overwritten before an arm */
+ static unsigned int dbg_arm_busy;	/* arms skipped: load still in flight */
++static unsigned int dbg_arm_gated;	/* arms deferred: beam outside blanking */
+ static unsigned int dbg_status;		/* last RCQ STATUS read at arm */
+ module_param_named(de_active_line, dbg_line_active, int, 0444);
+ module_param_named(de_line_total,  dbg_line_total,  int, 0444);
+@@ -299,6 +300,7 @@ module_param_named(arm_late,  dbg_arm_late,  uint, 0444);
+ module_param_named(commits,   dbg_commits,   uint, 0444);
+ module_param_named(coalesced, dbg_coalesced, uint, 0444);
+ module_param_named(arm_busy,  dbg_arm_busy,  uint, 0444);
++module_param_named(arm_gated, dbg_arm_gated, uint, 0444);
+ module_param_named(rcq_status, dbg_status,   uint, 0444);
+ 
+ /*
+@@ -370,6 +372,7 @@ static void __iomem *tcon_curline_io;
+ 
+ static enum hrtimer_restart sun55i_de_arm_timer(struct hrtimer *t);
+ static u32 sun55i_de_arm_target(struct sun55i_de *de);
++static u32 sun55i_de_lines_to_target(struct sun55i_de *de, bool next_frame);
+ static void sun55i_de_layer_disable(struct sun8i_mixer *mixer);
+ 
+ static struct sun55i_de_block *de_blk(struct sun8i_mixer *mixer, unsigned int i)
+@@ -765,14 +768,21 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 		de->ns_per_line /= 2;
+ 	}
+ 
++	/*
++	 * Start of active video in counter units: the end of the safe arm
++	 * window. do_arm() beam-gates every arm against it (fix wedge
++	 * 2026-07-18).
++	 */
++	de->line_active = (tcon_line_double ? 2 : 1) *
++			  (mode->crtc_vtotal - mode->crtc_vsync_start);
++
+ 	/*
+ 	 * TEMP: publish the derived timing + reset the arm-line stats. The
+ 	 * active-video start (leading blanking end) lets the arm target and the
+ 	 * observed arm line be sanity-checked against it: a tear-free arm needs
+ 	 * arm_line_max < de_active_line.
+ 	 */
+-	dbg_line_active = (tcon_line_double ? 2 : 1) *
+-			  (mode->crtc_vtotal - mode->crtc_vsync_start);
++	dbg_line_active = de->line_active;
+ 	dbg_line_total  = de->line_total;
+ 	dbg_ns_per_line = de->ns_per_line;
+ 	dbg_arm_target  = sun55i_de_arm_target(de);
+@@ -781,6 +791,7 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	dbg_arm_line_max  = -1;
+ 	dbg_arm_now = dbg_arm_late = dbg_commits = dbg_coalesced = 0;
+ 	dbg_arm_busy = 0;
++	dbg_arm_gated = 0;
+ 
+ 	/* --- datapath: staged into the RCQ shadow --- */
+ 
+@@ -846,6 +857,8 @@ void sun55i_de_enable(struct sun8i_mixer *mixer,
+ 	de->quiesced = false;	/* commits may hold fbs and arm again */
+ 	de->rcq_kicked = false;	/* the reset pulse below clears the RCQ state */
+ 	de->rcq_skips = 0;
++	de->arm_gate_skips = 0;
++	de->stall_commits = 0;
+ 	spin_unlock_irqrestore(&de->arm_lock, flags);
+ 
+ 	/*
+@@ -1376,6 +1389,31 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ 	de->commit_seq++;
+ 	dbg_commits++;
+ 	de->arm_pending = true;
++
++	/*
++	 * Cadena de arms muerta = frame clavado sin UN SOLO error en dmesg
++	 * (el compositor sigue commiteando, los holds no envejecen y el DE
++	 * escanea el fb viejo para siempre). Delatarla: ~2 s de commits sin
++	 * que ningun arm los aplique.
++	 */
++	if (++de->stall_commits == 120)
++		pr_warn("sun55i_de: 120 commits sin arm (arm_seq=%u); cadena de arms atascada\n",
++			de->arm_seq);
++
++	/*
++	 * Respaldo del arm inicial (fix wedge 2026-07-18): el primer arm de
++	 * un commit dependia al 100% del vblank IRQ del TCON (el hrtimer solo
++	 * se armaba desde do_arm para los retries); si ese IRQ muere,
++	 * arm_pending queda pendiente para siempre. Programado al proximo
++	 * punto seguro; si el vblank IRQ llega antes lo reclama
++	 * (hrtimer_try_to_cancel en vblank_quirk) y arma el, asi que en
++	 * operacion normal este timer no llega a disparar.
++	 */
++	if (!hrtimer_active(&de->arm_timer) && de->ns_per_line && de->line_total)
++		hrtimer_start(&de->arm_timer,
++			      ns_to_ktime((u64)sun55i_de_lines_to_target(de, false) *
++					  de->ns_per_line),
++			      HRTIMER_MODE_REL);
+ }
+ 
+ /*
+@@ -1397,9 +1435,11 @@ void sun55i_de_stage_unlock(struct sun8i_mixer *mixer, unsigned long *flags)
+ }
+ 
+ /*
+- * Issue the RCQ load (RCQ_CTL = 1). Plain MMIO; the DMA latches the dirty head
+- * blocks ~immediately. Caller must hold arm_lock and have confirmed the beam is
+- * in a blanking window. Mirrors de_top_set_rcq_update(disp, 1).
++ * Issue the RCQ load (RCQ_CTL = 1) / the AHB copy. Caller must hold arm_lock.
++ * The beam position is (re)checked HERE, covering every caller: returns 0 when
++ * the arm was issued, or the number of counter lines to wait before retrying
++ * when the beam was outside the safe window (the caller schedules the hrtimer;
++ * the timer callback uses hrtimer_forward). Mirrors de_top_set_rcq_update().
+  */
+ /*
+  * TEMP diagnostico C4 pantalla-negra: volcar cabecera RCQ + sombra de los
+@@ -1434,10 +1474,37 @@ static void sun55i_de_dump_blocks(struct sun55i_de *de, const char *tag,
+ 	}
+ }
+ 
+-static void sun55i_de_do_arm(struct sun55i_de *de)
++static u32 sun55i_de_do_arm(struct sun55i_de *de)
+ {
+ 	u32 status = 0;
+ 
++	/*
++	 * Beam-gate de TODO arm (fix wedge 2026-07-18). Antes solo el arm del
++	 * vblank IRQ comprobaba el haz; los del hrtimer (retries) corrian en
++	 * lazo abierto a line_total*ns_per_line por salto (ns truncados,
++	 * CLOCK_MONOTONIC vs el dotclock real del PLL) y, como vblank_quirk
++	 * se saltaba el arm con el timer activo, con commits sostenidos a
++	 * 60 fps el timer era el UNICO camino de arm: el punto derivaba por
++	 * todo el frame y los bloques AHB se aplicaban en pleno scanout /
++	 * prefetch del DE. Un toggle OVL<->AFBD (transicion direct-scanout de
++	 * wlroots) aplicado a mitad de fetch es el principal sospechoso de
++	 * colgar el latch de config del canal (frame clavado 2026-07-18).
++	 * Releer aqui la linea real cubre a todos los llamantes; fuera de la
++	 * ventana segura [0, line_active) se difiere al proximo target,
++	 * acotado a 3 saltos (un contador ilegible/roto solo puede retrasar
++	 * la cadena, nunca pararla: un tear puntual > congelado para siempre).
++	 */
++	if (tcon_curline_io && de->line_active && de->ns_per_line) {
++		u32 cur = readl(tcon_curline_io) & 0xfff;
++
++		if (cur >= de->line_active && de->arm_gate_skips < 3) {
++			de->arm_gate_skips++;
++			dbg_arm_gated++;
++			return sun55i_de_lines_to_target(de, false);
++		}
++	}
++	de->arm_gate_skips = 0;
++
+ 	regmap_read(de->mixer->top_regs, SUN55I_MIXER_RCQ_STATUS, &status);
+ 	dbg_status = status;
+ 
+@@ -1452,7 +1519,7 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 	 */
+ 	if (arm_busy_gate && (status & SUN55I_MIXER_RCQ_STATUS_BUSY)) {
+ 		dbg_arm_busy++;
+-		return;
++		return 0;
+ 	}
+ 
+ 	/*
+@@ -1471,13 +1538,14 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 		if (de->rcq_skips < 3) {
+ 			de->rcq_skips++;
+ 			dbg_arm_busy++;
+-			return;
++			return 0;
+ 		}
+ 	}
+ 	de->rcq_skips = 0;
+ 
+ 	de->arm_pending = false;
+ 	de->armed_once = true;
++	de->stall_commits = 0;
+ 
+ 	/*
+ 	 * Write the head dirty flags the hardware consumes NOW, from the
+@@ -1574,21 +1642,14 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 	sun55i_de_age_fb_holds(de);
+ 
+ 	/*
+-	 * Retry self-sufficiency: the pending retries (arms_left /
+-	 * full_arms_left) and the fb-hold aging above are normally driven by
+-	 * the NEXT vblank IRQ - but DRM may disable it at any time once the
+-	 * flip event is delivered (drm.vblankoffdelay), freezing the retries
+-	 * (hw/shadow divergence) and pinning the held fbs until the next
+-	 * commit. Schedule the hrtimer one full frame ahead (same beam
+-	 * position = still blanking) as a fallback kick that needs no vblank;
+-	 * if the vblank IRQ does come first, both paths take arm_lock and
+-	 * check arm_pending, so the work is done once either way.
++	 * La programacion del retry (arms_left / full_arms_left pendientes) es
++	 * responsabilidad del llamante: tanto el vblank IRQ como el callback
++	 * del timer re-anclan cada salto a la linea REAL del TCON via
++	 * sun55i_de_lines_to_target(), nunca a un periodo fijo en lazo
++	 * abierto (la deriva acumulada de aquel esquema sacaba los arms del
++	 * blanking: el wedge 2026-07-18).
+ 	 */
+-	if (de->arm_pending && de->ns_per_line && de->line_total &&
+-	    !hrtimer_active(&de->arm_timer))
+-		hrtimer_start(&de->arm_timer,
+-			      ns_to_ktime((u64)de->line_total * de->ns_per_line),
+-			      HRTIMER_MODE_REL);
++	return 0;
+ }
+ 
+ /*
+@@ -1682,35 +1743,58 @@ static u32 sun55i_de_arm_target(struct sun55i_de *de)
+ }
+ 
+ /*
+- * hrtimer callback: the beam was in active video (or past the target) when the
+- * vblank IRQ fired, so the arm was scheduled to land here, at the computed time
+- * the beam next re-enters the leading blanking. Arm now. Runs in hardirq
+- * context; RCQ_CTL is non-sleeping MMIO. Replaces the vendor's usleep-to-
+- * blanking from a system_wq work item (disp_mgr_protect_reg_for_rcq) with a
+- * precise absolute-time fire, which is deterministic regardless of the vblank
+- * IRQ's servicing latency.
++ * Lineas de contador hasta el proximo punto seguro de arm (el target del
++ * vendor, dentro del blanking inicial), medidas sobre la linea REAL del TCON.
++ * Todo salto del hrtimer se calcula con esto: re-anclado al haz en cada hop,
++ * nunca un periodo fijo en lazo abierto (la deriva acumulada sacaba los arms
++ * del blanking, ver el beam-gate de do_arm). @next_frame salta el target del
++ * frame en curso aunque quede por delante (retries: max un arm por frame).
++ */
++static u32 sun55i_de_lines_to_target(struct sun55i_de *de, bool next_frame)
++{
++	u32 target = sun55i_de_arm_target(de);
++	u32 cur, lines;
++
++	if (!tcon_curline_io || !de->line_total)
++		return de->line_total ? de->line_total : 1;
++
++	cur = readl(tcon_curline_io) & 0xfff;
++	if (!next_frame && cur < target)
++		return target - cur;
++
++	lines = (cur < de->line_total ? de->line_total - cur : 0) + target;
++	return lines ? lines : 1;
++}
++
++/*
++ * hrtimer callback: respaldo del arm inicial (commit), arm diferido (el vblank
++ * IRQ pillo el haz fuera de la ventana) o retry (arms_left/full_arms_left).
++ * Runs in hardirq context; la copia AHB es MMIO no bloqueante. Cada salto se
++ * re-ancla a la linea real del TCON (el beam-gate de do_arm devuelve la espera
++ * exacta; para un retry se apunta al target del frame siguiente) - nunca un
++ * periodo fijo en lazo abierto (fix wedge 2026-07-18).
+  */
+ static enum hrtimer_restart sun55i_de_arm_timer(struct hrtimer *t)
+ {
+ 	struct sun55i_de *de = container_of(t, struct sun55i_de, arm_timer);
+ 	enum hrtimer_restart ret = HRTIMER_NORESTART;
+ 	unsigned long flags;
++	u32 wait = 0;
+ 
+ 	spin_lock_irqsave(&de->arm_lock, flags);
+ 	if (de->arm_pending)
+-		sun55i_de_do_arm(de);
++		wait = sun55i_de_do_arm(de);
+ 
+ 	/*
+-	 * Keep the retry chain alive from the timer itself: inside the
+-	 * callback hrtimer_active() is true, so the fallback re-arm in
+-	 * do_arm() cannot fire here - forward one full frame (same beam
+-	 * position = still blanking) and restart. quiesce() clears
++	 * Keep the chain alive from the timer itself. quiesce() clears
+ 	 * arm_pending under the lock first, so its hrtimer_cancel() never
+-	 * races a restart.
++	 * races a restart. wait != 0 = do_arm defirio el arm (beam-gate);
++	 * si no, un retry pendiente se apunta al target del frame siguiente.
+ 	 */
+ 	if (de->arm_pending && de->ns_per_line && de->line_total) {
+-		hrtimer_forward_now(t, ns_to_ktime((u64)de->line_total *
+-						   de->ns_per_line));
++		if (!wait)
++			wait = sun55i_de_lines_to_target(de, true);
++		hrtimer_forward_now(t, ns_to_ktime((u64)wait * de->ns_per_line));
+ 		ret = HRTIMER_RESTART;
+ 	}
+ 	spin_unlock_irqrestore(&de->arm_lock, flags);
+@@ -1746,11 +1830,24 @@ void sun55i_de_vblank_quirk(struct sun8i_mixer *mixer, unsigned int cur_line)
+ 
+ 	spin_lock_irqsave(&de->arm_lock, flags);
+ 
+-	/* nothing staged, or a timed arm is already pending for this commit */
+-	if (!de->arm_pending || hrtimer_active(&de->arm_timer))
++	if (!de->arm_pending)
++		goto out;
++
++	/*
++	 * Puede haber un timer en vuelo (respaldo del commit, retry o arm
++	 * diferido del frame anterior). El arm del IRQ esta anclado al vblank
++	 * REAL, asi que es el preferente: reclamar el timer - salvo que su
++	 * callback ya este corriendo en otra CPU (esta girando en arm_lock y
++	 * hara el trabajo el mismo en cuanto soltemos el lock). El esquema
++	 * anterior (saltarse el arm con el timer activo) convertia al timer
++	 * en el UNICO camino de arm bajo commits sostenidos, y su deriva en
++	 * lazo abierto sacaba los applies del blanking (wedge 2026-07-18).
++	 */
++	if (hrtimer_try_to_cancel(&de->arm_timer) < 0)
+ 		goto out;
+ 
+ 	target = sun55i_de_arm_target(de);
++	lines = 0;
+ 
+ 	if (!de->ns_per_line) {
+ 		/* no timing info (mode_set not run yet): arm now */
+@@ -1758,7 +1855,10 @@ void sun55i_de_vblank_quirk(struct sun8i_mixer *mixer, unsigned int cur_line)
+ 	} else if (cur_line <= target && !arm_at_target) {
+ 		/* already before the target and not asked to wait: arm now */
+ 		dbg_arm_now++;
+-		sun55i_de_do_arm(de);
++		lines = sun55i_de_do_arm(de);
++		/* retries pendientes: max un arm por frame, al proximo target */
++		if (!lines && de->arm_pending)
++			lines = sun55i_de_lines_to_target(de, true);
+ 	} else {
+ 		/*
+ 		 * Sleep to the target line and arm there. If the target is
+@@ -1777,10 +1877,12 @@ void sun55i_de_vblank_quirk(struct sun8i_mixer *mixer, unsigned int cur_line)
+ 		}
+ 		de->arm_deferred++;
+ 		dbg_arm_late++;
++	}
++
++	if (lines && de->ns_per_line)
+ 		hrtimer_start(&de->arm_timer,
+ 			      ns_to_ktime((u64)lines * de->ns_per_line),
+ 			      HRTIMER_MODE_REL);
+-	}
+ 
+ out:
+ 	spin_unlock_irqrestore(&de->arm_lock, flags);
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index 6c9e4a8f1..475c5949a 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -2,19 +2,20 @@
+ /*
+  * Allwinner sun55iw3 (A523/A527/T527/H728) v35x display engine ("DE33"/v350).
+  *
+- * Unlike the H616 DE33, the v35x DE commits its datapath (blender, output
+- * formatter, layers, ...) ONLY through the RCQ (Register Config Queue): a DMA
+- * engine that, on each frame-start pulse from the bound TCON, walks an array
+- * of 16-byte "heads" and copies marked register blocks from DRAM into the live
+- * DE register space. Plain MMIO writes to those datapath registers land in a
+- * shadow that never latches on its own.
++ * Unlike the H616 DE33, the v35x DE is meant to commit its datapath (blender,
++ * output formatter, layers, ...) through the RCQ (Register Config Queue): a
++ * DMA engine that walks an array of 16-byte "heads" and copies marked register
++ * blocks from DRAM into the live DE register space.
+  *
+- * Only the "de_top" control registers (RT_EN, OUT_SIZE, AUTO_CLK, DE2TCON_MUX,
+- * the RCQ head pointer and RCQ_CTL itself) are plain MMIO and latch directly.
++ * On the A523 the RCQ DMA reports FINISH without applying the blocks aimed at
++ * the blender (C4B), so production runs the vendor's AHB update mode instead:
++ * sun55i_de_do_arm() copies the staged shadow blocks to the registers by CPU,
++ * beam-gated to the leading vertical blanking (an apply landing mid-scanout
++ * tears at best and can hang the channel's config latch at worst - the
++ * 2026-07-18 scanout wedge).
+  *
+- * This backend drives that engine for a minimal pipeline (top + blender + fmt),
+- * which is enough to scan out a solid background-color frame. Layers are added
+- * on top of this foundation.
++ * The "de_top" control registers (RT_EN, OUT_SIZE, AUTO_CLK, DE2TCON_MUX, the
++ * RCQ head pointer and RCQ_CTL itself) are plain MMIO and latch directly.
+  */
+ 
+ #ifndef _SUN55I_DE_H_
+@@ -181,6 +182,16 @@ struct sun55i_de {
+ 	 */
+ 	bool				rcq_kicked;	/* a load was kicked since enable() */
+ 	unsigned int			rcq_skips;	/* consecutive in-flight skips */
++	/*
++	 * Beam-gate del arm (fix wedge 2026-07-18): do_arm() relee la linea
++	 * real del TCON y difiere el arm si el haz ya entro en video activo
++	 * ([0, line_active) es la ventana segura). arm_gate_skips acota los
++	 * aplazamientos consecutivos (un contador roto solo puede retrasar la
++	 * cadena, nunca pararla); stall_commits cuenta commits staged desde el
++	 * ultimo arm real para delatar en dmesg una cadena de arms muerta.
++	 */
++	unsigned int			arm_gate_skips;
++	unsigned int			stall_commits;
+ 	/*
+ 	 * Full-reload arms left to issue after a modeset. A single full-reload
+ 	 * RCQ load does not reliably latch every block (live-verified: the
+@@ -190,6 +201,7 @@ struct sun55i_de {
+ 	 */
+ 	unsigned int			full_arms_left;
+ 	u32				line_total;	/* TCON line counter modulus */
++	u32				line_active;	/* counter line where active video starts */
+ 	u32				arm_target;	/* safe arm line (vendor calc) */
+ 	u32				ns_per_line;	/* counter-tick period (ns) */
+ 

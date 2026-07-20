@@ -1,7 +1,7 @@
 From 765ed6b8c0f93c1ee4a6a91b8d6ba9a4b56a7a13 Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:06 +0200
-Subject: [PATCH 026/106] clk: sunxi-ng: a523: clock TMDS del HDMI en 0xb00
+Subject: [PATCH 026/131] clk: sunxi-ng: a523: clock TMDS del HDMI en 0xb00
  (minimyth2 2721)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
@@ -81,6 +81,3 @@ index 54808fcfd..dfab31757 100644
 +#define CLK_HDMI		180
  
  #endif /* _DT_BINDINGS_CLK_SUN55I_A523_CCU_H_ */
--- 
-2.47.3
-

@@ -33,10 +33,16 @@ funciona. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 | **USB** (4 puertos-A traseros — todos USB 2.0: la única lane combo USB3/PCIe del SoC va a la ranura M.2, así que esta placa no tiene USB 3.0 en absoluto; ver FAQ) | ✅ HID (teclado/ratón) + almacenamiento masivo + hotplug; el par OTG funciona como host |
 | **Sensores térmicos THS** (5 zonas: cpu_l / cpu_b / gpu / npu / ddr) | ✅ lectura en sysfs/hwmon + trip crítico 110 °C |
 | **cpufreq/DVFS de CPU** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + throttling térmico a 90 °C | ✅ |
-| **devfreq/DVFS de GPU** (Panfrost, 150–600 MHz) + throttling térmico | ✅ |
+| **devfreq/DVFS de GPU** (Panfrost, 150–600 MHz) + throttling térmico | ✅ y ahora **a las frecuencias correctas** — el divisor de la GPU del A523 resultó ser de *enmascarado de ciclos* (fraccional), `frecuencia = fuente × (16−M)/16`, no un divisor lineal; medido con el contador de ciclos del Mali |
 | **eMMC** (almacenamiento MMC) | ✅ detectada + lectura/escritura HS200 (confirmado por un tester); arrancar *desde* eMMC aún sin cablear |
+| **PCIe / M.2** (RC DesignWare + PHY combo Innosilicon) | ✅ el controlador y el PHY hacen probe, el entrenamiento del enlace corre y el **root port enumera** — verificado aquí con la ranura **vacía**. **NVMe con un disco real sigue sin probarse** (no hay disco a mano — testers bienvenidos) |
 
-Decodificación de vídeo por hardware (VPU) **no** incluida (no hay driver en 6.18). **NVMe / M.2 aún NO funciona**: al kernel le faltan los drivers del controlador PCIe/PHY del T527, así que el bus no enumera (diagnosticado por un tester — el bring-up de PCIe está en marcha). La **variante de 4 GB está confirmada funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la eMMC; el bootloader auto-detecta el tamaño de RAM).
+La decodificación de vídeo por hardware (VPU) **aún no es usable**: este árbol
+incluye el shim de userspace `cedar-ve` y su cableado de device-tree/IOMMU, pero
+la pila de decodificación alrededor está en exploración temprana — considéralo
+trabajo en curso, no una función. La **variante de 4 GB está confirmada
+funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la
+eMMC; el bootloader auto-detecta el tamaño de RAM).
 
 ## Notas de la imagen (Debian 13)
 
@@ -136,6 +142,12 @@ audio, red…). Si te ha servido para tu Orange Pi 4A, puedes invitarme a un caf
 - Bring-up del pipeline de display: basado en la serie de **minimyth2 / Suess**
   para Allwinner H728 (portada y adaptada al A523) — autoría original de
   **Justin Suess** y **Jernej Škrabec** conservada en los parches.
+- Controlador PCIe + PHY combo Innosilicon: de la serie de **Armbian** de
+  **Marvin Wewer** (aquí portada a 6.18, con un fix de 1 lane sacado del BSP y
+  el cableado de device-tree de esta placa) — su autoría se conserva en los parches.
+- El **divisor de la GPU por enmascarado de ciclos** se descubrió gracias a
+  **Chen-Yu Tsai**, que señaló la semántica fraccional revisando un parche
+  enviado a upstream.
 - **BSP Allwinner 5.15** (kernel del vendor, `sun55iw3`) usado en todo momento como
   referencia y guía del hardware: las semánticas de registros, los valores del device-tree y
   la calibración de sensores **salen del BSP, no se inventaron**; donde a mainline le faltaba

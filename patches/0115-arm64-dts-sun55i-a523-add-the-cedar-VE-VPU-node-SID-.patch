@@ -1,0 +1,69 @@
+From aad540847a3dc35d4fd96c6670b1cf1f0bf73cc1 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 17 Jul 2026 14:54:33 +0200
+Subject: [PATCH 115/131] arm64: dts: sun55i-a523: add the cedar VE (VPU) node
+ + SID cells
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+video-engine@1c0e000, straight from the vendor DT as verified live on
+the running Android image: VE regs + the SRAM-remap syscon window
+(0x03000000, bit0/+0x0 and bit24/+0x4 hand the SRAM to the VE), GIC 120,
+bus_ve/ve/mbus_ve clocks, reset, PD_VE power domain, and both IOMMU
+master ports (2 and 3 — the BSP used a ve1 pseudo-node for master 3;
+mainline lists both on one node).
+
+The two new SID cells feed the driver's GET_VE_DEFAULT_FREQ: "chipid"
+(@0x0) and "ve-dvfs" (@0x48, the VF speed bin).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../arm64/boot/dts/allwinner/sun55i-a523.dtsi | 24 +++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index 28839daec..acfb11107 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -333,6 +333,22 @@ gpu: gpu@1800000 {
+ 			status = "disabled";
+ 		};
+ 
++		ve: video-engine@1c0e000 {
++			compatible = "allwinner,sunxi-cedar-ve";
++			reg = <0x01c0e000 0x1000>,
++			      <0x03000000 0x10>;
++			interrupts = <GIC_SPI 120 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_VE>,
++				 <&ccu CLK_MBUS_VE>;
++			clock-names = "bus_ve", "ve", "mbus_ve";
++			resets = <&ccu RST_BUS_VE>;
++			reset-names = "reset_ve";
++			iommus = <&iommu 2>, <&iommu 3>;
++			power-domains = <&pck600 PD_VE>;
++			nvmem-cells = <&chipid>, <&ve_dvfs>;
++			nvmem-cell-names = "chipid", "ve-dvfs";
++		};
++
+ 		/*
+ 		 * Display pipeline (DE33 -> TCON-TOP -> TCON-TV -> DW-HDMI ->
+ 		 * Inno HDMI PHY). Addresses from the vendor DTB; HDMI PHY split
+@@ -864,9 +880,17 @@ sid: efuse@3006000 {
+ 			#address-cells = <1>;
+ 			#size-cells = <1>;
+ 
++			chipid: chipid@0 {
++				reg = <0x0 0x4>;
++			};
++
+ 			ths_calibration: thermal-sensor-calibration@38 {
+ 				reg = <0x38 0x14>;
+ 			};
++
++			ve_dvfs: ve-dvfs@48 {
++				reg = <0x48 0x4>;
++			};
+ 		};
+ 
+ 		gic: interrupt-controller@3400000 {

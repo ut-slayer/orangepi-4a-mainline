@@ -1,7 +1,7 @@
 From 83fae929919ac1cc05bcffda379f52273d7b9c1f Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:06 +0200
-Subject: [PATCH 027/106] clk: sunxi-ng: a523: clock del IOMMU always-on
+Subject: [PATCH 027/131] clk: sunxi-ng: a523: clock del IOMMU always-on
  (minimyth2 2722)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
@@ -44,6 +44,3 @@ index 7997a2664..26e35caae 100644
  					    CCU_FEATURE_UPDATE_BIT);
  
  static SUNXI_CCU_GATE_HWS(bus_iommu_clk, "bus-iommu", apb0_hws, 0x7bc,
--- 
-2.47.3
-

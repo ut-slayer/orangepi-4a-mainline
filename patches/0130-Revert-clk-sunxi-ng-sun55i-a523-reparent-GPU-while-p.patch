@@ -1,0 +1,44 @@
+From ef8ba23c0bb98dbd75c8ea4c2271c91f32b78a11 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 20 Jul 2026 02:39:40 +0200
+Subject: [PATCH 130/131] Revert "clk: sunxi-ng: sun55i-a523: reparent GPU
+ while pll-gpu changes rate"
+
+This reverts commit 106f1286bab70e78b174e979b74b43c6f3729413.
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523.c | 15 ---------------
+ 1 file changed, 15 deletions(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+index 2817cf7ae..a6ced170e 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+@@ -1721,17 +1721,6 @@ static const u32 pll_regs[] = {
+ 	SUN55I_A523_PLL_NPU_REG,
+ };
+ 
+-/*
+- * Park the GPU on the fixed pll-periph0-600M output while pll-gpu
+- * changes rate; the mux switch is glitch-free (T527 manual, GPU_CLK_REG).
+- */
+-static struct ccu_mux_nb sun55i_a523_gpu_nb = {
+-	.common		= &gpu_clk.common,
+-	.cm		= &gpu_clk.mux,
+-	.delay_us	= 1,
+-	.bypass_index	= 1, /* pll-periph0-600M */
+-};
+-
+ static int sun55i_a523_ccu_probe(struct platform_device *pdev)
+ {
+ 	void __iomem *reg;
+@@ -1763,10 +1752,6 @@ static int sun55i_a523_ccu_probe(struct platform_device *pdev)
+ 	if (ret)
+ 		return ret;
+ 
+-	/* Reparent the GPU during pll-gpu rate changes */
+-	ccu_mux_notifier_register(pll_gpu_clk.common.hw.clk,
+-				  &sun55i_a523_gpu_nb);
+-
+ 	return 0;
+ }
+ 

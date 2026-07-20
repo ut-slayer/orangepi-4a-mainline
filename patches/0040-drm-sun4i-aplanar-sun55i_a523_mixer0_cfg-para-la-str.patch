@@ -1,7 +1,7 @@
 From 9389f9e4bed18d0ca27b6424268c0a54ffdcbcf4 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 18:13:44 +0200
-Subject: [PATCH 040/106] drm/sun4i: aplanar sun55i_a523_mixer0_cfg para la
+Subject: [PATCH 040/131] drm/sun4i: aplanar sun55i_a523_mixer0_cfg para la
  struct de 6.18
 
 El initializer del parche usaba la sub-struct .lay_cfg del refactor DE33
@@ -47,6 +47,3 @@ index 5655b7c12..148bc5d75 100644
  	.ui_num		= 3,
  	.vi_num		= 1,
  	.map		= {0, 6, 7, 8},
--- 
-2.47.3
-

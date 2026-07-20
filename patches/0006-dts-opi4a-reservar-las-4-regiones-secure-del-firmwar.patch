@@ -1,7 +1,7 @@
 From 0babadaeba997c3d53f196457fad19854500b8ee Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 23 Jun 2026 15:04:55 +0200
-Subject: [PATCH 006/106] dts: opi4a: reservar las 4 regiones secure del
+Subject: [PATCH 006/131] dts: opi4a: reservar las 4 regiones secure del
  firmware BSP (bl31+optee+2 sram)
 
 El U-Boot BSP reserva BL31+OP-TEE+shmem en el FDT del 5.15 pero no en el DTB
@@ -47,6 +47,3 @@ index 6e07f2726..fc8e84140 100644
  		};
  	};
  
--- 
-2.47.3
-

@@ -1,7 +1,7 @@
 From 137354d867b83d64082414505bae393ced33a471 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 04:25:21 +0200
-Subject: [PATCH 101/106] arm64: dts: sun55i-t527-orangepi-4a: cluster grande
+Subject: [PATCH 101/131] arm64: dts: sun55i-t527-orangepi-4a: cluster grande
  hasta 1.8 GHz
 
 Amplia la tabla OPP del cluster grande con 1584 MHz@1.05V (valida en
@@ -79,6 +79,3 @@ index d7248287c..09964ccd5 100644
  &cpu4 {
  	cpu-supply = <&reg_dcdc1_323>;
  	operating-points-v2 = <&cluster1_opp>;
--- 
-2.47.3
-

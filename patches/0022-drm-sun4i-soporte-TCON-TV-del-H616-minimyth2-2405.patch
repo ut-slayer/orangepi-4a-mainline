@@ -1,7 +1,7 @@
 From b8846a4ad0f8c23ad3f03024dcbf512156b5cb67 Mon Sep 17 00:00:00 2001
 From: Jernej Skrabec <jernej.skrabec@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:05 +0200
-Subject: [PATCH 022/106] drm/sun4i: soporte TCON TV del H616 (minimyth2 2405)
+Subject: [PATCH 022/131] drm/sun4i: soporte TCON TV del H616 (minimyth2 2405)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.
@@ -74,6 +74,3 @@ index fa23aa23f..98bee2bd9 100644
  	u8	dclk_min_div;	/* minimum divider for TCON0 DCLK */
  
  	/* callback to handle tcon muxing options */
--- 
-2.47.3
-

@@ -1,0 +1,48 @@
+From 9594a0302e796afcd43e2016cbf088b669549581 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 15 Jul 2026 17:04:50 +0200
+Subject: [PATCH 110/131] arm64: dts: sun55i-t527-orangepi-4a: habilitar el
+ codec analogico (jack 3,5mm)
+
+Habilita el codec interno con los valores de placa del nodo &codec del
+dts BSP de la Orange Pi 4A: reguladores avcc=reg_aldo4 (1.8V),
+vdd=reg_cldo3 (3.3V), cpvin=reg_cldo1 (1.8V, bomba de carga del HP) y
+amplificador de altavoz en PH6 activo alto sin retardo (pa-pin-0/level 1/
+msleep 0 del BSP) como allwinner,pa-gpios.
+
+Las ganancias y volumenes del dts BSP (dac-vol 63, dacl/r 160, adc1-3 160,
+lineout 31, hpout 7, adc-gain 31) coinciden uno a uno con los defaults del
+driver BSP, asi que van cableados en el driver mainline y no se declaran
+aqui. Idem jack-det-level=1, threshold=8, debounce=0 (defaults del driver).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts  | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index baa444888..da8cc83b2 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -922,3 +922,21 @@ simple-audio-card,codec {
+ 		};
+ 	};
+ };
++
++/*
++ * AUDIO ANALOGICO (codec interno del A523, receta del BSP 5.15): jack de
++ * 3,5 mm (HPOUT + jack-detect por IRQ 190), line-out, 3 entradas de mic y
++ * amplificador externo de altavoz en PH6 (activo alto, sin retardo, nodo
++ * BSP pa-pin-0). Los reguladores son los del nodo &codec del dts BSP de la
++ * placa: avcc=aldo4 1.8V, vdd=cldo3 3.3V, cpvin=cldo1 1.8V (bomba de carga
++ * del HP). Ganancias/volumenes de la placa == defaults del driver BSP, van
++ * cableados en el driver. jack-det-level=1 y threshold=8 son los defaults
++ * del driver mainline, no hace falta declararlos.
++ */
++&codec {
++	avcc-supply = <&reg_aldo4>;
++	vdd-supply = <&reg_cldo3>;
++	cpvin-supply = <&reg_cldo1>;
++	allwinner,pa-gpios = <&pio 7 6 GPIO_ACTIVE_HIGH>; /* PH6 */
++	status = "okay";
++};

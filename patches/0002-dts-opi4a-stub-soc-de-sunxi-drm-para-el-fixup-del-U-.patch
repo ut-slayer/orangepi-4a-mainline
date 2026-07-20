@@ -1,7 +1,7 @@
 From 631c1c7e57c5600ff19a19d51408536a7bed37e4 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 19:12:48 +0200
-Subject: [PATCH 002/106] dts: opi4a: stub /soc/{de,sunxi-drm} para el fixup
+Subject: [PATCH 002/131] dts: opi4a: stub /soc/{de,sunxi-drm} para el fixup
  del U-Boot BSP
 
 El bootm del U-Boot v2018.05-t527 llama sunxi_drm_kernel_para_flush() que
@@ -42,6 +42,3 @@ index 65d8f52b3..d6cb2eed0 100644
  	ext_osc32k: ext-osc32k-clk {
  		#clock-cells = <0>;
  		compatible = "fixed-clock";
--- 
-2.47.3
-

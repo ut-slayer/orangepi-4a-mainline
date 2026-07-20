@@ -2,6 +2,42 @@
 
 🌐 **English** · [Español](CHANGELOG.es.md)
 
+## 2026-07-20 — patch series update (no new image yet)
+
+131 patches (was 106). Everything below has been running on the board for a full
+day without regressions. **No new image is published yet** — these are kernel
+patches; the next image release will fold them in.
+
+- **★ GPU clock: the frequencies were wrong, and now they are right.** The A523
+  GPU mod clock is **not** a linear divider: it is a *cycle-masking* one,
+  `rate = source × (16 − M) / 16` (T527 manual, GPU_CLK_REG). With the linear
+  model the "150/200/300/400/600 MHz" operating points were actually running at
+  **487/648/560/750/599 MHz** — every point below the top silently overclocked,
+  and thermal throttling to "400 MHz" actually *raised* the clock to 750 MHz.
+  Measured on hardware with the Mali cycle counter, before and after. The fix
+  adds a small `maskdiv` clock type, switches the GPU clock to it, and drops the
+  `pll-periph0-800M` parent (the vendor BSP had removed it too, citing GPU job
+  faults — consistent with this overshoot). Re-measured: **149/199/300/399/597
+  MHz**, exact and from the intended parents. Credit: **Chen-Yu Tsai** spotted
+  the fractional divider while reviewing an upstream patch.
+- **★ PCIe / M.2 bring-up.** The controller (DesignWare RC) and the Innosilicon
+  USB3/PCIe combo PHY now probe, and the root port enumerates. Verified here
+  with an **empty** slot; NVMe with a real drive is still untested. The kernel
+  side comes from the Armbian series by **Marvin Wewer** (authorship preserved),
+  plus a 1-lane fix from the BSP and the device-tree wiring for this board.
+- **Display: scanout wedge fix** — all plane arming is now gated to the blanking
+  interval and the timer re-anchored to the real TCON scan line, which addresses
+  a frame that could get stuck after direct-scanout transitions.
+- **VPU (early, not usable yet)** — the `cedar-ve` userspace shim, its
+  device-tree node and the IOMMU mappings for the video engine masters. Shipped
+  so others can experiment; there is no working decode stack around it yet.
+- **Gamepads**: `INPUT_JOYDEV` and `INPUT_UINPUT` enabled (analog sticks were
+  dead in software that opens `/dev/input/jsN` first).
+- **Upstream**: the generic `ccu_div` ordering fix from this tree was sent to the
+  Linux clk / linux-sunxi lists and **got a `Reviewed-by` from Chen-Yu Tsai**;
+  the GPU clock series followed it. Both are public in the kernel mailing list
+  archives.
+
 ## v0.2 — Analog audio (3.5 mm headphone jack) + CLI/headless image
 
 **Two images now:** the full **Desktop** (KDE Plasma) and a new **CLI / headless**

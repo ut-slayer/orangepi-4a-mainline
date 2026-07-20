@@ -1,7 +1,7 @@
 From 0bdba3ad24b0c507934d802de3368cae4c883211 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Thu, 9 Jul 2026 10:21:20 +0200
-Subject: [PATCH 052/106] drm/sun4i: sun55i_de: modo AHB (escritura CPU en
+Subject: [PATCH 052/131] drm/sun4i: sun55i_de: modo AHB (escritura CPU en
  blanking) + alpha global del VSU opaco por defecto
 
 MODO AHB (enum de_update_mode del BSP): con use_rcq=0 (default) do_arm
@@ -131,6 +131,3 @@ index f3ac33e08..44a7bad61 100644
  
  	/*
  	 * Beam-gated arm. The RCQ latches ~immediately when armed and is not
--- 
-2.47.3
-

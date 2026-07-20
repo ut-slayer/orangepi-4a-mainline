@@ -1,7 +1,7 @@
 From 4f5c49460775fe286a2f1734aa86d858de95551b Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 10 Jul 2026 02:16:35 +0200
-Subject: [PATCH 056/106] arm64: dts: allwinner: audio HDMI en OPi4A (i2s2 +
+Subject: [PATCH 056/131] arm64: dts: allwinner: audio HDMI en OPi4A (i2s2 +
  mcu_dma + simple-card)
 
 Receta del BSP 5.15: I2S2@0x7114000 -> entrada I2S del DW-HDMI (cableado
@@ -106,6 +106,3 @@ index 05e49c4c0..dc70a09bd 100644
 +		};
 +	};
 +};
--- 
-2.47.3
-

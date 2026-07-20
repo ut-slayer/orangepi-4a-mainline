@@ -1,0 +1,95 @@
+From 2d87e39f20627f83ac46ede76037bc77e160e1a4 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 20 Jul 2026 02:39:54 +0200
+Subject: [PATCH 131/131] clk: sunxi-ng: maskdiv: aplicar UPDATE_BIT/KEY_FIELD
+ en set_rate + documentar limitacion CLK_SET_RATE_PARENT
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Sashiko-bot reporto 2 issues validos en el tipo generico ccu_maskdiv:
+
+1. [Medium] set_rate no aplicaba CCU_FEATURE_UPDATE_BIT ni
+   CCU_FEATURE_KEY_FIELD, a diferencia de ccu_div_set_rate y
+   ccu_mux_helper_set_parent. Aunque gpu_clk no usa esos features
+   (common.features=0), el tipo generico debe manejarlos para ser
+   robusto si un clock futuro los requiere.
+
+2. [High] determine_rate usa clk_hw_get_rate() en vez de
+   clk_hw_round_rate(), por lo que no propaga rate requests al padre.
+   gpu_clk no tiene CLK_SET_RATE_PARENT, asi que no le afecta, pero el
+   tipo generico debe documentar esta limitacion.
+
+Tambien se elimina el parche del notifier pll-gpu (commit 106f1286b):
+CLK_SET_RATE_GATE en pll_gpu_clk bloquea clk_set_rate() con -EBUSY
+antes de que el notifier se dispare, por lo que era codigo muerto.
+Los OPPs speed-bin que necesiten reprogramar pll-gpu deberan venir
+con: (a) quitar CLK_SET_RATE_GATE, (b) registrar el notifier. Eso es
+un follow-up.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+---
+ drivers/clk/sunxi-ng/ccu_common.h  | 3 +++
+ drivers/clk/sunxi-ng/ccu_maskdiv.c | 4 ++++
+ drivers/clk/sunxi-ng/ccu_maskdiv.h | 5 +++++
+ drivers/clk/sunxi-ng/ccu_mux.c     | 2 --
+ 4 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu_common.h b/drivers/clk/sunxi-ng/ccu_common.h
+index d00c955fd..27fecc665 100644
+--- a/drivers/clk/sunxi-ng/ccu_common.h
++++ b/drivers/clk/sunxi-ng/ccu_common.h
+@@ -29,6 +29,9 @@
+ /* Some clocks need this bit to actually apply register changes */
+ #define CCU_SUNXI_UPDATE_BIT		BIT(27)
+ 
++/* Key value for clocks with CCU_FEATURE_KEY_FIELD (reads as zero) */
++#define CCU_MUX_KEY_VALUE		0x16aa0000
++
+ struct device_node;
+ 
+ struct ccu_common {
+diff --git a/drivers/clk/sunxi-ng/ccu_maskdiv.c b/drivers/clk/sunxi-ng/ccu_maskdiv.c
+index 2d3cccf08..dd4f7c07d 100644
+--- a/drivers/clk/sunxi-ng/ccu_maskdiv.c
++++ b/drivers/clk/sunxi-ng/ccu_maskdiv.c
+@@ -140,6 +140,10 @@ static int ccu_maskdiv_set_rate(struct clk_hw *hw, unsigned long rate,
+ 
+ 	reg = readl(cmd->common.base + cmd->common.reg);
+ 	reg &= ~GENMASK(cmd->shift + cmd->width - 1, cmd->shift);
++	if (cmd->common.features & CCU_FEATURE_KEY_FIELD)
++		reg |= CCU_MUX_KEY_VALUE;
++	if (cmd->common.features & CCU_FEATURE_UPDATE_BIT)
++		reg |= CCU_SUNXI_UPDATE_BIT;
+ 	writel(reg | (m << cmd->shift), cmd->common.base + cmd->common.reg);
+ 
+ 	spin_unlock_irqrestore(cmd->common.lock, flags);
+diff --git a/drivers/clk/sunxi-ng/ccu_maskdiv.h b/drivers/clk/sunxi-ng/ccu_maskdiv.h
+index 3cbfce064..e070798f1 100644
+--- a/drivers/clk/sunxi-ng/ccu_maskdiv.h
++++ b/drivers/clk/sunxi-ng/ccu_maskdiv.h
+@@ -25,6 +25,11 @@
+  * cycles at 16 cycles", GPU_CLK = Clock Source * ((16-M)/16) (T527 user
+  * manual v0.92, section 2.7.6.58).
+  *
++ * This type does not support CLK_SET_RATE_PARENT: determine_rate
++ * evaluates parents at their current rate and does not propagate rate
++ * requests upstream.  If a future user needs parent rate propagation,
++ * switch to clk_hw_round_rate() in the determine_rate loop.
++ *
+  * @shift:	shift of the M field in the register
+  * @width:	width of the M field; the mask window is 2^width cycles
+  */
+diff --git a/drivers/clk/sunxi-ng/ccu_mux.c b/drivers/clk/sunxi-ng/ccu_mux.c
+index 74f9e98a5..91d993e0a 100644
+--- a/drivers/clk/sunxi-ng/ccu_mux.c
++++ b/drivers/clk/sunxi-ng/ccu_mux.c
+@@ -12,8 +12,6 @@
+ #include "ccu_gate.h"
+ #include "ccu_mux.h"
+ 
+-#define CCU_MUX_KEY_VALUE		0x16aa0000
+-
+ static u16 ccu_mux_get_prediv(struct ccu_common *common,
+ 			      struct ccu_mux_internal *cm,
+ 			      int parent_index)

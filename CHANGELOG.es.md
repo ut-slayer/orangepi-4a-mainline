@@ -2,6 +2,44 @@
 
 🌐 [English](CHANGELOG.md) · **Español**
 
+## 2026-07-20 — actualización de la serie de parches (todavía sin imagen nueva)
+
+131 parches (antes 106). Todo lo de abajo lleva un día entero corriendo en la
+placa sin regresiones. **Aún no se publica imagen nueva** — esto son parches de
+kernel; la próxima release de imagen los incorporará.
+
+- **★ El reloj de la GPU: las frecuencias estaban mal, y ahora están bien.** El
+  reloj de la GPU del A523 **no** es un divisor lineal: es de *enmascarado de
+  ciclos*, `frecuencia = fuente × (16 − M) / 16` (manual del T527, GPU_CLK_REG).
+  Con el modelo lineal, los puntos de operación "150/200/300/400/600 MHz" corrían
+  en realidad a **487/648/560/750/599 MHz** — todos los puntos por debajo del
+  máximo se overclockeaban en silencio, y el throttling térmico a "400 MHz" en
+  realidad *subía* el reloj a 750 MHz. Medido en hardware con el contador de
+  ciclos del Mali, antes y después. El fix añade un tipo de reloj `maskdiv`,
+  cambia el reloj de la GPU a él, y quita el padre `pll-periph0-800M` (el BSP del
+  fabricante también lo había quitado, alegando *job faults* de la GPU —
+  coherente con este exceso de frecuencia). Re-medido: **149/199/300/399/597
+  MHz**, exactas y desde los padres previstos. Crédito: **Chen-Yu Tsai** detectó
+  lo del divisor fraccional revisando un parche enviado a upstream.
+- **★ Bring-up de PCIe / M.2.** El controlador (RC DesignWare) y el PHY combo
+  USB3/PCIe de Innosilicon hacen probe, y el root port enumera. Verificado aquí
+  con la ranura **vacía**; NVMe con un disco real sigue sin probarse. La parte de
+  kernel viene de la serie de Armbian de **Marvin Wewer** (autoría preservada),
+  más un fix de 1 lane sacado del BSP y el cableado de device-tree de esta placa.
+- **Display: fix del "wedge" de scanout** — el armado de todos los planos se
+  restringe ahora al intervalo de blanking y el temporizador se re-ancla a la
+  línea real del TCON, lo que ataca un fotograma que podía quedarse clavado tras
+  transiciones de scanout directo.
+- **VPU (temprano, aún no usable)** — el shim de userspace `cedar-ve`, su nodo de
+  device-tree y los mapeos de IOMMU de los masters del motor de vídeo. Se publica
+  para que otros experimenten; todavía no hay pila de decodificación funcionando.
+- **Mandos**: activados `INPUT_JOYDEV` e `INPUT_UINPUT` (los sticks analógicos no
+  respondían en software que abre primero `/dev/input/jsN`).
+- **Upstream**: el fix genérico de orden en `ccu_div` de este árbol se envió a
+  las listas de clk / linux-sunxi y **recibió un `Reviewed-by` de Chen-Yu Tsai**;
+  la serie del reloj de la GPU fue detrás. Ambas son públicas en los archivos de
+  las listas del kernel.
+
 ## v0.2 — Audio analógico (jack de auriculares de 3,5 mm) + imagen CLI/headless
 
 **Ahora hay dos imágenes:** la **Desktop** completa (KDE Plasma) y una nueva

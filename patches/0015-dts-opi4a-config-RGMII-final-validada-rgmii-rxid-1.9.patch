@@ -1,7 +1,7 @@
 From 6d77bce1ef1f07b74dab6ae3dba57bbe45a4de4b Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 04:04:05 +0200
-Subject: [PATCH 015/106] dts: opi4a: config RGMII final validada (rgmii-rxid +
+Subject: [PATCH 015/131] dts: opi4a: config RGMII final validada (rgmii-rxid +
  1.9ns PHY + syscon tx100)
 
 Con el withstand del banco PJ corregido, combo validado en vivo con
@@ -65,6 +65,3 @@ index f73a18759..4569ad285 100644
  		interrupts-extended = <&pio 8 16 IRQ_TYPE_LEVEL_LOW>; /* PI16 */
  		reset-gpios = <&pio 8 15 GPIO_ACTIVE_LOW>; /* PI15 */
  		reset-assert-us = <10000>;
--- 
-2.47.3
-

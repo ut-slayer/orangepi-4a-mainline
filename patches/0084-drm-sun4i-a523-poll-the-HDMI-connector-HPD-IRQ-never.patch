@@ -1,7 +1,7 @@
 From 6c87a024f964b1f0a04d9d74072556f81f3a188d Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 00:16:00 +0200
-Subject: [PATCH 084/106] drm/sun4i: a523: poll the HDMI connector (HPD IRQ
+Subject: [PATCH 084/131] drm/sun4i: a523: poll the HDMI connector (HPD IRQ
  never fires)
 
 With ENHPDRXSENSE enabled read_hpd() now returns the live cable state,
@@ -99,6 +99,3 @@ index e6a570951..d1f3e9f80 100644
  };
  
  struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
--- 
-2.47.3
-

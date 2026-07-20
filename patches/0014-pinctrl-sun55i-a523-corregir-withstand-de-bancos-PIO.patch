@@ -1,7 +1,7 @@
 From e7d7f5e4a5d31fcd1a19c7459e46fa6b3dac51e8 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 04:04:05 +0200
-Subject: [PATCH 014/106] pinctrl: sun55i-a523: corregir withstand de bancos
+Subject: [PATCH 014/131] pinctrl: sun55i-a523: corregir withstand de bancos
  PIO desde la deteccion hw
 
 CAUSA RAIZ del RX muerto del GMAC1 en la OPi4A: el banco PJ (RGMII)
@@ -121,6 +121,3 @@ index 7d2308c37..537043dba 100644
  	return sunxi_pinctrl_dt_table_init(pdev, a523_nr_bank_pins,
  					   a523_irq_bank_muxes,
  					   &a523_pinctrl_data,
--- 
-2.47.3
-

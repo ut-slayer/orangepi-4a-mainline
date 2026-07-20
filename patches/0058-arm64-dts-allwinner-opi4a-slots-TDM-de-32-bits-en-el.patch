@@ -1,7 +1,7 @@
 From 086778626780b05d10545b7e9ba0870f8116ed3e Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 10 Jul 2026 17:28:40 +0200
-Subject: [PATCH 058/106] arm64: dts: allwinner: opi4a: slots TDM de 32 bits en
+Subject: [PATCH 058/131] arm64: dts: allwinner: opi4a: slots TDM de 32 bits en
  el audio HDMI
 
 Sin esto solo sonaba S32: dw-hdmi-i2s-audio hardcodea INPUTCLKFS=64fs
@@ -38,6 +38,3 @@ index dc70a09bd..8d1051d24 100644
  		};
  
  		simple-audio-card,codec {
--- 
-2.47.3
-

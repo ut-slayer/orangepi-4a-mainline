@@ -1,7 +1,7 @@
 From 0f60da8a3118cd0a4e6e123a14694f7c93d8b6dd Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 04:32:33 +0200
-Subject: [PATCH 102/106] thermal: sun8i: a523: no fabricar 183C si el canal
+Subject: [PATCH 102/131] thermal: sun8i: a523: no fabricar 183C si el canal
  NPU aun no tiene dato
 
 La zona de GPU del A523 lee el sensor NPU en lugar del GPU (receta del
@@ -52,6 +52,3 @@ index 8774ef8d6..51f0cb338 100644
  
  	return sun55i_a523_calc_temp_raw(reg);
  }
--- 
-2.47.3
-

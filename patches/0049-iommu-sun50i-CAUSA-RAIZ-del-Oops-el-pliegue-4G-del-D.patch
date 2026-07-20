@@ -1,7 +1,7 @@
 From 995864ccf0a106400c2c05c4b3215d73116116d0 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 23:41:03 +0200
-Subject: [PATCH 049/106] iommu/sun50i: CAUSA RAIZ del Oops: el pliegue +4G del
+Subject: [PATCH 049/131] iommu/sun50i: CAUSA RAIZ del Oops: el pliegue +4G del
  DTE comparaba contra PHYS_OFFSET
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -73,6 +73,3 @@ index 2378333ed..715581b1a 100644
  
  static phys_addr_t sun50i_pte_get_page_address(u32 pte)
  {
--- 
-2.47.3
-

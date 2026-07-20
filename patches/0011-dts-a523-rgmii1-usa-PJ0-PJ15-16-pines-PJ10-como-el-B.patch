@@ -1,7 +1,7 @@
 From 4d60a01beb6a059fda0362cf3c4efedec061287e Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 02:05:52 +0200
-Subject: [PATCH 011/106] dts: a523: rgmii1 usa PJ0-PJ15 (16 pines, +PJ10 como
+Subject: [PATCH 011/131] dts: a523: rgmii1 usa PJ0-PJ15 (16 pines, +PJ10 como
  el BSP)
 
 Mainline se saltaba PJ10; el BSP del OPi4A mapea PJ0..PJ15 completo a gmac1.
@@ -31,6 +31,3 @@ index f1648c0c6..e9e22edb6 100644
  				allwinner,pinmux = <5>;
  				function = "gmac1";
  				drive-strength = <40>;
--- 
-2.47.3
-

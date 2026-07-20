@@ -1,0 +1,42 @@
+From a8e553b9e99369aacf9ed20b26d4359e8280c539 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 18 Jul 2026 06:01:56 +0200
+Subject: [PATCH 123/131] config: activar PCIE_SUN55I_RC=y + AW_INNO_COMBOPHY=y
+ (PCIe T527)
+
+Controlador PCIe RC sunxi y combo PHY Inno built-in, como el resto del
+bring-up de plataforma, para que con NVME=m (ya activo) el orden de
+probe sea trivial. Arrastra los simbolos derivados del olddefconfig.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .config | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/.config b/.config
+index c7dd87893..8ce33489e 100644
+--- a/.config
++++ b/.config
+@@ -1789,6 +1789,14 @@ CONFIG_PCI_EPF_TEST=m
+ 
+ CONFIG_PCI_PWRCTRL=y
+ CONFIG_PCI_PWRCTRL_SLOT=y
++
++#
++# PCIe Drivers
++#
++CONFIG_PCIE_SUN55I_RC=y
++# CONFIG_PCIE_SUN55I_NONE is not set
++# end of PCIe Drivers
++
+ # CONFIG_CXL_BUS is not set
+ # CONFIG_PCCARD is not set
+ # CONFIG_RAPIDIO is not set
+@@ -8102,6 +8110,7 @@ CONFIG_PHY_SUN4I_USB=y
+ CONFIG_PHY_SUN6I_MIPI_DPHY=m
+ # CONFIG_PHY_SUN9I_USB is not set
+ # CONFIG_PHY_SUN50I_USB3 is not set
++CONFIG_AW_INNO_COMBOPHY=y
+ 
+ #
+ # PHY drivers for Broadcom platforms

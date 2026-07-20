@@ -1,7 +1,7 @@
 From 387aa8ef31d957d94a0622f814e53de6bdd274c8 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 23:29:17 +0200
-Subject: [PATCH 048/106] dts: opi4a: IOMMU del DE activo en mixer0 y
+Subject: [PATCH 048/131] dts: opi4a: IOMMU del DE activo en mixer0 y
  display-engine (modelo BSP todo-traducido)
 
 Se quita el /delete-property/ iommus del mixer (el dtsi ya trae
@@ -58,6 +58,3 @@ index 1f83f2e62..05e49c4c0 100644
 -&mixer0 {
 -	/delete-property/ iommus;
 -};
--- 
-2.47.3
-

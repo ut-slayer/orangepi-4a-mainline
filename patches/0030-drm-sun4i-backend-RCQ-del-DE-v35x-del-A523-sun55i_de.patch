@@ -1,7 +1,7 @@
 From d3e5e0cb7a71898b44f484ed31087192d173627d Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:54 +0200
-Subject: [PATCH 030/106] drm/sun4i: backend RCQ del DE v35x del A523
+Subject: [PATCH 030/131] drm/sun4i: backend RCQ del DE v35x del A523
  (sun55i_de) (minimyth2 2723)
 
 El DE3.5 del A523/T527 usa el layout del DE33 pero el datapath solo se
@@ -998,6 +998,3 @@ index a1c1cbccc..2236da207 100644
  };
  
  enum {
--- 
-2.47.3
-

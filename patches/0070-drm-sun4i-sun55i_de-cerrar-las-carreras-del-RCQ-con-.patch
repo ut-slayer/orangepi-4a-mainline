@@ -1,7 +1,7 @@
 From a389e9e757501b149ff6d42b03d14224541c8abc Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:16:57 +0200
-Subject: [PATCH 070/106] drm/sun4i: sun55i_de: cerrar las carreras del RCQ con
+Subject: [PATCH 070/131] drm/sun4i: sun55i_de: cerrar las carreras del RCQ con
  el arm en vuelo (auditoria C1/C2/A1)
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -483,6 +483,3 @@ index fb473e051..849df3a00 100644
  	list_del(&mixer->engine.list);
  
  	clk_disable_unprepare(mixer->mod_clk);
--- 
-2.47.3
-
