@@ -37,10 +37,16 @@ funciona. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 | **eMMC** (almacenamiento MMC) | ✅ detectada + lectura/escritura HS200 (confirmado por un tester); arrancar *desde* eMMC aún sin cablear |
 | **PCIe / M.2** (RC DesignWare + PHY combo Innosilicon) | ✅ el controlador y el PHY hacen probe, el entrenamiento del enlace corre y el **root port enumera** — verificado aquí con la ranura **vacía**. **NVMe con un disco real sigue sin probarse** (no hay disco a mano — testers bienvenidos) |
 
-La decodificación de vídeo por hardware (VPU) **aún no es usable**: este árbol
-incluye el shim de userspace `cedar-ve` y su cableado de device-tree/IOMMU, pero
-la pila de decodificación alrededor está en exploración temprana — considéralo
-trabajo en curso, no una función. La **variante de 4 GB está confirmada
+**Decodificación de vídeo por hardware (VPU) — parcialmente funcionando, la parte
+de kernel incluida.** Este árbol trae el shim `cedar-ve` con su nodo de
+device-tree y los mapeos de IOMMU de los masters del motor de vídeo. Junto con el
+userspace de Allwinner (libcedarc + `gstreamer1.0-omx`), **H.264 y H.265
+decodifican por hardware**: YouTube se reproduce fluido en un navegador WebKit
+(probado con Cog) en esta placa. **VP8/VP9 no** — ese motor nunca dispara su
+interrupción, así que esos códecs se capan en nuestra configuración y YouTube
+negocia H.264 en su lugar. Ojo: esto es la mitad de *kernel*; la pila de
+decodificación de userspace no forma parte de esta serie de parches, y las
+imágenes Debian publicadas aquí todavía no la incluyen. La **variante de 4 GB está confirmada
 funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la
 eMMC; el bootloader auto-detecta el tamaño de RAM).
 

@@ -37,9 +37,15 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 | **eMMC** (MMC storage) | ✅ detected + HS200 read/write (confirmed by a tester); booting *from* eMMC not wired up yet |
 | **PCIe / M.2** (DesignWare RC + Innosilicon combo PHY) | ✅ controller and PHY probe, link training runs and the **root port enumerates** — verified here with an **empty** slot. **NVMe with a real drive is still untested** (no drive on hand — testers very welcome) |
 
-Hardware video decode (VPU) is **not** usable yet: this tree ships the `cedar-ve`
-userspace shim and its device-tree/IOMMU plumbing, but the decoding stack around
-it is still early exploration — treat it as work in progress, not a feature.
+**Hardware video decode (VPU) — partly working, kernel side included.** This tree
+ships the `cedar-ve` shim with its device-tree node and the IOMMU mappings for the
+video-engine masters. Paired with the Allwinner userspace (libcedarc +
+`gstreamer1.0-omx`), **H.264 and H.265 decode work**: YouTube plays smoothly in a
+WebKit browser (tested with Cog) on this board. **VP8/VP9 do not** — that engine
+never raises its interrupt, so those codecs are capped in our setup, which makes
+YouTube negotiate H.264 instead. Note this is the *kernel* half: the userspace
+decoding stack is not part of this patch set, and the Debian images published
+here do not ship it yet.
 The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who
 also confirmed the eMMC; the bootloader auto-detects the RAM size).
 

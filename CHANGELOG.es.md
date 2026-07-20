@@ -30,9 +30,14 @@ kernel; la próxima release de imagen los incorporará.
   restringe ahora al intervalo de blanking y el temporizador se re-ancla a la
   línea real del TCON, lo que ataca un fotograma que podía quedarse clavado tras
   transiciones de scanout directo.
-- **VPU (temprano, aún no usable)** — el shim de userspace `cedar-ve`, su nodo de
-  device-tree y los mapeos de IOMMU de los masters del motor de vídeo. Se publica
-  para que otros experimenten; todavía no hay pila de decodificación funcionando.
+- **★ VPU: la decodificación por hardware de H.264/H.265 funciona.** Esta entrega
+  añade el shim `cedar-ve`, su nodo de device-tree y los mapeos de IOMMU de los
+  masters del motor de vídeo. Con el userspace de Allwinner encima (libcedarc +
+  `gstreamer1.0-omx`), **YouTube se reproduce fluido en un navegador WebKit (Cog)
+  con decodificación por hardware** en esta placa. **VP8/VP9 siguen rotos** — ese
+  motor nunca dispara su interrupción — así que esos códecs se capan y YouTube
+  negocia H.264. La mitad de userspace no forma parte de esta serie de parches (ni
+  está aún en las imágenes Debian publicadas); la mitad de kernel sí está aquí.
 - **Mandos**: activados `INPUT_JOYDEV` e `INPUT_UINPUT` (los sticks analógicos no
   respondían en software que abre primero `/dev/input/jsN`).
 - **Upstream**: el fix genérico de orden en `ccu_div` de este árbol se envió a

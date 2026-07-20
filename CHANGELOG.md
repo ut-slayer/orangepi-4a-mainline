@@ -28,9 +28,14 @@ patches; the next image release will fold them in.
 - **Display: scanout wedge fix** — all plane arming is now gated to the blanking
   interval and the timer re-anchored to the real TCON scan line, which addresses
   a frame that could get stuck after direct-scanout transitions.
-- **VPU (early, not usable yet)** — the `cedar-ve` userspace shim, its
-  device-tree node and the IOMMU mappings for the video engine masters. Shipped
-  so others can experiment; there is no working decode stack around it yet.
+- **★ VPU: H.264/H.265 hardware decode works.** This drop adds the `cedar-ve`
+  shim, its device-tree node and the IOMMU mappings for the video-engine
+  masters. With the Allwinner userspace on top (libcedarc + `gstreamer1.0-omx`),
+  **YouTube plays smoothly in a WebKit browser (Cog) with hardware decode** on
+  this board. **VP8/VP9 remain broken** — that engine never raises its
+  interrupt — so those codecs are capped and YouTube negotiates H.264 instead.
+  The userspace half is not part of this patch set (and not in the published
+  Debian images yet); the kernel half is here.
 - **Gamepads**: `INPUT_JOYDEV` and `INPUT_UINPUT` enabled (analog sticks were
   dead in software that opens `/dev/input/jsN` first).
 - **Upstream**: the generic `ccu_div` ordering fix from this tree was sent to the
