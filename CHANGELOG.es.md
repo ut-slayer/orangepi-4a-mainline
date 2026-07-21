@@ -4,7 +4,7 @@
 
 ## 2026-07-20 — actualización de la serie de parches (todavía sin imagen nueva)
 
-129 parches (antes 106). Todo lo de abajo lleva un día entero corriendo en la
+130 parches (antes 106). Todo lo de abajo lleva un día entero corriendo en la
 placa sin regresiones. **Aún no se publica imagen nueva** — esto son parches de
 kernel; la próxima release de imagen los incorporará.
 
@@ -38,6 +38,13 @@ kernel; la próxima release de imagen los incorporará.
   motor nunca dispara su interrupción — así que esos códecs se capan y YouTube
   negocia H.264. La mitad de userspace no forma parte de esta serie de parches (ni
   está aún en las imágenes Debian publicadas); la mitad de kernel sí está aquí.
+- **★ Arreglado: al `defconfig` publicado le faltaban opciones.** Los commits de
+  configuración posteriores al 13-jul tocaron el `.config` local de compilación
+  en vez del defconfig versionado, que es el que va en este bundle. Quien
+  recompilara con él obtenía un kernel **sin audio analógico, sin PCIe, sin VPU
+  y sin joydev**. El defconfig se ha regenerado desde la configuración validada
+  en hardware (verificado que la reproduce exactamente). Si compilaste desde este
+  repo antes de hoy, vuelve a compilar con el defconfig nuevo.
 - **Mandos**: activados `INPUT_JOYDEV` e `INPUT_UINPUT` (los sticks analógicos no
   respondían en software que abre primero `/dev/input/jsN`).
 - **Upstream**: el fix genérico de orden en `ccu_div` de este árbol se envió a

@@ -1,7 +1,7 @@
 From 2610092d7ff575535e00c2653a8941f5c107f989 Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:54 +0200
-Subject: [PATCH 032/129] drm/sun4i: sun55i_de: fix tearing del page-flip (RCQ
+Subject: [PATCH 032/130] drm/sun4i: sun55i_de: fix tearing del page-flip (RCQ
  armado en vblank) (minimyth2 2727)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2

@@ -1,7 +1,7 @@
 From 512d50a142001b3edd6355b215e6cf66b2cdc8ea Mon Sep 17 00:00:00 2001
 From: Jernej Skrabec <jernej.skrabec@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:05 +0200
-Subject: [PATCH 023/129] drm/sun4i: soporte HDMI PHY del H616 (minimyth2 2406)
+Subject: [PATCH 023/130] drm/sun4i: soporte HDMI PHY del H616 (minimyth2 2406)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2
 (warpme), backport a 6.18.36.

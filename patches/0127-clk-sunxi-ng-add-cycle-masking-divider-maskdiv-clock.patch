@@ -1,7 +1,7 @@
 From fc8d7b811596d31d4cd806daea579419df8d2389 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 19 Jul 2026 22:31:18 +0200
-Subject: [PATCH 127/129] clk: sunxi-ng: add cycle-masking divider (maskdiv)
+Subject: [PATCH 127/130] clk: sunxi-ng: add cycle-masking divider (maskdiv)
  clock type
 
 Some mod clocks do not divide their parent with a linear M+1 divider:

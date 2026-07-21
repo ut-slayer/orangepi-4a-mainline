@@ -1,7 +1,7 @@
 From ba0e354ca24bdd5cbf3c869c92b70d9631c429dc Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 15 Jul 2026 17:04:49 +0200
-Subject: [PATCH 109/129] arm64: dts: sun55i-a523: nodo del codec de audio
+Subject: [PATCH 109/130] arm64: dts: sun55i-a523: nodo del codec de audio
  interno (codec@7110000)
 
 Nodo del codec analogico del A523/T527 para el driver sun55i-a523-codec,

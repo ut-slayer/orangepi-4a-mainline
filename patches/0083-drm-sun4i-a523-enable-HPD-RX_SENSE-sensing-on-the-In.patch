@@ -1,7 +1,7 @@
 From 7e11235e6e774dcb5d9294c92bbf40736ff363ee Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 23:54:28 +0200
-Subject: [PATCH 083/129] drm/sun4i: a523: enable HPD/RX_SENSE sensing on the
+Subject: [PATCH 083/130] drm/sun4i: a523: enable HPD/RX_SENSE sensing on the
  Inno PHY
 
 The A523/T527 HDMI connector always reported "disconnected" even with a

@@ -1,7 +1,7 @@
 From 6cc6b4a072195aa10301950eb515a7fdc75ddbcc Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:54 +0200
-Subject: [PATCH 031/129] drm/sun4i: PHY HDMI del H616 y A523 (Inno) en
+Subject: [PATCH 031/130] drm/sun4i: PHY HDMI del H616 y A523 (Inno) en
  sun8i_hdmi_phy (minimyth2 2724)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2

@@ -1,7 +1,7 @@
 From 329ac1edb8085898a5bce5fe1a5d1ab2b74547a6 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 02:00:34 +0200
-Subject: [PATCH 092/129] config: activar SUN55I_A523_CPU_CCU
+Subject: [PATCH 092/130] config: activar SUN55I_A523_CPU_CCU
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit

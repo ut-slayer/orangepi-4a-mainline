@@ -1,7 +1,7 @@
 From bff94f97ef37981bed3cfad4d4556ff1b0021557 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 00:27:34 +0200
-Subject: [PATCH 085/129] drm/bridge: dw-hdmi: don't advertise OP_HPD when
+Subject: [PATCH 085/130] drm/bridge: dw-hdmi: don't advertise OP_HPD when
  polling the connector
 
 poll_hpd platforms (e.g. Allwinner A523) switch the connector to periodic

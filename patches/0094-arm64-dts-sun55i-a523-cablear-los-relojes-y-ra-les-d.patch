@@ -1,7 +1,7 @@
 From 44430055b0724fe7b7525da7a016f99ee9badb13 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 02:13:25 +0200
-Subject: [PATCH 094/129] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20cablear?=
+Subject: [PATCH 094/130] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20cablear?=
  =?UTF-8?q?=20los=20relojes=20y=20ra=C3=ADles=20de=20la=20CPU?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

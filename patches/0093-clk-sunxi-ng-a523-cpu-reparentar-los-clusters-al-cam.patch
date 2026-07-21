@@ -1,7 +1,7 @@
 From 90e4756976d6b6445ee6ae6f76abe09463071008 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 02:13:24 +0200
-Subject: [PATCH 093/129] clk: sunxi-ng: a523 cpu: reparentar los clusters al
+Subject: [PATCH 093/130] clk: sunxi-ng: a523 cpu: reparentar los clusters al
  cambiar el PLL
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

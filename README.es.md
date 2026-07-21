@@ -5,7 +5,7 @@
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Inv%C3%ADtame%20a%20un%20caf%C3%A9%20%E2%98%95-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/aurealnix)
 
 Soporte **mainline** para la Orange Pi 4A (SoC Allwinner **T527**, familia A523 /
-`sun55iw3`), sobre un kernel **6.18.38 vanilla**. Serie de 129 parches +
+`sun55iw3`), sobre un kernel **6.18.38 vanilla**. Serie de 130 parches +
 `defconfig` + device-tree de la placa. Los ports de la serie comunitaria
 minimyth2 conservan la autoría original (Justin Suess, Jernej Škrabec) en las
 cabeceras de los parches.
@@ -87,7 +87,7 @@ Decisiones tomadas en la imagen distribuida (no son parches del kernel):
 
 ## Contenido
 
-- `patches/` — serie `git format-patch` (0001–0129).
+- `patches/` — serie `git format-patch` (0001–0130).
 - `opi4a_blindboot_defconfig` — para `arch/arm64/configs/`.
 - `sun55i-t527-orangepi-4a.dts` — device-tree de la placa.
 

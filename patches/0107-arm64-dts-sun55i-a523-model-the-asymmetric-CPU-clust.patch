@@ -1,7 +1,7 @@
 From b0ea7b400e5e95970c25bbd5f5c864b9ec8acb0e Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 15:07:37 +0200
-Subject: [PATCH 107/129] arm64: dts: sun55i-a523: model the asymmetric CPU
+Subject: [PATCH 107/130] arm64: dts: sun55i-a523: model the asymmetric CPU
  clusters (capacity + cpu-map)
 
 The A523/T527 is a DynamIQ octa-Cortex-A55 split into two asymmetric

@@ -1,7 +1,7 @@
 From b09fcf2e8e5226849e024bd95022cf5020071321 Mon Sep 17 00:00:00 2001
 From: Marvin Wewer <mwewer37@proton.me>
 Date: Tue, 6 Jan 2026 13:46:53 +0000
-Subject: [PATCH 121/129] arm64: dts: allwinner: t527-orangepi-4a: enable PCIe
+Subject: [PATCH 121/130] arm64: dts: allwinner: t527-orangepi-4a: enable PCIe
  combophy
 
 Signed-off-by: Marvin Wewer <mwewer37@proton.me>

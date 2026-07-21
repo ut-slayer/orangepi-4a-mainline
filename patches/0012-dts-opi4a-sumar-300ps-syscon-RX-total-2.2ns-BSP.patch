@@ -1,7 +1,7 @@
 From 0f0f5be1b143cb8a483e11229d8d27ab85835a5c Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 02:15:26 +0200
-Subject: [PATCH 012/129] dts: opi4a: sumar 300ps syscon RX (total ~2.2ns =
+Subject: [PATCH 012/130] dts: opi4a: sumar 300ps syscon RX (total ~2.2ns =
  BSP)
 
 Con PJ10 el RX revivio pero marginal (rx_packets subia de 1 en 1, 0 crc).

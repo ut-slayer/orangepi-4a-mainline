@@ -1,7 +1,7 @@
 From 6e14c1b46829ba881df7aa5a0c7ff8a2fc69f5c7 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 01:39:34 +0200
-Subject: [PATCH 008/129] dts: opi4a: usar delays RGMII del BSP (rgmii +
+Subject: [PATCH 008/130] dts: opi4a: usar delays RGMII del BSP (rgmii +
  tx100/rx300ps)
 
 Los valores de mainline (rgmii-id, tx0/rx300) daban link 1Gbps pero 0

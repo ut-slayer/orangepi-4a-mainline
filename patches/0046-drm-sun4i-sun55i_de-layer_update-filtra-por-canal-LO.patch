@@ -1,7 +1,7 @@
 From beb84d3d2b6c58f538fd761a6e9c048e5dde9e9a Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 22:38:44 +0200
-Subject: [PATCH 046/129] drm/sun4i: sun55i_de: layer_update filtra por canal
+Subject: [PATCH 046/130] drm/sun4i: sun55i_de: layer_update filtra por canal
  LOGICO (drift 7.1 vs 6.18)
 
 En 6.18 los sun8i_layer llevan canal logico (vi_num+index; UI primario=1)

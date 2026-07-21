@@ -1,7 +1,7 @@
 From ef253f4036931ecd167f70f7bd40d782b17524da Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 11:16:55 +0200
-Subject: [PATCH 018/129] dts: opi4a: consola HDMI via simple-framebuffer sobre
+Subject: [PATCH 018/130] dts: opi4a: consola HDMI via simple-framebuffer sobre
  el FB de U-Boot (ETAPA A display)
 
 Nodo simple-framebuffer en /chosen apuntando al FB que el U-Boot BSP deja

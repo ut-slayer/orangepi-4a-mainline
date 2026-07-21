@@ -1,7 +1,7 @@
-From 0c86227f2d59ccfd5aef7c973b2022fbeacd5435 Mon Sep 17 00:00:00 2001
+From 76a32426958cd8edfc79c22938de03b81b06f9e1 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 20 Jul 2026 02:39:54 +0200
-Subject: [PATCH 129/129] clk: sunxi-ng: maskdiv: aplicar UPDATE_BIT/KEY_FIELD
+Subject: [PATCH 129/130] clk: sunxi-ng: maskdiv: aplicar UPDATE_BIT/KEY_FIELD
  en set_rate + documentar limitacion CLK_SET_RATE_PARENT
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

@@ -1,7 +1,7 @@
 From d9c74670429d0c359444aaa833928c624f41fae1 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 04:14:42 +0200
-Subject: [PATCH 100/129] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20cooling-?=
+Subject: [PATCH 100/130] =?UTF-8?q?arm64:=20dts:=20sun55i-a523:=20cooling-?=
  =?UTF-8?q?maps=20de=20CPU=20(throttling=20t=C3=A9rmico)?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

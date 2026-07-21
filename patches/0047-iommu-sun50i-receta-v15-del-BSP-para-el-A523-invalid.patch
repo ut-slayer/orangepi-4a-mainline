@@ -1,7 +1,7 @@
 From ba9fe77458e847bb0aedc0b75e3ff4bbdfb2200b Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 23:29:06 +0200
-Subject: [PATCH 047/129] iommu/sun50i: receta v15 del BSP para el A523
+Subject: [PATCH 047/130] iommu/sun50i: receta v15 del BSP para el A523
  (invalidacion por rango + prefetch vendor) y guardas anti DTE corrupto
 
 Extraido de la fuente de verdad (BSP 5.15, sunxi-iommu-v1.c/pgtable,

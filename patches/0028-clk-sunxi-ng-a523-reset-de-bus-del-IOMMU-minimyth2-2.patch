@@ -1,7 +1,7 @@
 From c8a7035dcf75770b24525a83e26310963e929c9c Mon Sep 17 00:00:00 2001
 From: Justin Suess <utilityemal77@gmail.com>
 Date: Wed, 8 Jul 2026 18:08:06 +0200
-Subject: [PATCH 028/129] clk: sunxi-ng: a523: reset de bus del IOMMU
+Subject: [PATCH 028/130] clk: sunxi-ng: a523: reset de bus del IOMMU
  (minimyth2 2731)
 
 Origen: serie display A523 de Justin Suess empaquetada en minimyth2

@@ -1,7 +1,7 @@
 From de959a70cc36515878497703a0a4b2561bbd65c8 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 05:09:01 +0200
-Subject: [PATCH 106/129] arm64: dts: sun55i-t527-orangepi-4a: tabla OPP de GPU
+Subject: [PATCH 106/130] arm64: dts: sun55i-t527-orangepi-4a: tabla OPP de GPU
  (devfreq 150-600 MHz)
 
 Los cinco puntos universales de la gpu_opp_table del BSP (150/200/300/400/

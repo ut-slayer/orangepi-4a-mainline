@@ -1,7 +1,7 @@
 From aad540847a3dc35d4fd96c6670b1cf1f0bf73cc1 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 17 Jul 2026 14:54:33 +0200
-Subject: [PATCH 115/129] arm64: dts: sun55i-a523: add the cedar VE (VPU) node
+Subject: [PATCH 115/130] arm64: dts: sun55i-a523: add the cedar VE (VPU) node
  + SID cells
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8

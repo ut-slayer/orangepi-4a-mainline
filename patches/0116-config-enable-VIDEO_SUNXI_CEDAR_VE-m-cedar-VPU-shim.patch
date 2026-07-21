@@ -1,7 +1,7 @@
 From 73f51d93b2e107cff423a9e1f856f440f63f23ad Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Fri, 17 Jul 2026 14:54:33 +0200
-Subject: [PATCH 116/129] config: enable VIDEO_SUNXI_CEDAR_VE=m (cedar VPU
+Subject: [PATCH 116/130] config: enable VIDEO_SUNXI_CEDAR_VE=m (cedar VPU
  shim)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

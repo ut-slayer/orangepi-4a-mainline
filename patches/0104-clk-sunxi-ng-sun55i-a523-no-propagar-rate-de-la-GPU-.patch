@@ -1,7 +1,7 @@
 From f8b0736b8f2b52f1e90ca859d3f7ae81fa2e4229 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Tue, 14 Jul 2026 05:08:46 +0200
-Subject: [PATCH 104/129] clk: sunxi-ng: sun55i-a523: no propagar rate de la
+Subject: [PATCH 104/130] clk: sunxi-ng: sun55i-a523: no propagar rate de la
  GPU a los padres
 
 Todas las OPP de la GPU (150/200/300/400/600 MHz, tabla del BSP) dividen

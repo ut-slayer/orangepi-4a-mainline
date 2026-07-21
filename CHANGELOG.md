@@ -4,7 +4,7 @@
 
 ## 2026-07-20 — patch series update (no new image yet)
 
-129 patches (was 106). Everything below has been running on the board for a full
+130 patches (was 106). Everything below has been running on the board for a full
 day without regressions. **No new image is published yet** — these are kernel
 patches; the next image release will fold them in.
 
@@ -36,6 +36,12 @@ patches; the next image release will fold them in.
   interrupt — so those codecs are capped and YouTube negotiates H.264 instead.
   The userspace half is not part of this patch set (and not in the published
   Debian images yet); the kernel half is here.
+- **★ Fixed: the shipped `defconfig` was missing options.** Config commits after
+  13 Jul edited the local build `.config` instead of the versioned defconfig —
+  the one in this bundle. Anyone rebuilding from it got a kernel **without analog
+  audio, PCIe, VPU or joydev**. The defconfig is now regenerated from the
+  hardware-validated config (verified to reproduce it exactly). If you built from
+  this repo before today, rebuild with the new defconfig.
 - **Gamepads**: `INPUT_JOYDEV` and `INPUT_UINPUT` enabled (analog sticks were
   dead in software that opens `/dev/input/jsN` first).
 - **Upstream**: the generic `ccu_div` ordering fix from this tree was sent to the

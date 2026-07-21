@@ -1,7 +1,7 @@
 From c0ec821e0aa336fd178eda4e41bf01cdb95d744d Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Wed, 8 Jul 2026 21:51:01 +0200
-Subject: [PATCH 044/129] dts: opi4a: CMA 64MB clavada en 0x43000000-0x48000000
+Subject: [PATCH 044/130] dts: opi4a: CMA 64MB clavada en 0x43000000-0x48000000
  (apertura real del DE)
 
 El boot 2 dejo la placa medio muerta: con alloc-ranges hasta 0x70000000

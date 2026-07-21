@@ -1,7 +1,7 @@
 From b45a5826c6404727cfafc1045aea4307e045b76a Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Mon, 13 Jul 2026 14:33:22 +0200
-Subject: [PATCH 076/129] dts: opi4a: no-map en las 4 regiones de firmware
+Subject: [PATCH 076/130] dts: opi4a: no-map en las 4 regiones de firmware
  (auditoria M10)
 
 sec-sram1/2, bl31 y optee estaban reservadas pero SIN no-map (el

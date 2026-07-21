@@ -1,7 +1,7 @@
 From 384f7a0c11aa430a36e3c93f29d73ffe26aa0782 Mon Sep 17 00:00:00 2001
 From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
 Date: Sat, 11 Jul 2026 15:13:36 +0200
-Subject: [PATCH 064/129] drm/sun4i: sun55i_de: retener los fbs viejos hasta el
+Subject: [PATCH 064/130] drm/sun4i: sun55i_de: retener los fbs viejos hasta el
  arm RCQ (FINISH BSP)
 
 El helper atomico libera los framebuffers viejos justo tras el evento de

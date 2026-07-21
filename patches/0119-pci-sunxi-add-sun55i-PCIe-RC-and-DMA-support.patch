@@ -1,7 +1,7 @@
 From 3df6286f177597d296a9111336fc522a0f9069b5 Mon Sep 17 00:00:00 2001
 From: Marvin Wewer <mwewer37@proton.me>
 Date: Sun, 14 Dec 2025 11:07:45 +0000
-Subject: [PATCH 119/129] pci: sunxi: add sun55i PCIe RC and DMA support
+Subject: [PATCH 119/130] pci: sunxi: add sun55i PCIe RC and DMA support
 
 Signed-off-by: Marvin Wewer <mwewer37@proton.me>
 ---
