@@ -1,0 +1,40 @@
+From 086778626780b05d10545b7e9ba0870f8116ed3e Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 10 Jul 2026 17:28:40 +0200
+Subject: [PATCH 058/130] arm64: dts: allwinner: opi4a: 32-bit TDM slots on
+ the HDMI audio
+
+Without this only S32 played: dw-hdmi-i2s-audio hardcodes INPUTCLKFS=64fs
+but with S16 sun4i-i2s generated 32fs frames (16-bit slot) and the DW-HDMI
+sampled wrong -> silence with the default PulseAudio config. The BSP always
+pins slot-width 32 (soundcard-mach). With dai-tdm-slot-width=32 the frame is
+64fs for all formats.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts     | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index dc70a09bd..8d1051d24 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -700,8 +700,18 @@ hdmi_sound: hdmi-sound {
+ 		simple-audio-card,format = "i2s";
+ 		simple-audio-card,mclk-fs = <128>;
+ 
++		/*
++		 * 32-bit slots ALWAYS (like the BSP: soundcard-mach,
++		 * slot-width = <32>): dw-hdmi-i2s-audio hardcodes
++		 * AUD_INPUTCLKFS=64fs, and without this, with S16 sun4i-i2s
++		 * generates 32fs frames (16-bit slot) -> the DW-HDMI samples
++		 * the frame wrong and the sink gets SILENCE (verified on the
++		 * board: S32 played, S16 did not; TXCNT advanced in both).
++		 */
+ 		simple-audio-card,cpu {
+ 			sound-dai = <&i2s2>;
++			dai-tdm-slot-num = <2>;
++			dai-tdm-slot-width = <32>;
+ 		};
+ 
+ 		simple-audio-card,codec {

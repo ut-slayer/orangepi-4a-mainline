@@ -1,0 +1,152 @@
+From d12b305c668acf86513bce8f4696569b8c5e209b Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:51:29 +0200
+Subject: [PATCH 078/130] drm/sun4i: sun55i_de: self-sufficient retries
+ without vblank IRQ + AFBD guards (audit M3/B5/B12)
+
+M3: the arm retries (arms_left/full_arms_left) and the aging of the fb-holds
+depended on the vblank IRQ staying enabled; DRM can turn it off after
+delivering the event (drm.vblankoffdelay) and the retries froze (hw/shadow
+divergence) with the fbs pinned until the next commit. Now do_arm() schedules
+the hrtimer one full frame ahead (same beam position = blanking) as a backstop
+kick that does not need vblank, and the timer callback re-chains itself
+(inside the callback hrtimer_active()=true, the do_arm fallback cannot fire
+there). quiesce() clears arm_pending under the lock before its hrtimer_cancel,
+so there is no race with the restart.
+
+B5: afbd_stage() ignored the return of afbc_fmt_seq() and did not save the fb
+gem: unreachable today (layer_update already validates fmt+modifier), but a
+badly-added format would program the AFBD with stack garbage. Degrade to a
+disabled layer.
+
+B12: obsolete comments (background 'green by default' that is already black;
+'AFBC only in debug' that is already default on).
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c      | 50 ++++++++++++++++++++++++--
+ drivers/gpu/drm/sun4i/sun8i_mixer.c    |  3 +-
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c |  2 +-
+ 3 files changed, 50 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 937cbb129..1511d1ac5 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -370,6 +370,7 @@ static void __iomem *tcon_curline_io;
+ 
+ static enum hrtimer_restart sun55i_de_arm_timer(struct hrtimer *t);
+ static u32 sun55i_de_arm_target(struct sun55i_de *de);
++static void sun55i_de_layer_disable(struct sun8i_mixer *mixer);
+ 
+ static struct sun55i_de_block *de_blk(struct sun8i_mixer *mixer, unsigned int i)
+ {
+@@ -1121,7 +1122,7 @@ static void sun55i_de_afbd_stage(struct sun8i_mixer *mixer,
+ {
+ 	struct sun55i_de_block *afbd = de_blk(mixer, SUN55I_DE_BLK_AFBD);
+ 	struct drm_gem_dma_object *gem = drm_fb_dma_get_gem_obj(fb, 0);
+-	u64 addr = gem->dma_addr + fb->offsets[0];
++	u64 addr;
+ 	bool ytr = fb->modifier &
+ 		   DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_YTR);
+ 	/*
+@@ -1140,7 +1141,18 @@ static void sun55i_de_afbd_stage(struct sun8i_mixer *mixer,
+ 			 : DIV_ROUND_UP(fb->height, 16);
+ 	u32 seq, fmt;
+ 
+-	sun55i_de_afbc_fmt_seq(fb->format->format, &seq);
++	/*
++	 * Both unreachable today (layer_update already validated fmt+modifier
++	 * via afbc_mod_supported, and a DRM fb always has a GEM on plane 0),
++	 * but a badly-added new format would program the AFBD with stack
++	 * garbage: degrade to a disabled layer, never a corrupt fetch.
++	 */
++	if (!gem || sun55i_de_afbc_fmt_seq(fb->format->format, &seq)) {
++		DRM_DEBUG_DRIVER("sun55i_de: afbd_stage without gem/seq, layer off\n");
++		sun55i_de_layer_disable(mixer);
++		return;
++	}
++	addr = gem->dma_addr + fb->offsets[0];
+ 
+ 	/* enable + global alpha 0xff, no rotation (uch0 has none) */
+ 	de_blk_write(afbd, SUN55I_AFBD_CTL, SUN55I_AFBD_CTL_EN |
+@@ -1560,6 +1572,23 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 
+ 	/* this arm retires fb holds two arms old (see sun55i_de.h) */
+ 	sun55i_de_age_fb_holds(de);
++
++	/*
++	 * Retry self-sufficiency: the pending retries (arms_left /
++	 * full_arms_left) and the fb-hold aging above are normally driven by
++	 * the NEXT vblank IRQ - but DRM may disable it at any time once the
++	 * flip event is delivered (drm.vblankoffdelay), freezing the retries
++	 * (hw/shadow divergence) and pinning the held fbs until the next
++	 * commit. Schedule the hrtimer one full frame ahead (same beam
++	 * position = still blanking) as a fallback kick that needs no vblank;
++	 * if the vblank IRQ does come first, both paths take arm_lock and
++	 * check arm_pending, so the work is done once either way.
++	 */
++	if (de->arm_pending && de->ns_per_line && de->line_total &&
++	    !hrtimer_active(&de->arm_timer))
++		hrtimer_start(&de->arm_timer,
++			      ns_to_ktime((u64)de->line_total * de->ns_per_line),
++			      HRTIMER_MODE_REL);
+ }
+ 
+ /*
+@@ -1664,14 +1693,29 @@ static u32 sun55i_de_arm_target(struct sun55i_de *de)
+ static enum hrtimer_restart sun55i_de_arm_timer(struct hrtimer *t)
+ {
+ 	struct sun55i_de *de = container_of(t, struct sun55i_de, arm_timer);
++	enum hrtimer_restart ret = HRTIMER_NORESTART;
+ 	unsigned long flags;
+ 
+ 	spin_lock_irqsave(&de->arm_lock, flags);
+ 	if (de->arm_pending)
+ 		sun55i_de_do_arm(de);
++
++	/*
++	 * Keep the retry chain alive from the timer itself: inside the
++	 * callback hrtimer_active() is true, so the fallback re-arm in
++	 * do_arm() cannot fire here - forward one full frame (same beam
++	 * position = still blanking) and restart. quiesce() clears
++	 * arm_pending under the lock first, so its hrtimer_cancel() never
++	 * races a restart.
++	 */
++	if (de->arm_pending && de->ns_per_line && de->line_total) {
++		hrtimer_forward_now(t, ns_to_ktime((u64)de->line_total *
++						   de->ns_per_line));
++		ret = HRTIMER_RESTART;
++	}
+ 	spin_unlock_irqrestore(&de->arm_lock, flags);
+ 
+-	return HRTIMER_NORESTART;
++	return ret;
+ }
+ 
+ /*
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index 849df3a00..0d199e6f8 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -604,7 +604,8 @@ static void sun8i_mixer_init(struct sun8i_mixer *mixer)
+ 	 * v35x DE: the datapath only latches via the RCQ, so MMIO blender init
+ 	 * below is a no-op here. sun55i_de owns top/blender/formatter setup; we
+ 	 * just pick the background color (visible until a layer is enabled).
+-	 * Green by default so first-light is unambiguous vs the blank screen.
++	 * Black (matches every other DRM driver); it was green during bring-up
++	 * so first-light was unambiguous vs a blank screen.
+ 	 */
+ 	if (mixer->cfg->uses_rcq) {
+ 		mixer->de_bg_color = 0xff000000;
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index a4e116e9f..0b9d6e814 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -364,7 +364,7 @@ struct sun8i_layer *sun8i_ui_layer_init_one(struct drm_device *drm,
+ 
+ 	/* format_mod_supported needs the mixer during plane_init */
+ 	layer->mixer = mixer;
+-	/* AFBC only if the AFBD decode is under debug (modparam afbc=1) */
++	/* AFBC on by default (32x8 decode validated); modparam afbc=0 cuts it */
+ 	if (mixer->cfg->uses_rcq && index == 0 && sun55i_afbc_enable)
+ 		modifiers = sun55i_layer_modifiers;
+ 

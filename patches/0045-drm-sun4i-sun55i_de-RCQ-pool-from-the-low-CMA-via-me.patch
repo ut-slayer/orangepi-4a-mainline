@@ -1,0 +1,91 @@
+From 40b5a37cdafd55f2c38a09cf9d7fb2b39db67e67 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 22:26:03 +0200
+Subject: [PATCH 045/130] drm/sun4i: sun55i_de: RCQ pool from the low CMA via
+ memory-region
+
+ROOT CAUSE of the green screen: the RCQ pool (small, <=1 page) was allocated
+by the buddy in high pages (0x52100000 observed in RCQ_HEAD), outside the DE
+fetch aperture -> the RCQ DMA read garbage and no datapath block landed; only
+the MMIO-written registers remained (mode, sizes, RT_EN) and the green
+blender background. of_reserved_mem_device_init + memory-region=<&cma_low>
+tie the mixer coherent reservations to the low CMA (0x43000000).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts     | 14 +++++++++++++-
+ drivers/gpu/drm/sun4i/sun55i_de.c                 | 15 +++++++++++++++
+ 2 files changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 48c7440d0..1f83f2e62 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -601,7 +601,7 @@ hdmi_con_in: endpoint {
+  * 64MB (enough for bring-up dumb buffers/fbcon).
+  */
+ &{/reserved-memory} {
+-	linux,cma {
++	cma_low: linux,cma {
+ 		compatible = "shared-dma-pool";
+ 		reusable;
+ 		size = <0x0 0x04000000>;
+@@ -610,6 +610,18 @@ linux,cma {
+ 	};
+ };
+ 
++/*
++ * The DE RCQ pool is allocated with dma_alloc_coherent on the mixer
++ * device; being small it does not draw from the global CMA and landed in
++ * high pages outside the DE aperture (RCQ_HEAD 0x52100000 observed -> the
++ * RCQ DMA read garbage and the datapath was never configured: green screen).
++ * memory-region ties the mixer coherent reservations to the low CMA
++ * (sun55i_de calls of_reserved_mem_device_init when uses_rcq).
++ */
++&mixer0 {
++	memory-region = <&cma_low>;
++};
++
+ &de {
+ 	status = "okay";
+ };
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 1dc3758fa..ff2776c74 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -19,6 +19,7 @@
+ #include <linux/ktime.h>
+ #include <linux/math64.h>
+ #include <linux/moduleparam.h>
++#include <linux/of_reserved_mem.h>
+ #include <linux/preempt.h>	/* in_hardirq() — TEMP instrumentation */
+ #include <linux/spinlock.h>
+ 
+@@ -397,6 +398,7 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 	struct sun55i_de *de;
+ 	size_t heads_sz, off;
+ 	unsigned int i;
++	int ret;
+ 
+ 	de = devm_kzalloc(mixer->dev, sizeof(*de), GFP_KERNEL);
+ 	if (!de)
+@@ -423,6 +425,19 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 		off += ALIGN(layout[i].size, SUN55I_RCQ_ALIGN);
+ 	de->pool_size = off;
+ 
++	/*
++	 * The RCQ fetch does not go through the IOMMU and only reaches low
++	 * DRAM (~<0x4b000000 on the A523). The pool is small and without this
++	 * dma_alloc_coherent takes it from the buddy (high pages, e.g.
++	 * 0x52100000 observed): the DE reads garbage and no datapath block
++	 * lands (only the green blender background shows). The mixer node
++	 * memory-region points at the low CMA.
++	 */
++	ret = of_reserved_mem_device_init(mixer->dev);
++	if (ret && ret != -ENODEV)
++		dev_warn(mixer->dev,
++			 "no memory-region for the RCQ pool (%d)\n", ret);
++
+ 	de->pool = dmam_alloc_coherent(mixer->dev, de->pool_size,
+ 				       &de->pool_dma, GFP_KERNEL);
+ 	if (!de->pool)

@@ -4,12 +4,12 @@ Date: Tue, 9 Dec 2025 16:43:16 +0000
 Subject: [PATCH 117/130] clk: sunxi-ng: add A523 USB3 ref clock and reset
 
 Signed-off-by: Marvin Wewer <mwewer37@proton.me>
-[aplicado a display-kms: CLK_USB3_REF reasignado de 180 a 181 porque esta
-rama ya usa 180 para CLK_HDMI (bring-up de display propio); el id es local
-al arbol, el dtb se genera del mismo arbol. Resto identico al parche de
-armbian/build sunxi-6.18 (PR #9280/#9321). Registro 0x0A84 y parents
-dcxo24M/pll-periph0-200m/pll-periph1-200m contrastados con el BSP 5.15
-(bsp/drivers/clk/sunxi-ng/ccu-sun55iw3.c:915-921).]
+[applied to display-kms: CLK_USB3_REF reassigned from 180 to 181 because this
+branch already uses 180 for CLK_HDMI (own display bring-up); the id is local
+to the tree, the dtb is generated from the same tree. Otherwise identical to
+the armbian/build sunxi-6.18 patch (PR #9280/#9321). Register 0x0A84 and
+parents dcxo24M/pll-periph0-200m/pll-periph1-200m cross-checked against the
+BSP 5.15 (bsp/drivers/clk/sunxi-ng/ccu-sun55iw3.c:915-921).]
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ---
  drivers/clk/sunxi-ng/ccu-sun55i-a523.c      | 12 +++++++++++-

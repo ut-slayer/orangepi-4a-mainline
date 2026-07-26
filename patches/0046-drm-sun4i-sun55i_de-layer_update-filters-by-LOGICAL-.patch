@@ -1,0 +1,40 @@
+From beb84d3d2b6c58f538fd761a6e9c048e5dde9e9a Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 22:38:44 +0200
+Subject: [PATCH 046/130] drm/sun4i: sun55i_de: layer_update filters by
+ LOGICAL channel (7.1 vs 6.18 drift)
+
+On 6.18 the sun8i_layer carries a logical channel (vi_num+index; primary
+UI=1) and the mapping to physical is done by map[] when computing bases. The
+patch (written against 7.1, where the channel is already physical) compared
+against physical 6, so layer_update returned early for ALL planes: the RCQ
+pool never contained the plane OVL/BLD and every RCQ load overwrote with
+zeros what the MMIO path had painted (the fbcon penguins were visible until
+the first arm erased them -> green background screen).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index ff2776c74..4f2619be0 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -749,9 +749,14 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 	dma_addr_t addr;
+ 	u32 fmt, attctl;
+ 
+-	/* this milestone only drives the first UI channel (phys 6) */
++	/*
++	 * this milestone only drives the first UI channel (logic 1 = phys 6).
++	 * In 6.18 layer->channel is the LOGICAL channel (vi_num + index); the
++	 * comparison against the physical (7.1 semantics) made ALL planes
++	 * return here, leaving the RCQ pool without OVL/BLD (green).
++	 */
+ 	if (layer->type != SUN8I_LAYER_TYPE_UI ||
+-	    layer->channel != SUN55I_DE_OVL_UI_PHYS_CHN)
++	    layer->channel != SUN55I_DE_OVL_UI_LOGIC_CHN)
+ 		return;
+ 
+ 	if (!state->crtc || !state->visible || !fb) {

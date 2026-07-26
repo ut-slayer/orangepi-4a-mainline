@@ -1,0 +1,47 @@
+From 7aad6b373488785e419dc1d51c0ef0a2589a7ab3 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:22:09 +0200
+Subject: [PATCH 042/130] dts: opi4a: PD_VO0 on tcon-top/tcon-tv and CLK_DE
+ at 600MHz like the BSP
+
+Audit findings vs BSP: the series dtsi does not claim the VO0 island from
+tcon-top/tcon-tv (only from hdmi) and does not pin the rate/parent of CLK_DE
+(the BSP uses PLL_VIDEO3_4X @600MHz via assigned-clocks).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 24 +++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 98aca4c7f..8025a1b72 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -620,3 +620,27 @@ hdmi_out_con: endpoint {
+ 		remote-endpoint = <&hdmi_con_in>;
+ 	};
+ };
++
++/*
++ * Audit adaptations vs the BSP 5.15 (source of truth):
++ * - The BSP hangs vo0/tcon off the VO0 island (A523_PCK_VO0); the patch
++ *   dtsi only claims it from the hdmi node. Claiming it in tcon-top and
++ *   tcon-tv too avoids touching registers with the island off and
++ *   protects against the sync_state sweep (already bit us with simpledrm).
++ * - The BSP pins CLK_DE to 600 MHz off PLL_VIDEO3_4X (assigned-clocks of
++ *   the BSP de@5000000 node); the patch dtsi did not pin a rate and the
++ *   mux could stay on the reset parent.
++ */
++&tcon_top {
++	power-domains = <&pck600 PD_VO0>;
++};
++
++&tcon_tv0 {
++	power-domains = <&pck600 PD_VO0>;
++};
++
++&display_clocks {
++	assigned-clocks = <&ccu CLK_DE>;
++	assigned-clock-parents = <&ccu CLK_PLL_VIDEO3_4X>;
++	assigned-clock-rates = <600000000>;
++};

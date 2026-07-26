@@ -1,0 +1,37 @@
+From c29fbc90369790458c5a74bd7904eb9e8a26a245 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 01:59:05 +0200
+Subject: [PATCH 091/130] arm64: dts: sun55i-a523: add the CPU clock
+ controller
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+clock-controller@8817000 node (allwinner,sun55i-a523-cpu-ccu) with its input
+clocks (hosc/losc/iosc + pll-periph0-600m of the main CCU). Not wired into
+cpu@N yet (read-only clock validation first).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index c1df428e2..7c490c5ee 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -1163,5 +1163,14 @@ npu: npu@7122000 {
+ 			resets = <&mcu_ccu RST_BUS_MCU_NPU>;
+ 			power-domains = <&ppu PD_NPU>;
+ 		};
++
++		cpu_ccu: clock-controller@8817000 {
++			compatible = "allwinner,sun55i-a523-cpu-ccu";
++			reg = <0x08817000 0x4000>;
++			clocks = <&osc24M>, <&rtc CLK_OSC32K>, <&rtc CLK_IOSC>,
++				 <&ccu CLK_PLL_PERIPH0_600M>;
++			clock-names = "hosc", "losc", "iosc", "pll-periph0-600m";
++			#clock-cells = <1>;
++		};
+ 	};
+ };

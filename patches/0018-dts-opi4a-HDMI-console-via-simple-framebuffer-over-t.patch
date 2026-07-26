@@ -1,0 +1,84 @@
+From ef253f4036931ecd167f70f7bd40d782b17524da Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:16:55 +0200
+Subject: [PATCH 018/130] dts: opi4a: HDMI console via simple-framebuffer
+ over the U-Boot FB (display stage A)
+
+simple-framebuffer node in /chosen pointing at the FB the U-Boot BSP leaves
+painted and scanning after bootm: 0xbbea2000 + 0x3fc000 (1360x768 ARGB8888,
+stride 5440), verified live against the memreserve that
+sunxi_drm_kernel_para_flush() adds to the FDT (/sys/firmware/fdt of 6.18).
+
+no-map reserve of the region: the plain U-Boot memreserve leaves it in the
+linear map and on arm64 memremap(WC)/ioremap_wc fail over mapped RAM.
+
+The scanout survives boot because the PCK-600 power domains (DE/VO0/VO1) stay
+on and the BSP cmdline already carries clk_ignore_unused; console=tty1 is
+already in bootargs -> fbcon comes out on HDMI without touching anything
+else. The kernel already carries
+DRM_SIMPLEDRM/FBDEV_EMULATION/FRAMEBUFFER_CONSOLE =y: only the DTB changes.
+
+CAVEAT: the mode (and with it the address/size) is chosen by U-Boot based on
+the monitor; if the monitor changes, revalidate against the live FDT
+memreserve.
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 38 +++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 4569ad285..fec24dc58 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -19,7 +19,33 @@ aliases {
+ 	};
+ 
+ 	chosen {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
+ 		stdout-path = "serial0:115200n8";
++
++		/*
++		 * Display stage A: HDMI console via SIMPLEDRM using the FB the
++		 * U-Boot BSP leaves painted (logo) with the DE still scanning
++		 * after bootm. Address/size VERIFIED LIVE 2026-07-08: it is the
++		 * memreserve that sunxi_drm_kernel_para_flush() adds to the FDT
++		 * (/sys/firmware/fdt of the running 6.18): 0xbbea2000 + 0x3fc000
++		 * = 5440 (stride) x 768 -> 1360x768 32bpp. NOTE: U-Boot picks the
++		 * mode from the attached monitor; if the monitor changes,
++		 * revalidate against the live FDT memreserve. The real format is
++		 * ARGB8888 (5.15 fb0); we declare x8r8g8b8 (same layout) so that
++		 * DRM does not assume alpha blending.
++		 */
++		framebuffer@bbea2000 {
++			compatible = "simple-framebuffer";
++			reg = <0x0 0xbbea2000 0x0 0x003fc000>;
++			memory-region = <&uboot_fb>;
++			width = <1360>;
++			height = <768>;
++			stride = <5440>;
++			format = "x8r8g8b8";
++		};
+ 	};
+ 
+ 	/*
+@@ -74,6 +100,18 @@ bl31@48000000 {
+ 		optee@4941d000 {
+ 			reg = <0x0 0x4941d000 0x0 0x00be3000>;
+ 		};
++
++		/*
++		 * U-Boot FB for the simple-framebuffer node in /chosen (see the
++		 * comment there). U-Boot already adds a plain memreserve for this
++		 * region, but that leaves it in the linear map and on arm64 both
++		 * memremap(WC) and ioremap_wc FAIL over mapped RAM -> simpledrm
++		 * could not map it. no-map is MANDATORY.
++		 */
++		uboot_fb: framebuffer@bbea2000 {
++			reg = <0x0 0xbbea2000 0x0 0x003fc000>;
++			no-map;
++		};
+ 	};
+ 
+ 	/*

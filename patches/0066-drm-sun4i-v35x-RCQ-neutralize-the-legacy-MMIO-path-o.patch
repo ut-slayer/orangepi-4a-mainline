@@ -1,0 +1,131 @@
+From 0482ca6534be7dc8b657be93f7a7cff168f0765f Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 15:45:59 +0200
+Subject: [PATCH 066/130] drm/sun4i: v35x RCQ: neutralize the legacy MMIO
+ path of the planes
+
+kwin uses the VI/overlay plane for the cursor. The legacy atomic_update of
+sun8i_ui/vi_layer writes registers by direct MMIO: on the v35x the channel
+blocks do not latch (double buffer, only via RCQ) but the BLENDER ones are
+live registers, so the cursor update overwrote by AHB the pipe 0 geometry
+that sun55i_de had staged for the primary: invisible desktop, only a 32x32
+square following the mouse (the wallpaper corner), and a visible arm-RCQ vs
+MMIO race (the desktop appeared after an arm and went away when moving the
+mouse - confirmed live by the user). Cinnamon did not suffer it: muffin never
+touches the overlays.
+
+Two pieces:
+ - uses_rcq: atomic_update of ui/vi_layer = no-op (the engine commit stages
+   the whole datapath).
+ - uses_rcq: register ONLY the primary plane (UI channel 1, the only one the
+   backend stages today). A registered but unstaged plane is worse than not
+   having it: the compositor uses it and it is not seen. Without overlays,
+   kwin composes the cursor in software (visible). Multi-plane will come when
+   sun55i_de stages more channels.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun8i_mixer.c    | 37 ++++++++++++++++++++++++++
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 11 ++++++++
+ drivers/gpu/drm/sun4i/sun8i_vi_layer.c |  4 +++
+ 3 files changed, 52 insertions(+)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index 38821df36..fb473e051 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -360,6 +360,9 @@ static void sun8i_mixer_commit(struct sunxi_engine *engine,
+ 			     SUN8I_MIXER_GLOBAL_DBUFF_ENABLE);
+ }
+ 
++static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
++					     struct sunxi_engine *engine);
++
+ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
+ 					    struct sunxi_engine *engine)
+ {
+@@ -367,6 +370,10 @@ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
+ 	struct sun8i_mixer *mixer = engine_to_sun8i_mixer(engine);
+ 	int i;
+ 
++	/* v35x RCQ: primary plane only (UI channel 1), see sun55i_layers_init */
++	if (mixer->cfg->uses_rcq)
++		return sun55i_layers_init(drm, engine);
++
+ 	planes = devm_kcalloc(drm->dev,
+ 			      mixer->cfg->vi_num + mixer->cfg->ui_num + 1,
+ 			      sizeof(*planes), GFP_KERNEL);
+@@ -402,6 +409,36 @@ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
+ 	return planes;
+ }
+ 
++/*
++ * v35x RCQ: the sun55i_de backend only stages (for now) the primary UI
++ * channel. Registering the VI/overlay planes without staging them was
++ * worse than not having them: the compositor uses them (kwin puts the
++ * cursor there), its legacy atomic_update overwrote live blender
++ * registers and the plane was not even visible. With only the primary,
++ * compositors compose the cursor in software (visible). The other
++ * channels will come with real multi-plane.
++ */
++static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
++					     struct sunxi_engine *engine)
++{
++	struct sun8i_mixer *mixer = engine_to_sun8i_mixer(engine);
++	struct drm_plane **planes;
++	struct sun8i_layer *layer;
++
++	planes = devm_kcalloc(drm->dev, 2, sizeof(*planes), GFP_KERNEL);
++	if (!planes)
++		return ERR_PTR(-ENOMEM);
++
++	layer = sun8i_ui_layer_init_one(drm, mixer, 0);
++	if (IS_ERR(layer)) {
++		dev_err(drm->dev, "Couldn't initialize primary plane\n");
++		return ERR_CAST(layer);
++	}
++	planes[0] = &layer->plane;
++
++	return planes;
++}
++
+ static void sun8i_mixer_mode_set(struct sunxi_engine *engine,
+ 				 const struct drm_display_mode *mode)
+ {
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index e9d114239..cdfa5a467 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -246,6 +246,17 @@ static void sun8i_ui_layer_atomic_update(struct drm_plane *plane,
+ 	unsigned int zpos = new_state->normalized_zpos;
+ 	struct sun8i_mixer *mixer = layer->mixer;
+ 
++	/*
++	 * v35x RCQ: the engine commit (sun55i_de) stages the WHOLE datapath.
++	 * These MMIO writes do not latch in the channel blocks (double
++	 * buffered, applied only via RCQ) BUT the blender ones ARE live
++	 * registers: the atomic_update of an overlay plane (kwin cursor)
++	 * overwrote by AHB the pipe 0 geometry staged for the primary
++	 * (invisible desktop: a 32x32 square following the mouse).
++	 */
++	if (mixer->cfg->uses_rcq)
++		return;
++
+ 	if (!new_state->crtc || !new_state->visible)
+ 		return;
+ 
+diff --git a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+index e59105afa..1e7edcf1d 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+@@ -358,6 +358,10 @@ static void sun8i_vi_layer_atomic_update(struct drm_plane *plane,
+ 	unsigned int zpos = new_state->normalized_zpos;
+ 	struct sun8i_mixer *mixer = layer->mixer;
+ 
++	/* v35x RCQ: the engine commit stages everything; see sun8i_ui_layer.c */
++	if (mixer->cfg->uses_rcq)
++		return;
++
+ 	if (!new_state->crtc || !new_state->visible)
+ 		return;
+ 

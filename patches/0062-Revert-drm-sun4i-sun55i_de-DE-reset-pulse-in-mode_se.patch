@@ -1,0 +1,43 @@
+From 4f4365a3ca5ec5c050fd01fcbd76dbfb4044e25b Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 11 Jul 2026 14:28:10 +0200
+Subject: [PATCH 062/130] Revert "drm/sun4i: sun55i_de: DE reset pulse in
+ mode_set (fix MBUS wedge)"
+
+This reverts commit 8ffd879ddd0df838fc49333b70714d0602e8be97.
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 6b8495b1f..e053a1d5e 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -20,7 +20,6 @@
+ #include <linux/math64.h>
+ #include <linux/moduleparam.h>
+ #include <linux/of_reserved_mem.h>
+-#include <linux/reset.h>
+ #include <linux/preempt.h>	/* in_hardirq() — TEMP instrumentation */
+ #include <linux/spinlock.h>
+ 
+@@ -566,19 +565,6 @@ void sun55i_de_mode_set(struct sun8i_mixer *mixer,
+ 	u32 w = mode->hdisplay, h = mode->vdisplay;
+ 	u32 size = SUN55I_DE_OUT_SIZE(w, h);
+ 	u32 vtotal = mode->crtc_vtotal, clock = mode->crtc_clock;
+-
+-	/*
+-	 * DE core reset pulse (bit in DE_RESET 0x8000, the mixer reset via
+-	 * display_clocks) BEFORE reprogramming: if an MBUS port transaction
+-	 * got stuck from a fault in the previous teardown (session change,
+-	 * SDDM), only the reset aborts it; without this the DE stays wedged
+-	 * (correct registers, dead fetch -> fixed background) until a reboot.
+-	 * Equivalent to the manual pulse of the de-bringup.service from C4C,
+-	 * done at the right place: every CRTC (re)enable. Safe here: all
+-	 * state is rewritten right after (top via MMIO + full RCQ reload of
+-	 * the full_arms).
+-	 */
+-	reset_control_reset(mixer->reset);
+ 	u32 vbp;
+ 	u32 mux;
+ 

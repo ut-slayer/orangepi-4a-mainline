@@ -1,0 +1,39 @@
+From 217ca4bd109291af061303c699e2d5f1e01007bf Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 21 Jun 2026 19:35:07 +0200
+Subject: [PATCH 003/130] dts: opi4a: add static /memory (U-Boot BSP does not
+ fill it in)
+
+The U-Boot v2018.05-t527 does not fill in /memory in the FDT (it assumes a
+DTB with static memory, like the BSP one). The mainline DTB left it empty ->
+kernel without RAM -> instant silent hang, no heartbeat. base 0x40000000,
+size 4GB (same as BSP).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts   | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index d6cb2eed0..35b00b0cd 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -22,6 +22,18 @@ chosen {
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
++	/*
++	 * The U-Boot BSP (v2018.05-t527) does NOT fill in /memory (it assumes
++	 * the DTB already carries it, like the BSP one). The mainline DTB left
++	 * it empty -> the kernel boots without knowing where the RAM is ->
++	 * instant silent hang, no heartbeat. Define a static /memory like the
++	 * BSP: base 0x40000000. (For a 2GB board use size 0x80000000.)
++	 */
++	memory@40000000 {
++		device_type = "memory";
++		reg = <0x0 0x40000000 0x1 0x0>;
++	};
++
+ 	/*
+ 	 * Stub nodes for the U-Boot BSP (v2018.05-t527): its bootm calls
+ 	 * sunxi_drm_kernel_para_flush(), which looks up /soc/sunxi-drm and

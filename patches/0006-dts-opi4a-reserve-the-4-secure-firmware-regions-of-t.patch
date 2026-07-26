@@ -1,0 +1,50 @@
+From 0babadaeba997c3d53f196457fad19854500b8ee Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 23 Jun 2026 15:04:55 +0200
+Subject: [PATCH 006/130] dts: opi4a: reserve the 4 secure firmware regions
+ of the BSP (bl31+optee+2 sram)
+
+The U-Boot BSP reserves BL31+OP-TEE+shmem in the 5.15 FDT but not in the
+mainline DTB. Taken from a live 5.15 /proc/iomem. Reserving only bl31 gave
+1->2 beats; with all four the kernel no longer clobbers the firmware.
+(It still hangs after 2 beats: pending UART to see which builtin driver
+hangs in device_initcall.)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 20 ++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 6e07f2726..fc8e84140 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -52,9 +52,27 @@ reserved-memory {
+ 		#size-cells = <2>;
+ 		ranges;
+ 
++		/*
++		 * The BSP firmware (BL31 + OP-TEE + shared memory) occupies SEVERAL
++		 * regions that the U-Boot BSP reserves in the 5.15 FDT but NOT in
++		 * our foreign DTB. Taken from a live 5.15 /proc/iomem. Reserving
++		 * ONLY bl31 let the kernel clobber OP-TEE/shm -> hang after 2
++		 * beats. Reserve all four (like the BSP).
++		 */
++		sec-sram1@42350000 {
++			reg = <0x0 0x42350000 0x0 0x00230000>;
++		};
++
++		sec-sram2@43000000 {
++			reg = <0x0 0x43000000 0x0 0x00094000>;
++		};
++
+ 		bl31@48000000 {
+ 			reg = <0x0 0x48000000 0x0 0x01000000>;
+-			no-map;
++		};
++
++		optee@4941d000 {
++			reg = <0x0 0x4941d000 0x0 0x00be3000>;
+ 		};
+ 	};
+ 

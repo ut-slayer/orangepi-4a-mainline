@@ -1,0 +1,75 @@
+From 995864ccf0a106400c2c05c4b3215d73116116d0 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 23:41:03 +0200
+Subject: [PATCH 049/130] iommu/sun50i: Oops ROOT CAUSE: the DTE +4G fold
+ compared against PHYS_OFFSET
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Reproduced live (kernel g8e4ddb343612 + dtb with iommus, Oops
+sun50i_iommu_unmap+0x44, fault ffff000100debffc): page_table =
+phys_to_virt(0x140debc00) = 0x40debc00|4G - the fold applied to a PERFECTLY
+valid table address.
+
+With CONFIG_ARM64_VA_BITS_52 on the A55 of the T527 (no LPA2) the kernel
+falls back to 48 bits at runtime and arm64 sets memstart_addr to
+0xFFF1000040000000; PHYS_OFFSET stops being the base of DRAM and
+"dte_addr < PHYS_OFFSET" becomes always true: EVERY table re-read from a DTE
+was folded +4G and its phys_to_virt fell outside the linear map. On the H728
+of minimyth2 (native VA48) the comparison is correct, which is why it did not
+bite them. 2732 already used the SUN50I_IOMMU_DRAM_BASE constant in the PTE
+version; the DTE one (2409) had stayed on PHYS_OFFSET.
+
+map+0x18c (boot 1) was the same bug via the other path: the second map over
+an existing PT re-reads the DTE.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/iommu/sun50i-iommu.c | 21 +++++++++++++++++----
+ 1 file changed, 17 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/iommu/sun50i-iommu.c b/drivers/iommu/sun50i-iommu.c
+index 2378333ed..715581b1a 100644
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -221,12 +221,23 @@ static u32 sun50i_iova_get_page_offset(dma_addr_t iova)
+ #define SUN50I_DTE_PT_ATTRS		GENMASK(1, 0)
+ #define SUN50I_DTE_PT_VALID		1
+ 
++/*
++ * NOTE: compare against SUN50I_IOMMU_DRAM_BASE (constant), NEVER against
++ * PHYS_OFFSET. With CONFIG_ARM64_VA_BITS_52 on silicon without LPA2 (the
++ * A55 of the T527) the kernel falls back to 48 bits and sets memstart_addr
++ * to a huge value (0xFFF1000040000000), so "addr < PHYS_OFFSET" is ALWAYS
++ * true and the +4G fold corrupted the pointer of EVERY table re-read from
++ * a DTE (Oops at map+0x18c / unmap+0x44). 2732 already changed the PTE
++ * version to the constant; this one had stayed on PHYS_OFFSET (2409).
++ */
++#define SUN50I_IOMMU_DRAM_BASE		0x40000000UL
++
+ static phys_addr_t sun50i_dte_get_pt_address(u32 dte)
+ {
+ 	phys_addr_t dte_addr = dte & SUN50I_DTE_PT_ADDRESS_MASK;
+ 
+-	if (dte_addr < PHYS_OFFSET)
+-		dte_addr |= SZ_4G;
++	if (dte_addr < SUN50I_IOMMU_DRAM_BASE)
++		dte_addr += SZ_4G;
+ 
+ 	return dte_addr;
+ }
+@@ -294,9 +305,11 @@ enum sun50i_iommu_aci {
+  * lives there) onto that high gigabyte, so leaf page addresses must be
+  * folded into the alias window when mapping and unfolded when resolving.
+  * The vendor driver applies the same transformation for this whole IOMMU
+- * generation ("iommu phy" vs "cpu phy" in their pagetable code).
++ * generation ("iommu phy" vs "cpu phy" in their pagetable code:
++ * cpu_phy_to_iommu_phy / iommu_phy_to_cpu_phy, BSP
++ * sunxi-iommu-pgtable.h). SUN50I_IOMMU_DRAM_BASE is defined above,
++ * next to the DTE decoder, which uses the same fold.
+  */
+-#define SUN50I_IOMMU_DRAM_BASE		0x40000000UL
+ 
+ static phys_addr_t sun50i_pte_get_page_address(u32 pte)
+ {

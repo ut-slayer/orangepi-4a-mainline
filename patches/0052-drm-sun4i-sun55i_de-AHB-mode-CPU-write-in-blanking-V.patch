@@ -1,0 +1,133 @@
+From 0bdba3ad24b0c507934d802de3368cae4c883211 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Thu, 9 Jul 2026 10:21:20 +0200
+Subject: [PATCH 052/130] drm/sun4i: sun55i_de: AHB mode (CPU write in
+ blanking) + VSU global alpha opaque by default
+
+AHB MODE (BSP de_update_mode enum): with use_rcq=0 (default) do_arm copies
+the dirty blocks to the registers by CPU in the blanking window, instead of
+arming the RCQ DMA. On the A523 the RCQ reports FINISH but does NOT apply the
+blocks targeting BLD/VSU/FMT (probable internal write bus gate; pending C4B);
+AHB reaches everything. devm_ioremap(0x5000000, 0x400000) map like the reg of
+the BSP de@5000000.
+
+ALPHA: the channel global alpha stage (VSU+0x44) applies EVEN with the scaler
+in bypass; the zero shadow = 100% transparent layer = black screen. U-Boot
+leaves 0xFF (logo via ch6) and the milestone "worked" by accident because the
+gated RCQ never applied our 0. Stage 0xFF from init (BSP de_scaler.c:
+glb_alpha = plane alpha, opaque).
+
+With this the blender PAINTS for the first time on 6.18+IOMMU (debug green bg
+seen on screen); the layer covers the background but its content arrives
+black: next step in PROMPT-ETAPA-C4B.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 54 ++++++++++++++++++++++++++++++-
+ drivers/gpu/drm/sun4i/sun55i_de.h |  7 ++++
+ 2 files changed, 60 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index c83f8b695..71ca40220 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -309,6 +309,16 @@ static bool flip_min = true;
+ module_param(flip_min, bool, 0644);
+ MODULE_PARM_DESC(flip_min, "page flips reload only the fb-address blocks");
+ 
++/*
++ * Shadow->register transport: false = vendor AHB mode (CPU/MMIO write
++ * in the blanking window; today the ONLY one that applies the BLD/VSU/FMT
++ * blocks on the A523), true = RCQ DMA (UNDER DEBUG: reports FINISH but
++ * does not apply the blocks targeting BLD 0x281xxx; see C4B).
++ */
++static bool use_rcq;
++module_param(use_rcq, bool, 0644);
++MODULE_PARM_DESC(use_rcq, "use the RCQ DMA instead of AHB/MMIO writes");
++
+ /*
+  * TEMP: phys address of the bound TCON's current-scan register (TCON_tv0 +0xfc,
+  * line in bits[11:0]). Mapped once at init; read in do_arm to record the real
+@@ -423,6 +433,12 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 	/* HDMI is wired to tcon_tv0 = vendor tcon2 */
+ 	de->tcon_id = 2;
+ 
++	/* full DE map for AHB mode (reg of the BSP de@5000000) */
++	de->mmio = devm_ioremap(mixer->dev, 0x5000000, 0x400000);
++	if (!de->mmio)
++		dev_warn(mixer->dev,
++			 "sun55i_de: no DE MMIO map; forcing RCQ mode\n");
++
+ 	de->nheads = ALIGN(SUN55I_DE_BLK_NUM, 2);
+ 	heads_sz = ALIGN(de->nheads * sizeof(struct sun55i_de_rcq_head),
+ 			 SUN55I_RCQ_ALIGN);
+@@ -466,6 +482,18 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 		off += ALIGN(layout[i].size, SUN55I_RCQ_ALIGN);
+ 	}
+ 
++	/*
++	 * VSU global alpha to opaque FROM THE START: the channel alpha
++	 * stage applies EVEN with the scaler in bypass (ctl=0), so a zero
++	 * shadow = a 100% transparent layer = black. U-Boot leaves 0xFF
++	 * (its logo goes through this channel) and the milestone pipeline
++	 * "worked" by accident because the gated RCQ never applied our 0
++	 * shadow; AHB mode did. (BSP: de_scaler.c glb_alpha = plane
++	 * alpha, 0xFF by default.)
++	 */
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_VSU_ATTR),
++		     SUN55I_VSU_ATTR_GLB_ALPHA, 0xff);
++
+ 	/* static output-formatter setup: RGB, 8-bit, full range */
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_FMT),
+ 		     SUN55I_FMT_LIMIT_Y, SUN55I_FMT_LIMIT_FULL);
+@@ -966,7 +994,31 @@ static void sun55i_de_do_arm(struct sun55i_de *de)
+ 			de->arm_pending = true;
+ 	}
+ 	de->arm_seq++;
+-	regmap_write(de->mixer->top_regs, SUN55I_MIXER_RCQ_CTL, 1);
++
++	if (!use_rcq && de->mmio) {
++		/*
++		 * AHB mode (BSP de_update_mode enum): copy the dirty blocks
++		 * to their registers by CPU, right here (we are already in the
++		 * blanking window). On the A523 the RCQ DMA says FINISH but
++		 * does not apply the BLD blocks (probable internal bus gate,
++		 * C4B); AHB does reach all registers.
++		 */
++		unsigned int i, w;
++
++		for (i = 0; i < SUN55I_DE_BLK_NUM; i++) {
++			struct sun55i_de_block *blk = &de->blocks[i];
++			const __le32 *sh = blk->shadow;
++			void __iomem *dst = de->mmio + blk->reg_off;
++
++			if (!le32_to_cpu(blk->head->dirty))
++				continue;
++			for (w = 0; w < blk->size / 4; w++)
++				writel(le32_to_cpu(sh[w]), dst + w * 4);
++			blk->head->dirty = cpu_to_le32(0);
++		}
++	} else {
++		regmap_write(de->mixer->top_regs, SUN55I_MIXER_RCQ_CTL, 1);
++	}
+ 
+ 	/* TEMP: record the TCON scanline the arm actually landed on */
+ 	if (tcon_curline_io) {
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index f3ac33e08..44a7bad61 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -105,6 +105,13 @@ struct sun55i_de {
+ 	struct sun55i_de_block		blocks[SUN55I_DE_BLK_NUM];
+ 	unsigned int			tcon_id;
+ 	struct sun8i_mixer		*mixer;		/* back-ref for the timer */
++	/*
++	 * MMIO map of the whole DE (0x5000000+0x400000, like the reg of
++	 * the BSP de@5000000) for AHB mode: copy the shadows to the
++	 * registers by CPU in blanking, instead of the RCQ DMA (whose
++	 * write path to BLD/VSU/FMT is gated on the A523: C4B).
++	 */
++	void __iomem			*mmio;
+ 
+ 	/*
+ 	 * Beam-gated arm. The RCQ latches ~immediately when armed and is not

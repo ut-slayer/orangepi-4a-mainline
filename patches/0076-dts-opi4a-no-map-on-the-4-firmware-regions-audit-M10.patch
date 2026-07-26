@@ -1,0 +1,51 @@
+From b45a5826c6404727cfafc1045aea4307e045b76a Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:33:22 +0200
+Subject: [PATCH 076/130] dts: opi4a: no-map on the 4 firmware regions (audit
+ M10)
+
+sec-sram1/2, bl31 and optee were reserved but WITHOUT no-map (the header
+comment said they were): they stayed in the linear map and a speculative CPU
+read over RAM protected by the secure firewall can raise sporadic SErrors
+even though the kernel never allocates them. The kernel does not talk to
+OP-TEE in this tree (no optee node), so none needs a mapping. uboot_fb
+already carried it (mandatory for simpledrm).
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts     | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 8d1051d24..292d354fc 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -96,20 +96,30 @@ reserved-memory {
+ 		 * ONLY bl31 let the kernel clobber OP-TEE/shm -> hang after 2
+ 		 * beats. Reserve all four (like the BSP).
+ 		 */
++		/*
++		 * no-map on all four: without it, they stay in the linear map and
++		 * a SPECULATIVE CPU read over RAM protected by the secure
++		 * firewall can raise sporadic SErrors even though the kernel
++		 * never allocates them.
++		 */
+ 		sec-sram1@42350000 {
+ 			reg = <0x0 0x42350000 0x0 0x00230000>;
++			no-map;
+ 		};
+ 
+ 		sec-sram2@43000000 {
+ 			reg = <0x0 0x43000000 0x0 0x00094000>;
++			no-map;
+ 		};
+ 
+ 		bl31@48000000 {
+ 			reg = <0x0 0x48000000 0x0 0x01000000>;
++			no-map;
+ 		};
+ 
+ 		optee@4941d000 {
+ 			reg = <0x0 0x4941d000 0x0 0x00be3000>;
++			no-map;
+ 		};
+ 
+ 		/*

@@ -27,11 +27,11 @@ index 292d354fc..da783b1c7 100644
  		gpio = <&r_pio 0 4 GPIO_ACTIVE_HIGH>;	/* PL4 */
  		enable-active-high;
 +		/*
-+		 * PL4 alimenta el VBUS del puerto usbc0 (los 2 USB-A traseros
-+		 * izquierdos). Sin ID/CC pin, el driver OTG no llegaba a activar
-+		 * el VBUS -> esos 2 puertos quedaban muertos (otg-vbus=disabled).
-+		 * dr_mode=host: siempre-encendido es lo correcto para un puerto
-+		 * solo-host. Confirmado en placa 2026-07-13: los 4 traseros van.
++		 * PL4 feeds the VBUS of the usbc0 port (the 2 left-hand rear
++		 * USB-A). With no ID/CC pin, the OTG driver never got to assert
++		 * VBUS -> those 2 ports were dead (otg-vbus=disabled).
++		 * dr_mode=host: always-on is correct for a host-only port.
++		 * Confirmed on the board 2026-07-13: all four rear ports work.
 +		 */
 +		regulator-always-on;
  	};

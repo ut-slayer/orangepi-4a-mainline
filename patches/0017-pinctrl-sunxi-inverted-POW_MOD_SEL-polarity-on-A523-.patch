@@ -1,0 +1,80 @@
+From 28294563fd449e9d20134c1384d3553d9d91902c Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 10:53:54 +0200
+Subject: [PATCH 017/130] pinctrl: sunxi: inverted POW_MOD_SEL polarity on
+ A523/T527 (io_bias_reverse)
+
+The probe fixup left the banks correct, but when applying pinconf on pins
+with vcc-pX-supply declared, sunxi_pinctrl_set_io_bias_cfg broke them again:
+it writes POW_MOD_SEL with the H616 convention (bit=1 -> 1.8V mode) and on
+the A523/T527 the bit is INVERTED (bit=1 -> 3.3V mode, 'power_mode_reverse'
+of the BSP). With vcc-pj-supply=cldo1 (1.8V) mainline set bit9=1 = 3.3V mode
+and the GMAC1 RX died again after boot (observed from cold: 0x11ab from the
+fixup -> 0x12c5 rewritten; clearing bit9 live -> ping 0% loss).
+
+New io_bias_reverse flag in sunxi_pinctrl_desc, enabled in the a523 and
+a523-r descs. Upstream candidate: the mainline driver is wrong for all A523.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/pinctrl/sunxi/pinctrl-sun55i-a523-r.c | 1 +
+ drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c   | 1 +
+ drivers/pinctrl/sunxi/pinctrl-sunxi.c         | 6 ++++++
+ drivers/pinctrl/sunxi/pinctrl-sunxi.h         | 3 +++
+ 4 files changed, 11 insertions(+)
+
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523-r.c b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523-r.c
+index 69cd2b4eb..d16149475 100644
+--- a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523-r.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523-r.c
+@@ -28,6 +28,7 @@ static struct sunxi_pinctrl_desc a523_r_pinctrl_data = {
+ 	.irq_bank_map = a523_r_irq_bank_map,
+ 	.irq_read_needs_mux = true,
+ 	.io_bias_cfg_variant = BIAS_VOLTAGE_PIO_POW_MODE_SEL,
++	.io_bias_reverse = true,
+ 	.pin_base = PL_BASE,
+ };
+ 
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+index 537043dba..5d8ca2915 100644
+--- a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+@@ -95,6 +95,7 @@ static struct sunxi_pinctrl_desc a523_pinctrl_data = {
+ 	.irq_bank_map = a523_irq_bank_map,
+ 	.irq_read_needs_mux = true,
+ 	.io_bias_cfg_variant = BIAS_VOLTAGE_PIO_POW_MODE_SEL,
++	.io_bias_reverse = true,
+ };
+ 
+ static int a523_pinctrl_probe(struct platform_device *pdev)
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sunxi.c b/drivers/pinctrl/sunxi/pinctrl-sunxi.c
+index 0fb057a07..4ad951874 100644
+--- a/drivers/pinctrl/sunxi/pinctrl-sunxi.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sunxi.c
+@@ -752,6 +752,12 @@ static int sunxi_pinctrl_set_io_bias_cfg(struct sunxi_pinctrl *pctl,
+ 	case BIAS_VOLTAGE_PIO_POW_MODE_SEL:
+ 		val = uV <= 1800000 ? 1 : 0;
+ 
++		/* On A523/T527 the meaning of the bit is inverted
++		 * (1 = 3.3V mode); with the H616 convention the bank
++		 * gets wrong thresholds and the inputs go mute. */
++		if (pctl->desc->io_bias_reverse)
++			val = !val;
++
+ 		raw_spin_lock_irqsave(&pctl->lock, flags);
+ 		reg = readl(pctl->membase + pctl->pow_mod_sel_offset);
+ 		reg &= ~(1 << bank);
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sunxi.h b/drivers/pinctrl/sunxi/pinctrl-sunxi.h
+index ad26e4de1..4c742a169 100644
+--- a/drivers/pinctrl/sunxi/pinctrl-sunxi.h
++++ b/drivers/pinctrl/sunxi/pinctrl-sunxi.h
+@@ -141,6 +141,9 @@ struct sunxi_pinctrl_desc {
+ 	bool				irq_read_needs_mux;
+ 	bool				disable_strict_mode;
+ 	enum sunxi_desc_bias_voltage	io_bias_cfg_variant;
++	/* A523/T527: POW_MOD_SEL with inverted polarity (bit=1 -> 3.3V
++	 * mode, bit=0 -> 1.8V), the reverse of H616 and earlier. */
++	bool				io_bias_reverse;
+ };
+ 
+ struct sunxi_pinctrl_function {

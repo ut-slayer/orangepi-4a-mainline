@@ -1,0 +1,36 @@
+From 4fe54fc4a91c2f662fc044da1e23a1ea64ae4cca Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:32:33 +0200
+Subject: [PATCH 019/130] watchdog: sunxi_wdt: restart priority 200 to beat
+ PSCI (reboot hung on T527)
+
+The SYSTEM_RESET of the ATF/BL31 of the BSP does not reset: the PSCI call
+gets stuck without returning. With the driver standard priority (128) the
+PSCI handler (129) runs first -> 'reboot' froze the board forever (not even
+with SUNXI_WATCHDOG=y did it work; the user always had to cut power).
+Priority 200 makes the reset go through the watchdog, like the BSP 5.15.
+Local workaround for the BSP firmware; revisit if it moves to mainline ATF.
+---
+ drivers/watchdog/sunxi_wdt.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/watchdog/sunxi_wdt.c b/drivers/watchdog/sunxi_wdt.c
+index b6c761acc..ce209563c 100644
+--- a/drivers/watchdog/sunxi_wdt.c
++++ b/drivers/watchdog/sunxi_wdt.c
+@@ -282,7 +282,14 @@ static int sunxi_wdt_probe(struct platform_device *pdev)
+ 
+ 	watchdog_init_timeout(&sunxi_wdt->wdt_dev, timeout, dev);
+ 	watchdog_set_nowayout(&sunxi_wdt->wdt_dev, nowayout);
+-	watchdog_set_restart_priority(&sunxi_wdt->wdt_dev, 128);
++	/*
++	 * Priority > 129 (the PSCI handler): on the T527/OPi4A the
++	 * SYSTEM_RESET of the ATF BSP hangs without returning, and with
++	 * the standard priority (128 < 129) this handler never got to
++	 * run -> `reboot` froze the board. The BSP 5.15 also resets via
++	 * watchdog. Revisit if it ever moves to mainline ATF.
++	 */
++	watchdog_set_restart_priority(&sunxi_wdt->wdt_dev, 200);
+ 
+ 	watchdog_set_drvdata(&sunxi_wdt->wdt_dev, sunxi_wdt);
+ 

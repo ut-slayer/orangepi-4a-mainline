@@ -1,0 +1,123 @@
+From e7d7f5e4a5d31fcd1a19c7459e46fa6b3dac51e8 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 04:04:05 +0200
+Subject: [PATCH 014/130] pinctrl: sun55i-a523: fix bank withstand of the PIO
+ from hw detection
+
+ROOT CAUSE of the dead GMAC1 RX on the OPi4A: the PJ bank (RGMII) has its
+VCC-PJ rail at 1.8V but POW_MOD_SEL left it in 3.3V mode -> wrong input
+thresholds -> the MAC did not see RXC/RXD (TX ok, 1G link, rx_packets=0,
+0 crc_errors). Verified live: clearing bit9 of 0x0200_0380 revives RX
+instantly (ping 0% loss).
+
+On the A523/T527 the hw senses the real voltage of each rail in POW_MOD_VAL
+(0x388, bit=1 -> 1.8V) and the mode is selected in POW_MOD_SEL (0x380) with
+INVERTED polarity vs earlier SoCs (bit=1 -> 3.3V mode; 'power_mode_reverse'
+in the BSP). The BSP syncs SEL with VAL at runtime
+(sun55iw3_pinctrl_fix_over_voltage / set_io_bias_cfg with power_mode_detect);
+neither the U-Boot BSP nor mainline did it, and out of the factory 5 banks
+were wrong (C,E,G,J,K in 3.3V mode with a 1.8V rail).
+
+We replicate the BSP logic once in probe: banks with their own bit
+C,D,E,G,I,J,K (port index, A=0); PB/PH hang off VCCIO (bit16 VAL -> bit12
+SEL); PF is skipped (SD UHS switching).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c | 69 +++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+index 7d2308c37..537043dba 100644
+--- a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+@@ -5,6 +5,7 @@
+  * Copyright (C) 2023 Arm Ltd.
+  */
+ 
++#include <linux/io.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/of.h>
+@@ -13,6 +14,72 @@
+ 
+ #include "pinctrl-sunxi.h"
+ 
++/*
++ * Per-bank withstand (voltage mode) for the A523/T527 PIO.
++ *
++ * The hardware senses each bank rail voltage in POW_MOD_VAL (bit=1:
++ * rail at 1.8V, bit=0: 3.3V), and the input receiver mode is selected
++ * in POW_MOD_SEL with INVERTED polarity vs earlier SoCs (bit=1: 3.3V
++ * mode, bit=0: 1.8V mode; "power_mode_reverse" in the BSP). If they
++ * disagree, the bank inputs get wrong thresholds: with a 1.8V rail and
++ * 3.3V mode the bank is practically deaf (that was PJ = gmac1 RGMII:
++ * TX ok, RX dead).
++ *
++ * The BSP (sun55iw3_pinctrl_fix_over_voltage + set_io_bias_cfg with
++ * power_mode_detect) programs SEL from VAL at runtime; the U-Boot BSP
++ * does not get it right for every bank. Replicate that logic once here
++ * in probe.
++ */
++#define A523_POW_MOD_SEL_REG	0x380
++#define A523_POW_MOD_VAL_REG	0x388
++#define A523_POW_VCCIO_SEL_BIT	12
++#define A523_POW_VCCIO_VAL_BIT	16
++
++static void a523_pio_fix_withstand(struct platform_device *pdev)
++{
++	/* Banks with their own bit (port index, A=0): C D E G I J K.
++	 * PB and PH hang off the VCCIO rail (bit 12 in SEL, 16 in VAL).
++	 * PF is skipped: its mode is switched by the SD controller (UHS),
++	 * same as the BSP. */
++	static const u8 banks[] = { 2, 3, 4, 6, 8, 9, 10 };
++	u32 val, sel, old;
++	void __iomem *base;
++	struct resource *res;
++	int i;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res)
++		return;
++
++	base = ioremap(res->start, 0x400);
++	if (!base)
++		return;
++
++	val = readl(base + A523_POW_MOD_VAL_REG);
++	old = sel = readl(base + A523_POW_MOD_SEL_REG);
++
++	for (i = 0; i < ARRAY_SIZE(banks); i++) {
++		if (val & BIT(banks[i]))
++			sel &= ~BIT(banks[i]);	/* rail 1.8V -> modo 1.8V */
++		else
++			sel |= BIT(banks[i]);	/* rail 3.3V -> modo 3.3V */
++	}
++
++	if (val & BIT(A523_POW_VCCIO_VAL_BIT))
++		sel &= ~BIT(A523_POW_VCCIO_SEL_BIT);
++	else
++		sel |= BIT(A523_POW_VCCIO_SEL_BIT);
++
++	if (sel != old) {
++		writel(sel, base + A523_POW_MOD_SEL_REG);
++		dev_info(&pdev->dev,
++			 "PIO withstand corregido: SEL 0x%04x -> 0x%04x (VAL 0x%05x)\n",
++			 old, sel, val);
++	}
++
++	iounmap(base);
++}
++
+ static const u8 a523_nr_bank_pins[SUNXI_PINCTRL_MAX_BANKS] =
+ /*	  PA  PB  PC  PD  PE  PF  PG  PH  PI  PJ  PK */
+ 	{  0, 15, 17, 24, 16,  7, 15, 20, 17, 28, 24 };
+@@ -32,6 +99,8 @@ static struct sunxi_pinctrl_desc a523_pinctrl_data = {
+ 
+ static int a523_pinctrl_probe(struct platform_device *pdev)
+ {
++	a523_pio_fix_withstand(pdev);
++
+ 	return sunxi_pinctrl_dt_table_init(pdev, a523_nr_bank_pins,
+ 					   a523_irq_bank_muxes,
+ 					   &a523_pinctrl_data,

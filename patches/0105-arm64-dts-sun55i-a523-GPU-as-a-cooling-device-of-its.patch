@@ -1,0 +1,52 @@
+From 40dd9044819fad6924a129206bf051418518229f Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 05:09:01 +0200
+Subject: [PATCH 105/130] arm64: dts: sun55i-a523: GPU as a cooling device of
+ its thermal zone
+
+The GPU becomes coolable: #cooling-cells on the gpu node and cooling-map in
+gpu-thermal tying the gpu_hot trip (90C, the BSP gpu_target) to the devfreq
+cooling that panfrost registers when there is an OPP table (contribution 1024,
+BSP literal like the CPU maps).
+
+dynamic-power-coefficient = 1434 comes from the BSP ipa_dvfs
+(mali-simple-power-model, dynamic-coefficient in pW/(Hz*V^2), numerically
+identical unit to the uW/(MHz*V^2) of the mainline binding); with it the
+devfreq cooling Energy Model is registered.
+---
+ arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index 4c8eb39c3..1618e8f5a 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -240,6 +240,15 @@ gpu_crit: gpu-crit {
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&gpu_hot>;
++					cooling-device = <&gpu THERMAL_NO_LIMIT
++							  THERMAL_NO_LIMIT>;
++					contribution = <1024>;
++				};
++			};
+ 		};
+ 
+ 		npu-thermal {
+@@ -273,6 +282,12 @@ gpu: gpu@1800000 {
+ 			clock-names = "core", "bus";
+ 			power-domains = <&pck600 PD_GPU>;
+ 			resets = <&ccu RST_BUS_GPU>;
++			/*
++			 * Vendor mali-simple-power-model dynamic-coefficient,
++			 * same unit (pW/Hz/V^2 == uW/MHz/V^2).
++			 */
++			dynamic-power-coefficient = <1434>;
++			#cooling-cells = <2>;
+ 			status = "disabled";
+ 		};
+ 

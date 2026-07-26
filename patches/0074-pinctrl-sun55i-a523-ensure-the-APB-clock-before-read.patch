@@ -1,0 +1,111 @@
+From 380e7f2bb5a83ab00bb3556ffb41b2ca04a490d8 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:31:47 +0200
+Subject: [PATCH 074/130] pinctrl: sun55i-a523: ensure the APB clock before
+ reading the withstand (audit M9)
+
+a523_pio_fix_withstand() reads POW_MOD_VAL by MMIO at probe, BEFORE
+sunxi_pinctrl_init_with_variant() claims and enables the PIO 'apb'. Today it
+works because the U-Boot BSP leaves the gate open; with mainline U-Boot or a
+different probe order the read would return garbage and the SEL of the 7
+banks + VCCIO would be programmed backwards (all GPIO inputs with the wrong
+threshold - the original symptom of the dead gmac1 RX).
+
+clk_get('apb') + prepare_enable around the fix (propagating EPROBE_DEFER);
+without a clock in the DT the gate is assumed open as until now.
+---
+ drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c | 48 ++++++++++++++++++---
+ 1 file changed, 42 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+index 5d8ca2915..687f78d2c 100644
+--- a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+@@ -5,6 +5,7 @@
+  * Copyright (C) 2023 Arm Ltd.
+  */
+ 
++#include <linux/clk.h>
+ #include <linux/io.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+@@ -35,7 +36,7 @@
+ #define A523_POW_VCCIO_SEL_BIT	12
+ #define A523_POW_VCCIO_VAL_BIT	16
+ 
+-static void a523_pio_fix_withstand(struct platform_device *pdev)
++static int a523_pio_fix_withstand(struct platform_device *pdev)
+ {
+ 	/* Banks with their own bit (port index, A=0): C D E G I J K.
+ 	 * PB and PH hang off the VCCIO rail (bit 12 in SEL, 16 in VAL).
+@@ -45,15 +46,41 @@ static void a523_pio_fix_withstand(struct platform_device *pdev)
+ 	u32 val, sel, old;
+ 	void __iomem *base;
+ 	struct resource *res;
+-	int i;
++	struct clk *clk;
++	int i, ret;
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res)
+-		return;
++		return 0;
++
++	/*
++	 * This runs BEFORE sunxi_pinctrl_init_with_variant() (which is
++	 * what claims the PIO "apb"): ensure the gate is open before
++	 * reading VAL - today the U-Boot BSP leaves it open, but with
++	 * mainline U-Boot or another probe order we would read garbage and
++	 * program the 7 banks + VCCIO withstand backwards.
++	 */
++	clk = clk_get(&pdev->dev, "apb");
++	if (IS_ERR(clk)) {
++		if (PTR_ERR(clk) == -EPROBE_DEFER)
++			return -EPROBE_DEFER;
++		clk = NULL;	/* no clock in the DT: gate already open */
++	} else {
++		ret = clk_prepare_enable(clk);
++		if (ret) {
++			clk_put(clk);
++			return ret;
++		}
++	}
+ 
+ 	base = ioremap(res->start, 0x400);
+-	if (!base)
+-		return;
++	if (!base) {
++		if (clk) {
++			clk_disable_unprepare(clk);
++			clk_put(clk);
++		}
++		return 0;
++	}
+ 
+ 	val = readl(base + A523_POW_MOD_VAL_REG);
+ 	old = sel = readl(base + A523_POW_MOD_SEL_REG);
+@@ -78,6 +105,11 @@ static void a523_pio_fix_withstand(struct platform_device *pdev)
+ 	}
+ 
+ 	iounmap(base);
++	if (clk) {
++		clk_disable_unprepare(clk);
++		clk_put(clk);
++	}
++	return 0;
+ }
+ 
+ static const u8 a523_nr_bank_pins[SUNXI_PINCTRL_MAX_BANKS] =
+@@ -100,7 +132,11 @@ static struct sunxi_pinctrl_desc a523_pinctrl_data = {
+ 
+ static int a523_pinctrl_probe(struct platform_device *pdev)
+ {
+-	a523_pio_fix_withstand(pdev);
++	int ret;
++
++	ret = a523_pio_fix_withstand(pdev);
++	if (ret)
++		return ret;
+ 
+ 	return sunxi_pinctrl_dt_table_init(pdev, a523_nr_bank_pins,
+ 					   a523_irq_bank_muxes,

@@ -1,0 +1,46 @@
+From 6275fa543f28aabef0a1c9d3793baea2e75aea93 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:33:21 +0200
+Subject: [PATCH 075/130] clk: sunxi-ng: a523: NO_REPARENT on the HDMI TMDS
+ (protects CLK_DE, audit M11)
+
+The TMDS mux (0xb00) lists the 4 video PLLs and with only
+CLK_SET_RATE_PARENT a modeset determine_rate can reparent and RE-RATE any of
+them - including pll_video3_4x, which CLK_DE hangs off at 600MHz via
+assigned-clock-rates (applied only at probe): the DE would silently be left
+without a usable frequency -> underruns in high modes. Today it does not bite
+because ties are won by video0 (first parent), but it is a latent bomb.
+
+With NO_REPARENT the mux stays on video0 (boot state, the HDMI pipeline PLL)
+and rate propagation only touches that PLL.
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+index cb8921ccf..00ee6d8e9 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523.c
+@@ -918,11 +918,21 @@ static const struct clk_hw *hdmi_tmds_parents[] = {
+ 	&pll_video2_4x_clk.common.hw,
+ 	&pll_video3_4x_clk.common.hw,
+ };
++/*
++ * CLK_SET_RATE_NO_REPARENT on top of RATE_PARENT: without it, a
++ * modeset determine_rate could jump to (and RE-RATE) any of the 4
++ * video PLLs - including video3_4x, which CLK_DE hangs off at 600MHz
++ * via assigned-clock-rates (applied only once, at probe): the DE
++ * would silently be left without a usable clock (underruns). With
++ * NO_REPARENT the mux stays on video0 (the boot one) and only that
++ * PLL, which belongs to the HDMI pipeline, is re-rated.
++ */
+ static SUNXI_CCU_M_HW_WITH_MUX_GATE(hdmi_clk, "hdmi", hdmi_tmds_parents, 0xb00,
+ 				    0, 4,	/* M */
+ 				    24, 2,	/* mux */
+ 				    BIT(31),	/* gate */
+-				    CLK_SET_RATE_PARENT);
++				    CLK_SET_RATE_PARENT |
++				    CLK_SET_RATE_NO_REPARENT);
+ 
+ static SUNXI_CCU_GATE_HWS_WITH_PREDIV(hdmi_cec_32k_clk, "hdmi-cec-32k",
+ 				      pll_periph0_2x_hws,

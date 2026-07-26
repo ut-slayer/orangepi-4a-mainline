@@ -1,0 +1,107 @@
+From 9a88554bf4f1e25d3945a1ead303fff297d0e47c Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Thu, 9 Jul 2026 00:34:48 +0200
+Subject: [PATCH 050/130] iommu/sun50i: PTE with the BSP READABLE/WRITABLE
+ bits on the v15 (black screen without faults)
+
+With the fold fix the IOMMU no longer crashes and sway creates the swapchain
+and flips, but the screen stays BLACK (fbcon included): the walk does not
+fault and yet the master 5 reads return zeros. The BSP explains it: in
+PGTABLE_V1 (v10-v15) the PTE carries DIRECT permissions
+READABLE=BIT(2)/WRITABLE=BIT(3) (sunxi_mk_pte); mainline inherits from the H6
+the ACI scheme in bits 7:4 and leaves 2/3 zero -> valid page but no read
+permission -> the v15 returns zeros without a fault. With the RCQ reading
+zeros the DE registers go to zero: no planes and a black background.
+
+Also verified in the BSP that the all-translated model is the vendor one:
+probe_device_finalize -> sunxi_enable_device_iommu(master, dts_flag), and the
+de@5000000 (v350, live sunxi-drm stack) carries <&mmu_aw 5 1> with the 5.15
+CMA UP HIGH (0xbc800000): the DE reaches all of RAM through the IOMMU.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/iommu/sun50i-iommu.c | 45 +++++++++++++++++++++++++++---------
+ 1 file changed, 34 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/iommu/sun50i-iommu.c b/drivers/iommu/sun50i-iommu.c
+index 715581b1a..e6038df91 100644
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -120,6 +120,8 @@ struct sun50i_iommu_variant {
+ 	u32 tlb_prefetch;
+ 	/* use range invalidation (START/END + MODE_SEL=1, BSP v14+) */
+ 	bool has_ivld_range;
++	/* PTE with direct READABLE/WRITABLE bits (BSP PGTABLE_V1), not ACI */
++	bool bsp_pte_perms;
+ };
+ 
+ struct sun50i_iommu {
+@@ -331,21 +333,41 @@ static bool sun50i_pte_is_page_valid(u32 pte)
+ 	return pte & SUN50I_PTE_PAGE_VALID;
+ }
+ 
+-static u32 sun50i_mk_pte(phys_addr_t page, int prot)
++/*
++ * PTE permissions on the v15 (A523/T527): the BSP (sunxi_mk_pte in
++ * sunxi-iommu-pgtable.c, PGTABLE_V1) sets direct READABLE=BIT(2) and
++ * WRITABLE=BIT(3) bits; it does NOT use the H6 ACI scheme (bits 7:4 +
++ * DM_AUT). With the mainline PTE (bits 2/3 zero) the v15 walks without
++ * fault but the master reads return ZEROS (black screen: the RCQ reads
++ * zeros -> DE registers to zero, no planes or background).
++ */
++#define SUN50I_PTE_PAGE_READABLE	BIT(2)
++#define SUN50I_PTE_PAGE_WRITABLE	BIT(3)
++
++static u32 sun50i_mk_pte(phys_addr_t page, int prot,
++			 const struct sun50i_iommu_variant *variant)
+ {
+ 	enum sun50i_iommu_aci aci;
+ 	u32 flags = 0;
+ 
+-	if ((prot & (IOMMU_READ | IOMMU_WRITE)) == (IOMMU_READ | IOMMU_WRITE))
+-		aci = SUN50I_IOMMU_ACI_RD_WR;
+-	else if (prot & IOMMU_READ)
+-		aci = SUN50I_IOMMU_ACI_RD;
+-	else if (prot & IOMMU_WRITE)
+-		aci = SUN50I_IOMMU_ACI_WR;
+-	else
+-		aci = SUN50I_IOMMU_ACI_NONE;
++	if (variant->bsp_pte_perms) {
++		if (prot & IOMMU_READ)
++			flags |= SUN50I_PTE_PAGE_READABLE;
++		if (prot & IOMMU_WRITE)
++			flags |= SUN50I_PTE_PAGE_WRITABLE;
++	} else {
++		if ((prot & (IOMMU_READ | IOMMU_WRITE)) == (IOMMU_READ | IOMMU_WRITE))
++			aci = SUN50I_IOMMU_ACI_RD_WR;
++		else if (prot & IOMMU_READ)
++			aci = SUN50I_IOMMU_ACI_RD;
++		else if (prot & IOMMU_WRITE)
++			aci = SUN50I_IOMMU_ACI_WR;
++		else
++			aci = SUN50I_IOMMU_ACI_NONE;
++
++		flags |= FIELD_PREP(SUN50I_PTE_ACI_MASK, aci);
++	}
+ 
+-	flags |= FIELD_PREP(SUN50I_PTE_ACI_MASK, aci);
+ 	if (page >= SZ_4G)
+ 		page -= SZ_4G;
+ 	page &= SUN50I_PTE_PAGE_ADDRESS_MASK;
+@@ -728,7 +750,7 @@ static int sun50i_iommu_map(struct iommu_domain *domain, unsigned long iova,
+ 		goto out;
+ 	}
+ 
+-	*pte_addr = sun50i_mk_pte(paddr, prot);
++	*pte_addr = sun50i_mk_pte(paddr, prot, iommu->variant);
+ 	sun50i_table_flush(sun50i_domain, pte_addr, 1);
+ 	*mapped = size;
+ 
+@@ -1192,6 +1214,7 @@ static const struct sun50i_iommu_variant sun50i_h6_variant = {
+ static const struct sun50i_iommu_variant sun55i_a523_variant = {
+ 	.tlb_prefetch = IOMMU_TLB_PREFETCH_ONLY_VALID,
+ 	.has_ivld_range = true,
++	.bsp_pte_perms = true,
+ };
+ 
+ static const struct of_device_id sun50i_iommu_dt[] = {

@@ -1,0 +1,39 @@
+From be2177620ea2600b43f9c068558f57cbf8c0f7f4 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:54:30 +0200
+Subject: [PATCH 021/130] dts: opi4a: the framebuffer reclaims the DE and VO0
+ power domains of pck600
+
+When loading panfrost as a module, ALL consumers of pck600 get probed and
+its sync_state() powers off the domains with no consumer: DE and VO0 die ->
+the U-Boot FB scanout stops and the screen goes black mid-boot (confirmed
+live: DE/VO0 'off-0' in pm_genpd_summary after modprobe panfrost; until now
+they survived only because without modules the GPU never probed and
+sync_state stayed pending forever). The simple-framebuffer binding accepts
+power-domains and simpledrm manages them (multi-domain via genpd).
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts    | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index fec24dc58..ed13857b3 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -45,6 +45,17 @@ framebuffer@bbea2000 {
+ 			height = <768>;
+ 			stride = <5440>;
+ 			format = "x8r8g8b8";
++			/*
++			 * Reclaim the display-pipeline domains that U-Boot left
++			 * powered on. Without this, once ALL consumers of pck600
++			 * probe (e.g. panfrost as a module), its sync_state()
++			 * sweeps the domains with no consumer and powers DE and
++			 * VO0 off -> black screen mid-boot (seen live 2026-07-08:
++			 * DE/VO0 off-0 in pm_genpd_summary after modprobe panfrost).
++			 * simple-framebuffer accepts multiple power-domains and
++			 * simpledrm keeps them on.
++			 */
++			power-domains = <&pck600 PD_DE>, <&pck600 PD_VO0>;
+ 		};
+ 	};
+ 

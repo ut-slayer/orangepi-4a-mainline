@@ -1,0 +1,31 @@
+From 518fb6f7bcc84e68cced84f58e2813f24d9a8e10 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 19 Jul 2026 03:34:31 +0200
+Subject: [PATCH 126/130] config: enable INPUT_JOYDEV=y (the sticks of the
+ AN1 gamepad mapper)
+
+The aurealnix-gamemap is designed joydev-first (/dev/input/jsN, JSIOCG*
+ioctls, axes normalized to +-32767 via absinfo); without joydev it falls back
+to raw evdev, where HID pads like the "Twin USB Joystick" emit the sticks in
+0..255 and the mapper thresholds/sensitivity never trigger: buttons and D-pad
+(HAT +-1) work, the sticks do not (dead mouse/aiming in web games). The other
+AN1 boards already carry joydev; built-in like evdev.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .config | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.config b/.config
+index 0afbae6d2..9365910a8 100644
+--- a/.config
++++ b/.config
+@@ -3222,7 +3222,7 @@ CONFIG_INPUT_VIVALDIFMAP=y
+ # Userland interfaces
+ #
+ # CONFIG_INPUT_MOUSEDEV is not set
+-# CONFIG_INPUT_JOYDEV is not set
++CONFIG_INPUT_JOYDEV=y
+ CONFIG_INPUT_EVDEV=y
+ 
+ #

@@ -1,0 +1,80 @@
+From 85a1dadba403b9a8eb5ed50626f553bb5cb80f34 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 05:08:46 +0200
+Subject: [PATCH 103/130] clk: sunxi-ng: div: implement set_rate_and_parent
+ with a safe order
+
+When the CCF changes both the parent and the divider of a ccu_div (mux+M) at
+once, the core default order is set_parent then set_rate. If the new parent is
+faster than the target rate, between the two writes the clock runs at
+new_parent/old_M, which can exceed the consumer maximum. Real case: A523 GPU
+going down from 600 MHz (pll-periph0-600M, M=1) to 400/200 MHz
+(pll-periph0-800M): the GPU would see 800 MHz during the window, 33% above the
+vendor ceiling.
+
+.set_rate_and_parent is implemented with the same ordering rule as
+clk_composite_set_rate_and_parent(): if keeping the current divider while
+changing the mux would exceed the requested rate, the divider is programmed
+first. That way the intermediate rate never exceeds both the old and the new
+at once.
+
+Clocks with a predivider keep the historical order (mux then divider): the
+prediv helpers look it up by the current parent, which is ambiguous while both
+change.
+---
+ drivers/clk/sunxi-ng/ccu_div.c | 36 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/drivers/clk/sunxi-ng/ccu_div.c b/drivers/clk/sunxi-ng/ccu_div.c
+index 916d6da6d..4e909d5a7 100644
+--- a/drivers/clk/sunxi-ng/ccu_div.c
++++ b/drivers/clk/sunxi-ng/ccu_div.c
+@@ -131,6 +131,41 @@ static int ccu_div_set_parent(struct clk_hw *hw, u8 index)
+ 	return ccu_mux_helper_set_parent(&cd->common, &cd->mux, index);
+ }
+ 
++static int ccu_div_set_rate_and_parent(struct clk_hw *hw, unsigned long rate,
++				       unsigned long parent_rate, u8 index)
++{
++	struct ccu_div *cd = hw_to_ccu_div(hw);
++
++	/*
++	 * The predivider helpers look it up through the current parent,
++	 * which is ambiguous while both the parent and the divider are
++	 * changing, so keep the mux-then-divider order the core would
++	 * have used for those clocks.
++	 */
++	if (cd->common.features & (CCU_FEATURE_VARIABLE_PREDIV |
++				   CCU_FEATURE_FIXED_PREDIV |
++				   CCU_FEATURE_ALL_PREDIV)) {
++		ccu_div_set_parent(hw, index);
++		return ccu_div_set_rate(hw, rate, parent_rate);
++	}
++
++	/*
++	 * Same ordering rule as clk_composite_set_rate_and_parent(): if
++	 * switching the mux with the current divider would overshoot the
++	 * requested rate, program the divider first, so the intermediate
++	 * rate never exceeds both the old and the new rate.
++	 */
++	if (ccu_div_recalc_rate(hw, parent_rate) > rate) {
++		ccu_div_set_rate(hw, rate, parent_rate);
++		ccu_div_set_parent(hw, index);
++	} else {
++		ccu_div_set_parent(hw, index);
++		ccu_div_set_rate(hw, rate, parent_rate);
++	}
++
++	return 0;
++}
++
+ const struct clk_ops ccu_div_ops = {
+ 	.disable	= ccu_div_disable,
+ 	.enable		= ccu_div_enable,
+@@ -142,5 +177,6 @@ const struct clk_ops ccu_div_ops = {
+ 	.determine_rate	= ccu_div_determine_rate,
+ 	.recalc_rate	= ccu_div_recalc_rate,
+ 	.set_rate	= ccu_div_set_rate,
++	.set_rate_and_parent = ccu_div_set_rate_and_parent,
+ };
+ EXPORT_SYMBOL_NS_GPL(ccu_div_ops, "SUNXI_CCU");

@@ -1,0 +1,48 @@
+From c0ec821e0aa336fd178eda4e41bf01cdb95d744d Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 21:51:01 +0200
+Subject: [PATCH 044/130] dts: opi4a: CMA 64MB pinned at
+ 0x43000000-0x48000000 (real DE aperture)
+
+Boot 2 left the board half-dead: with alloc-ranges up to 0x70000000 the CMA
+landed at 0x60000000, outside the DE aperture (the X96Q patch documents
+0x43000000 reachable and 0x4b100000 NOT). Fetch outside aperture =
+interconnect hang. Strict window per the tested layout, 64MB is enough for
+bring-up without IOMMU.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts     | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index f6685d1bd..48c7440d0 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -592,17 +592,20 @@ hdmi_con_in: endpoint {
+ };
+ 
+ /*
+- * The DE DMA (scanout and RCQ pool) only reaches low DRAM; the default CMA
+- * lands high (~0xb9e00000 here) and scanout would read zeros (black).
+- * Explicit alloc-ranges to force it low (the original patch relied on the
+- * default placement on its own board).
++ * The DE DMA (scanout and RCQ pool) only reaches VERY low DRAM: the
++ * original patch (X96Q, same die) observes 0x43000000 reachable but
++ * 0x4b100000 NOT. With the previous window (up to 0x70000000) the CMA
++ * landed at 0x60000000 -> fetch outside aperture -> interconnect hang
++ * mid-boot (boot 2, board half-dead). Strict window per the tested
++ * layout: 0x43000000-0x48000000 (after the kernel, before bl31),
++ * 64MB (enough for bring-up dumb buffers/fbcon).
+  */
+ &{/reserved-memory} {
+ 	linux,cma {
+ 		compatible = "shared-dma-pool";
+ 		reusable;
+-		size = <0x0 0x10000000>;
+-		alloc-ranges = <0x0 0x40000000 0x0 0x30000000>;
++		size = <0x0 0x04000000>;
++		alloc-ranges = <0x0 0x43000000 0x0 0x05000000>;
+ 		linux,cma-default;
+ 	};
+ };

@@ -1,0 +1,38 @@
+From 77a1c20d8385b627a7018c5689e87b70e82944e4 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:32:34 +0200
+Subject: [PATCH 020/130] mfd: axp20x: AXP717 poweroff did not write OFF_CTRL
+ (range not writeable)
+
+axp20x_power_off() writes AXP20X_OFF_CTRL (0x32) for the AXP717 (default
+branch), but axp717_writeable_ranges did not include that register: the
+regmap_write failed silently, the handler returned NOTIFY_DONE and the
+poweroff chain fell to the PSCI SYSTEM_OFF (which hangs in the T527 ATF
+BSP -> the board never powered off). With the range, the PMIC really cuts
+power; the BSP (axp2101.c) powers the AXP2202/AXP717 off writing that same
+register 0x32.
+
+Upstream candidate.
+---
+ drivers/mfd/axp20x.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/mfd/axp20x.c b/drivers/mfd/axp20x.c
+index c5f0ebae3..3e51d135c 100644
+--- a/drivers/mfd/axp20x.c
++++ b/drivers/mfd/axp20x.c
+@@ -222,6 +222,14 @@ static const struct regmap_range axp717_writeable_ranges[] = {
+ 	regmap_reg_range(AXP717_PMU_FAULT, AXP717_MODULE_EN_CONTROL_1),
+ 	regmap_reg_range(AXP717_MIN_SYS_V_CONTROL, AXP717_BOOST_CONTROL),
+ 	regmap_reg_range(AXP717_VSYS_V_POWEROFF, AXP717_VSYS_V_POWEROFF),
++	/*
++	 * axp20x_power_off() writes AXP20X_OFF_CTRL (0x32) for the AXP717
++	 * too (switch default branch), but this range was not in the
++	 * table -> the regmap_write failed silently and poweroff fell back
++	 * to PSCI SYSTEM_OFF (which hangs in the T527 ATF BSP). The BSP
++	 * (axp2101.c) powers the AXP2202/AXP717 off writing that same reg.
++	 */
++	regmap_reg_range(AXP20X_OFF_CTRL, AXP20X_OFF_CTRL),
+ 	regmap_reg_range(AXP717_IRQ0_EN, AXP717_IRQ4_EN),
+ 	regmap_reg_range(AXP717_IRQ0_STATE, AXP717_IRQ4_STATE),
+ 	regmap_reg_range(AXP717_TS_PIN_CFG, AXP717_TS_PIN_CFG),

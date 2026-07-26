@@ -1,0 +1,33 @@
+From 566178daecfbbffbb455244596bc20bf0005210a Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 10 Jul 2026 02:43:18 +0200
+Subject: [PATCH 057/130] config: disable RESET_GPIO - breaks
+ mmc-pwrseq-simple with #gpio-cells=3 (WiFi AP6256 on mmc1)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The reset-GPIO fallback of the reset core only supports #gpio-cells=2
+(__reset_add_reset_gpio_device returns -ENOENT with the 3 cells of sunxi),
+and with RESET_GPIO enabled IS_ENABLED activates that path in pwrseq_simple
+-> probe -2 -> mmc1 never probes. Without RESET_GPIO, pwrseq uses the classic
+devm_gpiod_get_array path (equivalent to the BSP 5.15).
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .config | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.config b/.config
+index 28091ecf1..7bd92f1a7 100644
+--- a/.config
++++ b/.config
+@@ -8078,7 +8078,7 @@ CONFIG_PARTITION_PERCPU=y
+ # CONFIG_IPACK_BUS is not set
+ CONFIG_ARCH_HAS_RESET_CONTROLLER=y
+ CONFIG_RESET_CONTROLLER=y
+-CONFIG_RESET_GPIO=m
++# CONFIG_RESET_GPIO is not set
+ # CONFIG_RESET_MCHP_SPARX5 is not set
+ CONFIG_RESET_NUVOTON_MA35D1=y
+ CONFIG_RESET_SCMI=y

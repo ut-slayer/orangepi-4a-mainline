@@ -1,0 +1,66 @@
+From 6d77bce1ef1f07b74dab6ae3dba57bbe45a4de4b Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 04:04:05 +0200
+Subject: [PATCH 015/130] dts: opi4a: final validated RGMII config
+ (rgmii-rxid + 1.9ns PHY + syscon tx100)
+
+With the PJ bank withstand fixed, a combo validated live with ping 0% loss
+at 1Gbps: the YT8531 PHY provides ~1.9ns on RXC (rgmii-rxid +
+rx-internal-delay-ps=1900 on the PHY node) and the syscon only adds 100ps of
+TX (BSP: tx-delay=1, rx-delay=3; but syscon rx=300ps with the PHY undelayed
+came out DEAD in tests - do not use). motorcomm,auto-sleep-disabled is added
+for parity with the BSP (which disables it unconditionally).
+
+Discarded: the phy25m clock (CLK_EMAC1_25M) is NOT needed - with the gate off
+RX works perfectly; the PHY has its own crystal and the aw,soc-phy25m of the
+BSP dts is boilerplate.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 25 +++++++++----------
+ 1 file changed, 12 insertions(+), 13 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index f73a18759..4569ad285 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -493,14 +493,13 @@ &usbphy {
+ };
+ 
+ &gmac1 {
+-	/* RX was dead (rx_packets=0) with "rgmii": the OPi4A PCB adds no
+-	 * RX delay and the syscon (max 3.1ns) did not center it. The
+-	 * YT8531 PHY adds the RX delay (~2ns) via rgmii-rxid; TX works
+-	 * with 100ps of syscon (rx-internal-delay-ps=0 to not double RX). */
+-	/* PHY with no delay (rgmii) -> ALL the RX delay comes from the MAC
+-	 * syscon (bits [9:5] of 0x03000034), sweepable live with devmem to
+-	 * find the optimum. syscon tx-delay = 100ps. */
+-	phy-mode = "rgmii";
++	/* RGMII config validated live (2026-07-08) after fixing the
++	 * PJ bank withstand (1.8V rail, receiver in 3.3V mode = RX
++	 * deaf; see a523_pio_fix_withstand in pinctrl-sun55i-a523.c).
++	 * The PHY adds ~1.9ns of RXC delay (rgmii-rxid + PHY node prop);
++	 * the MAC syscon only adds 100ps of TX (BSP: tx-delay=1).
++	 * Result: 1Gbps/Full, ping 0% loss. */
++	phy-mode = "rgmii-rxid";
+ 	phy-handle = <&ext_rgmii_phy>;
+ 	phy-supply = <&reg_cldo4>;
+ 	tx-internal-delay-ps = <100>;
+@@ -512,12 +511,12 @@ &mdio1 {
+ 	ext_rgmii_phy: ethernet-phy@1 {
+ 		compatible = "ethernet-phy-ieee802.3-c22";
+ 		reg = <1>;
+-		/* Turn on the RX clock delay (RXC_DLY_EN, ~1.9ns) in the
+-		 * YT8531 PHY itself. The motorcomm driver reads this property
+-		 * FROM THE PHY NODE; the value 1900 falls in the 2nd half of
+-		 * the ytphy_rgmii_delays table -> enables the 1.9ns base bit.
+-		 * Without it, rgmii/rgmii-rxid leave RXC undelayed, rx_packets=0. */
++		/* RX clock delay in the YT8531 PHY itself (RXC_DLY_EN,
++		 * ~1.9ns). The motorcomm driver reads this property FROM THE
++		 * PHY NODE and only applies it with phy-mode rgmii-rxid/id. */
+ 		rx-internal-delay-ps = <1900>;
++		/* The BSP disables auto-sleep unconditionally. */
++		motorcomm,auto-sleep-disabled;
+ 		interrupts-extended = <&pio 8 16 IRQ_TYPE_LEVEL_LOW>; /* PI16 */
+ 		reset-gpios = <&pio 8 15 GPIO_ACTIVE_LOW>; /* PI15 */
+ 		reset-assert-us = <10000>;

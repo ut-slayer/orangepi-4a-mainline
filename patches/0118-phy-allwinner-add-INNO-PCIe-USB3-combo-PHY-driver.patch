@@ -4,16 +4,16 @@ Date: Fri, 27 Jun 2025 12:40:09 +0200
 Subject: [PATCH 118/130] phy: allwinner: add INNO PCIe/USB3 combo PHY driver
 
 Signed-off-by: Marvin Wewer <mwewer37@proton.me>
-[aplicado a display-kms: los hunks de Kconfig/Makefile venian contra el
-arbol armbian (esperaban AC200_PHY_CTL, inexistente en mainline); se
-recrearon a mano con el mismo contenido sobre el Kconfig/Makefile de
-6.18.38 vanilla. sunxi-inno-combophy.c identico al parche armbian
-sunxi-6.18 (PR #9280/#9321). Auditado contra el BSP 5.15
-bsp/drivers/phy/sunxi-inno-combophy.c: secuencias pcie_phy_100M y BGR
-identicas; divergencias del autor documentadas en el informe del port
-(mode_set escribe val directamente en vez del tmp bugueado del BSP;
-pcie_phy_enable en 2 pasos + udelay(10) sin tocar PHY_FPGA_SYS_RSTN,
-validado en A527 Cubie A5E con NVMe).]
+[applied to display-kms: the Kconfig/Makefile hunks came against the armbian
+tree (they expected AC200_PHY_CTL, non-existent in mainline); they were
+recreated by hand with the same content over the 6.18.38 vanilla
+Kconfig/Makefile. sunxi-inno-combophy.c identical to the armbian sunxi-6.18
+patch (PR #9280/#9321). Audited against the BSP 5.15
+bsp/drivers/phy/sunxi-inno-combophy.c: pcie_phy_100M and BGR sequences
+identical; the author divergences documented in the port report (mode_set
+writes val directly instead of the buggy tmp of the BSP; pcie_phy_enable in
+2 steps + udelay(10) without touching PHY_FPGA_SYS_RSTN, validated on an A527
+Cubie A5E with NVMe).]
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
 ---
  drivers/phy/allwinner/Kconfig               |    8 +

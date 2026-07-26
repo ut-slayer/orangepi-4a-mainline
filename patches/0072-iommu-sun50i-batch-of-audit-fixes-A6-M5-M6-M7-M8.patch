@@ -1,0 +1,218 @@
+From a5b246124fdc2aebdd0c727258e1399ec5632f2d Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:25:39 +0200
+Subject: [PATCH 072/130] iommu/sun50i: batch of audit fixes (A6/M5/M6/M7/M8)
+
+A6: restore SLAB_CACHE_DMA32 in the L2 table pool and re-enable the WARN_ON
+map==phys. The dev keeps the 32-bit DMA mask: a PT above 4G bounces silently
+through SWIOTLB and the unmap (which uses virt_to_phys, a different handle
+than the map) never frees the bounce slot -> 'swiotlb buffer is full' with
+uptime on 4GB boards and broken DMA for other devices. Compatible with the
++4G DTE fold (which still covers the A523 DRAM range).
+
+M5: the global flush only covered 6 micro-TLBs; the v15 has 7 masters
+(ISP CSI VE0 VE1 G2D DE DI) and the BSP sunxi_tlb_flush writes 0x0003007f.
+flush_iotlb_all is the sync of the unmaps: the DI micro-TLB would have kept
+stale translations (DMA to freed pages) once the deinterlacer is ported. Mask
+per variant (H6 keeps GENMASK(5,0) vanilla).
+
+M6: BYPASS_REG=0 translated all 7 masters with a domain that only has DE
+mappings: any DMA from VE/G2D/ISP/CSI/DI (the future cedar-ve) would be a
+fault storm with MBUS wedge risk. The BSP starts at DEFAULT_BYPASS_VALUE 0x7f
+and each master opts in: replicated per variant (A523 = 0x7f & ~BIT(5), only
+the DE translated; H6 = 0, vanilla).
+
+M7: in the range invalidation, END goes to a 32-bit register and dma-iommu
+assigns IOVA top-down from 0xFFFFFFFF: iova+size(+BSP margin) == 4G is the
+common case and the truncated END dropped BELOW START (the hottest pages not
+invalidated). Clamp to 4G-1, and the lower margin -1M/-1page clamped to iova
+(underflow with buffers <1M).
+
+M8: dev_err of the fault handler -> dev_err_ratelimited. A scanout faulting at
+60fps over serial at 115200 (IRQs off, iommu_lock held) = RCU stall, lived
+through in this bring-up.
+---
+ drivers/iommu/sun50i-iommu.c | 101 +++++++++++++++++++++++++++--------
+ 1 file changed, 80 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/iommu/sun50i-iommu.c b/drivers/iommu/sun50i-iommu.c
+index e6038df91..59e6a9451 100644
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -55,7 +55,7 @@
+ #define IOMMU_TLB_FLUSH_REG		0x080
+ #define IOMMU_TLB_FLUSH_PTW_CACHE		BIT(17)
+ #define IOMMU_TLB_FLUSH_MACRO_TLB		BIT(16)
+-#define IOMMU_TLB_FLUSH_MICRO_TLB(i)		(BIT(i) & GENMASK(5, 0))
++#define IOMMU_TLB_FLUSH_MICRO_TLB(i)		(BIT(i) & GENMASK(6, 0))
+ 
+ /*
+  * Range invalidation (BSP "invalid mode 1"): TLB since iommu v12,
+@@ -118,6 +118,21 @@
+ 
+ struct sun50i_iommu_variant {
+ 	u32 tlb_prefetch;
++	/*
++	 * micro-TLBs covered by the global flush. The v15 has 7 masters
++	 * (ISP CSI VE0 VE1 G2D DE DI): the BSP sunxi_tlb_flush writes
++	 * 0x0003007f. Without bit 6, the DI micro-TLB would keep stale
++	 * translations after every unmap (DMA to freed pages).
++	 */
++	u32 tlb_flush_micro;
++	/*
++	 * BYPASS_REG value (1 = master NOT translated). The BSP starts at
++	 * DEFAULT_BYPASS_VALUE 0x7f and each master driver opts in
++	 * (sunxi_enable_device_iommu): a translated master with no mappings =
++	 * every one of its DMAs is a fault (and on the A523, MBUS wedge risk).
++	 * Mainline only wires the DE (iommus= in the DTS) -> only its bit to 0.
++	 */
++	u32 bypass_val;
+ 	/* use range invalidation (START/END + MODE_SEL=1, BSP v14+) */
+ 	bool has_ivld_range;
+ 	/* PTE with direct READABLE/WRITABLE bits (BSP PGTABLE_V1), not ACI */
+@@ -439,13 +454,31 @@ static void sun50i_iommu_zap_range(struct sun50i_iommu *iommu,
+ 	iommu_write(iommu, IOMMU_AUTO_GATING_REG, 0);
+ 
+ 	if (iommu->variant->has_ivld_range) {
+-		/* BSP sunxi_zap_tlb sequence for v14+ (ranges with margin) */
+-		sun50i_iommu_zap_iova(iommu, iova, iova + 2 * SPAGE_SIZE);
+-		sun50i_iommu_zap_iova(iommu, iova + size - SPAGE_SIZE,
+-				      iova + size + 8 * SPAGE_SIZE);
+-		sun50i_iommu_zap_ptw_cache(iommu, iova, iova + SZ_1M);
+-		sun50i_iommu_zap_ptw_cache(iommu, iova + size - SZ_1M,
+-					   iova + size);
++		/*
++		 * BSP sunxi_zap_tlb sequence for v14+ (ranges with
++		 * margin), with two clamps the BSP does not need because it
++		 * does not assign IOVA top-down like dma-iommu:
++		 * - END is written to a 32-bit register and the aperture
++		 *   ends at 0xFFFFFFFF, so iova+size(+margin) == 4G is
++		 *   the COMMON case, not the edge: without a clamp the
++		 *   truncated END drops BELOW START and the hottest pages
++		 *   are not invalidated.
++		 * - start-1M/START-1page underflows with small buffers (the
++		 *   first pass already covers <1M): clamp the lower bound to iova.
++		 */
++		u64 end = (u64)iova + size;
++		u64 lim = SZ_4G - 1;
++
++		sun50i_iommu_zap_iova(iommu, iova,
++				      min_t(u64, (u64)iova + 2 * SPAGE_SIZE, lim));
++		sun50i_iommu_zap_iova(iommu,
++				      max_t(u64, end - SPAGE_SIZE, iova),
++				      min_t(u64, end + 8 * SPAGE_SIZE, lim));
++		sun50i_iommu_zap_ptw_cache(iommu, iova,
++					   min_t(u64, (u64)iova + SZ_1M, lim));
++		sun50i_iommu_zap_ptw_cache(iommu,
++					   size >= SZ_1M ? end - SZ_1M : iova,
++					   min_t(u64, end, lim));
+ 	} else {
+ 		sun50i_iommu_zap_iova(iommu, iova, 0);
+ 		sun50i_iommu_zap_iova(iommu, iova + SPAGE_SIZE, 0);
+@@ -475,12 +508,7 @@ static int sun50i_iommu_flush_all_tlb(struct sun50i_iommu *iommu)
+ 		    IOMMU_TLB_FLUSH_REG,
+ 		    IOMMU_TLB_FLUSH_PTW_CACHE |
+ 		    IOMMU_TLB_FLUSH_MACRO_TLB |
+-		    IOMMU_TLB_FLUSH_MICRO_TLB(5) |
+-		    IOMMU_TLB_FLUSH_MICRO_TLB(4) |
+-		    IOMMU_TLB_FLUSH_MICRO_TLB(3) |
+-		    IOMMU_TLB_FLUSH_MICRO_TLB(2) |
+-		    IOMMU_TLB_FLUSH_MICRO_TLB(1) |
+-		    IOMMU_TLB_FLUSH_MICRO_TLB(0));
++		    iommu->variant->tlb_flush_micro);
+ 
+ 	ret = readl_poll_timeout_atomic(iommu->base + IOMMU_TLB_FLUSH_REG,
+ 					reg, !reg,
+@@ -562,7 +590,7 @@ static int sun50i_iommu_enable(struct sun50i_iommu *iommu)
+ 		iommu_write(iommu, IOMMU_TLB_IVLD_MODE_SEL_REG, 1);
+ 		iommu_write(iommu, IOMMU_PC_IVLD_MODE_SEL_REG, 1);
+ 	}
+-	iommu_write(iommu, IOMMU_BYPASS_REG, 0);
++	iommu_write(iommu, IOMMU_BYPASS_REG, iommu->variant->bypass_val);
+ 	iommu_write(iommu, IOMMU_INT_ENABLE_REG, IOMMU_INT_MASK);
+ 	iommu_write(iommu, IOMMU_DM_AUT_CTRL_REG(SUN50I_IOMMU_ACI_NONE),
+ 		    IOMMU_DM_AUT_CTRL_RD_UNAVAIL(SUN50I_IOMMU_ACI_NONE, 0) |
+@@ -648,8 +676,13 @@ static void *sun50i_iommu_alloc_page_table(struct sun50i_iommu *iommu,
+ 		return ERR_PTR(-ENOMEM);
+ 	}
+ 
+-	/* We rely on the physical address and DMA address being the same */
+-	//WARN_ON(pt_dma != virt_to_phys(page_table));
++	/*
++	 * We rely on the physical address and DMA address being the same:
++	 * free_page_table() unmaps with virt_to_phys(), and the DTE fold
++	 * assumes raw DRAM physicals. SLAB_CACHE_DMA32 keeps this true (no
++	 * SWIOTLB bounce); if it ever fires, the unmap leaks a bounce slot.
++	 */
++	WARN_ON(pt_dma != virt_to_phys(page_table));
+ 
+ 	return page_table;
+ }
+@@ -991,13 +1024,18 @@ static void sun50i_iommu_report_fault(struct sun50i_iommu *iommu,
+ 				      unsigned master, phys_addr_t iova,
+ 				      unsigned prot)
+ {
+-	dev_err(iommu->dev, "Page fault for %pad (master %d, dir %s)\n",
+-		&iova, master, (prot == IOMMU_FAULT_WRITE) ? "wr" : "rd");
++	/*
++	 * Ratelimited: a scanout engine faulting at 60fps floods a serial
++	 * console (~9.5ms/line at 115200, IRQs off, iommu_lock held) into an
++	 * RCU stall - lived through on this platform (T527 bring-up).
++	 */
++	dev_err_ratelimited(iommu->dev, "Page fault for %pad (master %d, dir %s)\n",
++			    &iova, master, (prot == IOMMU_FAULT_WRITE) ? "wr" : "rd");
+ 
+ 	if (iommu->domain)
+ 		report_iommu_fault(iommu->domain, iommu->dev, iova, prot);
+ 	else
+-		dev_err(iommu->dev, "Page fault while iommu not attached to any domain?\n");
++		dev_err_ratelimited(iommu->dev, "Page fault while iommu not attached to any domain?\n");
+ 
+ 	sun50i_iommu_zap_range(iommu, iova, SPAGE_SIZE);
+ }
+@@ -1133,9 +1171,18 @@ static int sun50i_iommu_probe(struct platform_device *pdev)
+ 	iommu->dev = &pdev->dev;
+ 	iommu->variant = device_get_match_data(&pdev->dev);
+ 
++	/*
++	 * SLAB_CACHE_DMA32 is MANDATORY even though the DTE fold covers
++	 * 32-40 bit physicals: the dev keeps the 32-bit DMA mask, and a PT
++	 * above 4G would silently bounce through SWIOTLB - with the unmap
++	 * using virt_to_phys() (a different handle than the map), the bounce
++	 * slot is NEVER freed ("swiotlb buffer is full" with uptime on 4GB
++	 * boards). With DMA32 map==phys always (the mk_pt WARN_ON watches
++	 * it).
++	 */
+ 	iommu->pt_pool = kmem_cache_create(dev_name(&pdev->dev),
+ 					   PT_SIZE, PT_SIZE,
+-					   SLAB_HWCACHE_ALIGN,
++					   SLAB_HWCACHE_ALIGN | SLAB_CACHE_DMA32,
+ 					   NULL);
+ 	if (!iommu->pt_pool)
+ 		return -ENOMEM;
+@@ -1201,6 +1248,9 @@ static const struct sun50i_iommu_variant sun50i_h6_variant = {
+ 			IOMMU_TLB_PREFETCH_MASTER_ENABLE(3) |
+ 			IOMMU_TLB_PREFETCH_MASTER_ENABLE(4) |
+ 			IOMMU_TLB_PREFETCH_MASTER_ENABLE(5),
++	/* exact vanilla H6/H616 behaviour: 6 masters, all translated */
++	.tlb_flush_micro = GENMASK(5, 0),
++	.bypass_val = 0,
+ };
+ 
+ /*
+@@ -1213,6 +1263,15 @@ static const struct sun50i_iommu_variant sun50i_h6_variant = {
+  */
+ static const struct sun50i_iommu_variant sun55i_a523_variant = {
+ 	.tlb_prefetch = IOMMU_TLB_PREFETCH_ONLY_VALID,
++	/* v15 = 7 masters: sunxi_tlb_flush escribe 0x0003007f (bit 6 = DI) */
++	.tlb_flush_micro = GENMASK(6, 0),
++	/*
++	 * BSP DEFAULT_BYPASS_VALUE 0x7f with per-master opt-in: only the DE
++	 * (master 5, the only one with iommus= in the DTS) is translated.
++	 * When porting VPU (VE0/VE1 bits 2-3) or DI (bit 6), clear its bit
++	 * here as well as adding iommus= to its node.
++	 */
++	.bypass_val = 0x7f & ~BIT(5),
+ 	.has_ivld_range = true,
+ 	.bsp_pte_perms = true,
+ };

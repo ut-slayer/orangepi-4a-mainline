@@ -22,14 +22,14 @@ index 50c8ab360..08f47e744 100644
  	/* v15 = 7 masters: sunxi_tlb_flush escribe 0x0003007f (bit 6 = DI) */
  	.tlb_flush_micro = GENMASK(6, 0),
  	/*
--	 * BSP DEFAULT_BYPASS_VALUE 0x7f con opt-in por master: solo el DE
--	 * (master 5, el unico con iommus= en el DTS) se traduce. Al portar
--	 * VPU (VE0/VE1 bits 2-3) o DI (bit 6), limpiar aqui su bit ademas
--	 * de anadir iommus= a su nodo.
-+	 * BSP DEFAULT_BYPASS_VALUE 0x7f con opt-in por master: se traducen
-+	 * el DE (master 5) y el VPU cedar (VE0/VE1, bits 2-3), los que
-+	 * llevan iommus= en el DTS. Al portar DI (bit 6), limpiar aqui su
-+	 * bit ademas de anadir iommus= a su nodo.
+-	 * BSP DEFAULT_BYPASS_VALUE 0x7f with per-master opt-in: only the DE
+-	 * (master 5, the only one with iommus= in the DTS) is translated.
+-	 * When porting VPU (VE0/VE1 bits 2-3) or DI (bit 6), clear its bit
+-	 * here as well as adding iommus= to its node.
++	 * BSP DEFAULT_BYPASS_VALUE 0x7f with per-master opt-in: translate
++	 * the DE (master 5) and the cedar VPU (VE0/VE1, bits 2-3), the ones
++	 * that carry iommus= in the DTS. When porting DI (bit 6), clear its
++	 * bit here as well as adding iommus= to its node.
  	 */
 -	.bypass_val = 0x7f & ~BIT(5),
 +	.bypass_val = 0x7f & ~(BIT(5) | BIT(3) | BIT(2)),

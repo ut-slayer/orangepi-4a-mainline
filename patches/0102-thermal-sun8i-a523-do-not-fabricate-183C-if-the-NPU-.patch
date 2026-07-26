@@ -1,0 +1,53 @@
+From 0f60da8a3118cd0a4e6e123a14694f7c93d8b6dd Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 04:32:33 +0200
+Subject: [PATCH 102/130] thermal: sun8i: a523: do not fabricate 183C if the
+ NPU channel has no data yet
+
+The A523 GPU zone reads the NPU sensor instead of the GPU one (vendor recipe:
+the GPU channel is unreliable). But the 'ths have no data yet' guard of
+sun8i_ths_get_temp only validates the GPU channel register: if the NPU one is
+still 0 (first conversion pending just after enabling the block), the
+two-segment formula converts raw 0 into ~183.6C and the 110C critical trip
+powers the board off (seen in the field: 'gpu-thermal: critical temperature
+reached' + poweroff 2.8s after boot, with the board at ~50C real).
+
+If the NPU register is 0, keep the sample from the GPU channel itself (already
+validated non-zero by the caller) until the NPU has data.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ drivers/thermal/sun8i_thermal.c | 18 ++++++++++++++++--
+ 1 file changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/thermal/sun8i_thermal.c b/drivers/thermal/sun8i_thermal.c
+index 8774ef8d6..51f0cb338 100644
+--- a/drivers/thermal/sun8i_thermal.c
++++ b/drivers/thermal/sun8i_thermal.c
+@@ -139,10 +139,24 @@ static int sun55i_a523_calc_temp(struct ths_device *tmdev, int id, int reg)
+ 	/*
+ 	 * The GPU sensor (id 2) is unreliable on this silicon; the vendor
+ 	 * driver reads the NPU sensor (id 3) in its place, so do the same.
++	 *
++	 * Right after the block is enabled the NPU channel may not have
++	 * completed its first conversion yet, leaving its data register at
++	 * zero. The caller's "no data yet" check only covers the GPU
++	 * channel's own register, and raw 0 computes to a bogus ~183C,
++	 * which trips the 110C critical shutdown (seen in the field as a
++	 * poweroff 2.8s into boot). Keep the GPU channel's own sample,
++	 * already validated non-zero by the caller, until the NPU channel
++	 * has data.
+ 	 */
+-	if (id == 2)
++	if (id == 2) {
++		int npu = 0;
++
+ 		regmap_read(tmdev->regmap,
+-			    tmdev->chip->temp_data_base + 0x4 * 3, &reg);
++			    tmdev->chip->temp_data_base + 0x4 * 3, &npu);
++		if (npu)
++			reg = npu;
++	}
+ 
+ 	return sun55i_a523_calc_temp_raw(reg);
+ }

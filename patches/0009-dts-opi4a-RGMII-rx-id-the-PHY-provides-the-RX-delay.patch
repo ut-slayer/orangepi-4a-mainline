@@ -1,0 +1,39 @@
+From 020badb8b4f383da8b4083e5fafe5d80c564ace7 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 01:46:18 +0200
+Subject: [PATCH 009/130] dts: opi4a: RGMII rx-id (the PHY provides the RX
+ delay)
+
+rx_packets=0 with phy-mode rgmii (RX without delay: the PCB does not provide
+it and the syscon is not enough). The YT8531 PHY provides ~2ns of RX delay
+via rgmii-rxid; TX intact (tx-internal-delay-ps=100, was working). Same as
+the BSP 5.15, which brings the network up directly.
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts    | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 0f3e715c2..48dad8056 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -493,14 +493,15 @@ &usbphy {
+ };
+ 
+ &gmac1 {
+-	/* BSP delays (verified on this board): phy-mode rgmii, no
+-	 * internal PHY delay; the MAC syscon provides the skew
+-	 * (BSP tx-delay=1 -> 100ps, rx-delay=3 -> 300ps). */
+-	phy-mode = "rgmii";
++	/* RX was dead (rx_packets=0) with "rgmii": the OPi4A PCB adds no
++	 * RX delay and the syscon (max 3.1ns) did not center it. The
++	 * YT8531 PHY adds the RX delay (~2ns) via rgmii-rxid; TX works
++	 * with 100ps of syscon (rx-internal-delay-ps=0 to not double RX). */
++	phy-mode = "rgmii-rxid";
+ 	phy-handle = <&ext_rgmii_phy>;
+ 	phy-supply = <&reg_cldo4>;
+ 	tx-internal-delay-ps = <100>;
+-	rx-internal-delay-ps = <300>;
++	rx-internal-delay-ps = <0>;
+ 	status = "okay";
+ };
+ 

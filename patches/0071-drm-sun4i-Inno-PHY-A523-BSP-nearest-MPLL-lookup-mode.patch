@@ -1,0 +1,206 @@
+From 835902bc4e77aba65c9b15cacb31f297a38d0233 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 13 Jul 2026 14:21:08 +0200
+Subject: [PATCH 071/130] drm/sun4i: Inno PHY A523: BSP nearest MPLL lookup +
+ mode_valid tied to the table (audit A3)
+
+The 'nearest lower' fallback of the MPLL lookup diverged from the BSP
+(_inno_phy_auto_get_config: clamp to min/max + NEAREST neighbor) and broke
+both extremes:
+- 640x480@60 (25175 kHz, the EDID rescue mode) had no lower entry ->
+  get_mpll returned NULL -> phy_init failed ON ENABLE -> black screen. With
+  the BSP clamp it lands on 25200 (0.1%, within HDMI tolerance): it is exactly
+  the NTSC 1000/1001 case the vendor added the 'near match' for.
+- A DMT like 1440x900@60 (106500) picked 101000 (5.5% below) and the prePLL
+  synthesizes EXACTLY that frequency from the 24MHz crystal -> TMDS at 101MHz
+  against a TCON at 106.5MHz -> 'no signal' without any error in dmesg.
+
+The nearest does not solve the second (108000 is still 1.4% off): the A523
+mode_valid is added (compatible sun55i-a523-dw-hdmi, which the DTS already
+lists first and until now fell to the H6 fallback) which only advertises modes
+with a clock within <=0.5% of a table entry, plus the 594MHz cap of the
+controller. The monitor then negotiates a mode the PHY can actually clock,
+instead of receiving a broken one.
+
+By the way: the init mdelays (32ms of busy-wait) become usleep_range
+(bridge-enable context, can sleep; same timing as the BSP).
+---
+ drivers/gpu/drm/sun4i/sun8i_dw_hdmi.c  | 32 ++++++++++++++
+ drivers/gpu/drm/sun4i/sun8i_dw_hdmi.h  |  3 ++
+ drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c | 59 ++++++++++++++++++++------
+ 3 files changed, 80 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_dw_hdmi.c b/drivers/gpu/drm/sun4i/sun8i_dw_hdmi.c
+index 96532709c..24b2232f9 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_dw_hdmi.c
++++ b/drivers/gpu/drm/sun4i/sun8i_dw_hdmi.c
+@@ -55,6 +55,29 @@ sun8i_dw_hdmi_mode_valid_h6(struct dw_hdmi *hdmi, void *data,
+ 	return MODE_OK;
+ }
+ 
++static enum drm_mode_status
++sun8i_dw_hdmi_mode_valid_a523(struct dw_hdmi *hdmi, void *data,
++			      const struct drm_display_info *info,
++			      const struct drm_display_mode *mode)
++{
++	if (mode->clock > 594000)
++		return MODE_CLOCK_HIGH;
++
++	/*
++	 * The Inno PHY prePLL synthesizes the TMDS clock from the 24 MHz
++	 * crystal out of a fixed table of rates (BSP phy_inno.c picks the
++	 * nearest entry and never fails): a pixel clock more than the HDMI
++	 * tolerance (0.5%) away from every entry would scan out against a
++	 * TMDS clock the sink cannot lock to - a silent "no signal". Only
++	 * advertise modes the table can actually hit; the nearest-entry
++	 * pick then only ever bridges the 1000/1001 NTSC-rate gaps (~0.1%).
++	 */
++	if (sun55i_a523_inno_mpll_dist(mode->clock) * 200 > mode->clock)
++		return MODE_CLOCK_RANGE;
++
++	return MODE_OK;
++}
++
+ static bool sun8i_dw_hdmi_node_is_tcon_top(struct device_node *node)
+ {
+ 	return IS_ENABLED(CONFIG_DRM_SUN8I_TCON_TOP) &&
+@@ -249,6 +272,11 @@ static const struct sun8i_dw_hdmi_quirks sun50i_h6_quirks = {
+ 	.use_drm_infoframe = true,
+ };
+ 
++static const struct sun8i_dw_hdmi_quirks sun55i_a523_quirks = {
++	.mode_valid = sun8i_dw_hdmi_mode_valid_a523,
++	.use_drm_infoframe = true,
++};
++
+ static const struct of_device_id sun8i_dw_hdmi_dt_ids[] = {
+ 	{
+ 		.compatible = "allwinner,sun8i-a83t-dw-hdmi",
+@@ -258,6 +286,10 @@ static const struct of_device_id sun8i_dw_hdmi_dt_ids[] = {
+ 		.compatible = "allwinner,sun50i-h6-dw-hdmi",
+ 		.data = &sun50i_h6_quirks,
+ 	},
++	{
++		.compatible = "allwinner,sun55i-a523-dw-hdmi",
++		.data = &sun55i_a523_quirks,
++	},
+ 	{ /* sentinel */ },
+ };
+ MODULE_DEVICE_TABLE(of, sun8i_dw_hdmi_dt_ids);
+diff --git a/drivers/gpu/drm/sun4i/sun8i_dw_hdmi.h b/drivers/gpu/drm/sun4i/sun8i_dw_hdmi.h
+index df94f8347..82c3711f3 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_dw_hdmi.h
++++ b/drivers/gpu/drm/sun4i/sun8i_dw_hdmi.h
+@@ -192,6 +192,9 @@ struct sun8i_dw_hdmi {
+ 
+ extern struct platform_driver sun8i_hdmi_phy_driver;
+ 
++/* Inno PHY (A523): kHz distance to the nearest prePLL table entry */
++unsigned int sun55i_a523_inno_mpll_dist(unsigned int tmds_khz);
++
+ static inline struct sun8i_dw_hdmi *
+ encoder_to_sun8i_dw_hdmi(struct drm_encoder *encoder)
+ {
+diff --git a/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c b/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
+index ad79c1964..328e3acec 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
++++ b/drivers/gpu/drm/sun4i/sun8i_hdmi_phy.c
+@@ -852,19 +852,50 @@ static u32 inno_rd32(struct sun8i_hdmi_phy *phy, u32 reg)
+ 	return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+ }
+ 
++/*
++ * BSP _inno_phy_auto_get_config() semantics: clamp below the first / above the
++ * last entry, exact match, otherwise the NEAREST neighbour. The prePLL then
++ * synthesizes that entry's frequency EXACTLY (from the 24 MHz crystal), so
++ * "nearest" only yields a working link when the miss is within the HDMI clock
++ * tolerance - which is what it exists for: the 1000/1001 NTSC rates (25175 ->
++ * 25200, 74176 -> 74250, ~0.1%). Larger misses are filtered out beforehand by
++ * sun55i_a523_inno_mpll_dist() via mode_valid, so they never reach here.
++ */
+ static const struct inno_phy_mpll *
+ sun55i_a523_inno_get_mpll(unsigned int tmds_khz)
+ {
+-	int i;
++	int i, last = ARRAY_SIZE(sun55i_a523_inno_mpll) - 1;
+ 
+-	for (i = 0; i < ARRAY_SIZE(sun55i_a523_inno_mpll); i++)
+-		if (sun55i_a523_inno_mpll[i].tmds_clk == tmds_khz)
+-			return &sun55i_a523_inno_mpll[i];
+-	/* fall back to the nearest lower entry */
+-	for (i = ARRAY_SIZE(sun55i_a523_inno_mpll) - 1; i >= 0; i--)
+-		if (sun55i_a523_inno_mpll[i].tmds_clk <= tmds_khz)
++	if (tmds_khz <= sun55i_a523_inno_mpll[0].tmds_clk)
++		return &sun55i_a523_inno_mpll[0];
++	if (tmds_khz >= sun55i_a523_inno_mpll[last].tmds_clk)
++		return &sun55i_a523_inno_mpll[last];
++
++	for (i = 0; i < last; i++) {
++		u32 lo = sun55i_a523_inno_mpll[i].tmds_clk;
++		u32 hi = sun55i_a523_inno_mpll[i + 1].tmds_clk;
++
++		if (tmds_khz == lo)
+ 			return &sun55i_a523_inno_mpll[i];
+-	return NULL;
++		if (tmds_khz > lo && tmds_khz <= hi)
++			return (tmds_khz - lo > hi - tmds_khz) ?
++				&sun55i_a523_inno_mpll[i + 1] :
++				&sun55i_a523_inno_mpll[i];
++	}
++	return &sun55i_a523_inno_mpll[last];
++}
++
++/*
++ * Distance (kHz) from @tmds_khz to the table entry get_mpll() would use.
++ * mode_valid uses it to reject modes whose clock the prePLL cannot hit within
++ * the HDMI tolerance (e.g. DMT 1440x900@60, 106500: nearest entry 108000 =
++ * 1.4% off -> "no signal" with no error anywhere if it were allowed through).
++ */
++unsigned int sun55i_a523_inno_mpll_dist(unsigned int tmds_khz)
++{
++	const struct inno_phy_mpll *mpll = sun55i_a523_inno_get_mpll(tmds_khz);
++
++	return abs_diff(mpll->tmds_clk, tmds_khz);
+ }
+ 
+ static void sun55i_a523_inno_turn_off(struct sun8i_hdmi_phy *phy)
+@@ -1017,14 +1048,14 @@ static int sun55i_a523_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
+ 
+ 	/* analog + digital reset (active-low pulse) */
+ 	sun55i_a523_inno_clr(phy, INNO_CTL0, INNO_CTL0_RST_AN);
+-	mdelay(10);
++	usleep_range(10000, 11000);
+ 	sun55i_a523_inno_set(phy, INNO_CTL0, INNO_CTL0_RST_AN);
+ 	sun55i_a523_inno_clr(phy, INNO_CTL0, INNO_CTL0_RST_DI);
+-	mdelay(10);
++	usleep_range(10000, 11000);
+ 	sun55i_a523_inno_set(phy, INNO_CTL0, INNO_CTL0_RST_DI);
+ 
+ 	sun55i_a523_inno_turn_off(phy);
+-	mdelay(1);
++	usleep_range(1000, 1200);
+ 
+ 	sun55i_a523_inno_set(phy, INNO_DR0, INNO_DR0_BIAS_EN);
+ 	sun55i_a523_inno_clr(phy, INNO_DR0, INNO_DR0_REFRES);	/* off-chip */
+@@ -1034,7 +1065,7 @@ static int sun55i_a523_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
+ 	regmap_write(phy->regs, 0x8006, 0x00);
+ 	regmap_write(phy->regs, 0x8007, 0x00);
+ 	sun55i_a523_inno_set(phy, INNO_RXSEN, INNO_RXSEN_CH_RXSENSE_EN);
+-	mdelay(1);
++	usleep_range(1000, 1200);
+ 
+ 	if (read_poll_timeout(sun55i_a523_inno_rxsense_locked, v, v, 1000, 10000,
+ 			      false, phy))
+@@ -1062,10 +1093,10 @@ static int sun55i_a523_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
+ 
+ 	/* digital reset + data sync */
+ 	sun55i_a523_inno_clr(phy, INNO_CTL0, INNO_CTL0_RST_DI);
+-	mdelay(10);
++	usleep_range(10000, 11000);
+ 	sun55i_a523_inno_set(phy, INNO_CTL0, INNO_CTL0_RST_DI);
+ 	sun55i_a523_inno_clr(phy, INNO_CTL0, INNO_CTL0_DATA_SYNC);
+-	mdelay(1);
++	usleep_range(1000, 1200);
+ 	sun55i_a523_inno_set(phy, INNO_CTL0, INNO_CTL0_DATA_SYNC);
+ 
+ 	dw_hdmi_phy_gen2_txpwron(hdmi, 1);

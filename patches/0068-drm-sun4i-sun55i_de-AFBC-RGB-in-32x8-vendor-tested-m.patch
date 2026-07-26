@@ -1,0 +1,131 @@
+From d2eb661025b44df4f32e54a4069b172a5f302421 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 12 Jul 2026 15:19:23 +0200
+Subject: [PATCH 068/130] drm/sun4i: sun55i_de: AFBC RGB in 32x8
+ (vendor-tested mode)
+
+The AFBD decode came out garbage (black + squares) with real content because
+we advertised and programmed AFBC RGB in 16x16 (block_layout 0).
+
+In the BSP 5.15 (source of truth, de_fbd_atw.c) the gate
+de_afbc_format_mod_supported() ONLY accepts 32x8|SPARSE|YTR|SPLIT for RGB
+(SUNXI_RGB_AFBC_MOD): in fill_afbc_info that forces wide_block=1 and thus
+block_layout = superblock_layout[1] = 3 (32x8) ALWAYS. The 16x16 branch
+(superblock_layout[0]=0) for RGB is dead code the silicon never runs -> that
+is why "the registers were fine but the decode failed": they were correct for
+a mode this AFBD does not decode for RGB.
+
+We now advertise exactly the vendor mode (32x8|SPARSE|YTR|SPLIT), which is
+also the one the AN1 libmali blob emits daily and the RGB modifier
+Mesa/panfrost prefers (pan_best_modifiers), and sun55i_de_afbd_stage()
+computes block_layout/block_size from wide_block like the BSP.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c      | 42 +++++++++++++++++---------
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 14 ++++-----
+ 2 files changed, 33 insertions(+), 23 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index deee0f66f..bf746cf4e 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -955,21 +955,20 @@ static void sun55i_de_vsu_setup(struct sun8i_mixer *mixer,
+ 
+ /* turn the blender pipe 0 off (output falls back to the background color) */
+ /*
+- * AFBC modifiers the v350 AFBD decodes for RGB 8888. The BSP advertises
+- * 32x8|SPARSE|YTR|SPLIT but its hardware programs 16x16 all the same
+- * (superblock_layout[0]); Mesa/panfrost produces 16x16, so we advertise
+- * the 16x16 variants and let Mesa pick the one it knows how to generate.
++ * AFBC modifier the v350 AFBD decodes for RGB 8888. The BSP gate
++ * (de_afbc_format_mod_supported) ONLY accepts 32x8|SPARSE|YTR|SPLIT for
++ * RGB (SUNXI_RGB_AFBC_MOD): in fill_afbc_info that forces wide_block=1 and
++ * thus block_layout = superblock_layout[1] = 3 (32x8) ALWAYS. The 16x16
++ * branch (superblock_layout[0]=0) for RGB is dead code the silicon never
++ * runs -> we used to advertise 16x16 and the decode came out garbage. Now
++ * we advertise exactly the mode the vendor uses daily, which is also
++ * the one the AN1 libmali blob emits and the RGB modifier Mesa/panfrost
++ * prefers (pan_best_modifiers). RGBA8888 (32b >=17) requires SPLIT.
+  */
+ static const u64 sun55i_de_afbc_modifiers[] = {
+-	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_32x8 |
+ 				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_YTR |
+ 				AFBC_FORMAT_MOD_SPLIT),
+-	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+-				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_YTR),
+-	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+-				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_SPLIT),
+-	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+-				AFBC_FORMAT_MOD_SPARSE),
+ };
+ 
+ /* BSP fmt_seq (de_afbd_apply_lay) per format */
+@@ -1038,6 +1037,20 @@ static void sun55i_de_afbd_stage(struct sun8i_mixer *mixer,
+ 	u64 addr = gem->dma_addr + fb->offsets[0];
+ 	bool ytr = fb->modifier &
+ 		   DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_YTR);
++	/*
++	 * BSP wide_block (fill_afbc_info): the mode the vendor uses for
++	 * RGB is 32x8 (block_layout = superblock_layout[1] = 3, blocks /32
++	 * x /8). Keep the 16x16 path (layout 0) in case it is ever
++	 * advertised, but RGB only decodes in 32x8 on this silicon.
++	 */
++	bool wide = (fb->modifier &
++		     DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_32x8)) ==
++		    DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_32x8);
++	u32 blk_layout = wide ? 3 : 0;
++	u32 blk_w = wide ? DIV_ROUND_UP(fb->width, 32)
++			 : DIV_ROUND_UP(fb->width, 16);
++	u32 blk_h = wide ? DIV_ROUND_UP(fb->height, 8)
++			 : DIV_ROUND_UP(fb->height, 16);
+ 	u32 seq, fmt;
+ 
+ 	sun55i_de_afbc_fmt_seq(fb->format->format, &seq);
+@@ -1050,13 +1063,12 @@ static void sun55i_de_afbd_stage(struct sun8i_mixer *mixer,
+ 		     ((src_w - 1) & 0xfff) | (((src_h - 1) & 0xfff) << 16));
+ 	/* stream blocks: over the TOTAL fb size, not the crop */
+ 	de_blk_write(afbd, SUN55I_AFBD_BLK_SIZE,
+-		     (DIV_ROUND_UP(fb->width, 16) & 0x3ff) |
+-		     ((DIV_ROUND_UP(fb->height, 16) & 0x3ff) << 16));
++		     (blk_w & 0x3ff) | ((blk_h & 0x3ff) << 16));
+ 	de_blk_write(afbd, SUN55I_AFBD_SRC_CROP, 0);
+ 	de_blk_write(afbd, SUN55I_AFBD_LAY_CROP, 0);
+-	/* fmt | yuv_tran<<7 | sb_layout(16x16=0)<<8 | sbs {1,1} (BSP RGB) */
++	/* fmt | yuv_tran<<7 | sb_layout<<8 | sbs {1,1} (BSP RGB8888) */
+ 	fmt = SUN55I_AFBD_FMT_RGBA8888 | ((ytr ? 1 : 0) << 7) |
+-	      (1 << 16) | (1 << 18);
++	      ((blk_layout & 0x3) << 8) | (1 << 16) | (1 << 18);
+ 	de_blk_write(afbd, SUN55I_AFBD_FMT, fmt);
+ 	de_blk_write(afbd, SUN55I_AFBD_HD_LADDR, lower_32_bits(addr));
+ 	de_blk_write(afbd, SUN55I_AFBD_HD_HADDR, upper_32_bits(addr) & 0xff);
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index c7461fee8..a4e116e9f 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -331,18 +331,16 @@ static const uint64_t sun8i_layer_modifiers[] = {
+ 	DRM_FORMAT_MOD_INVALID
+ };
+ 
+-/* primary plane of the v35x mixer (RCQ + AFBD): LINEAR + AFBC 16x16 */
++/*
++ * Primary plane of the v35x mixer (RCQ + AFBD): LINEAR + the vendor-tested
++ * AFBC RGB = 32x8|SPARSE|YTR|SPLIT (SUNXI_RGB_AFBC_MOD from the BSP). Keep
++ * in sync with sun55i_de_afbc_modifiers[] in sun55i_de.c.
++ */
+ static const uint64_t sun55i_layer_modifiers[] = {
+ 	DRM_FORMAT_MOD_LINEAR,
+-	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
++	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_32x8 |
+ 				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_YTR |
+ 				AFBC_FORMAT_MOD_SPLIT),
+-	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+-				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_YTR),
+-	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+-				AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_SPLIT),
+-	DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+-				AFBC_FORMAT_MOD_SPARSE),
+ 	DRM_FORMAT_MOD_INVALID
+ };
+ 

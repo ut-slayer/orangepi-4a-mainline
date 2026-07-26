@@ -1,0 +1,35 @@
+From f62fcb91d1c8805fc5b75f6d2f763dc74848f687 Mon Sep 17 00:00:00 2001
+From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:39:09 +0200
+Subject: [PATCH 043/130] dts: opi4a: disable mixer iommus (bring-up without
+ IOMMU, low CMA)
+
+sun50i_iommu_map Oops (96000005) with the 2732 backport on the 6.18
+sun50i-iommu when creating the fbcon and prime-import GEMs. Without
+translation, scanout+RCQ go physical to the low CMA. Pending: debug the
+iommu for high/4K buffers.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts    | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 8025a1b72..f6685d1bd 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -644,3 +644,14 @@ &display_clocks {
+ 	assigned-clock-parents = <&ccu CLK_PLL_VIDEO3_4X>;
+ 	assigned-clock-rates = <600000000>;
+ };
++
++/*
++ * The A523 IOMMU backport (2732) crashes in sun50i_iommu_map on the
++ * 6.18 sun50i-iommu (Oops when creating GEM/fbcon). For bring-up the
++ * DE translation is disabled: everything (RCQ + scanout) goes physical to
++ * the low CMA (< 0x70000000, inside the DE aperture per the series).
++ * Re-enable once the driver is debugged (needed for high/4K buffers).
++ */
++&mixer0 {
++	/delete-property/ iommus;
++};
