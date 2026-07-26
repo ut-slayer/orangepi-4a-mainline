@@ -13,15 +13,15 @@ cabeceras de los parches.
 > Base del árbol de trabajo: `linux-6.18.38` vanilla. Estos parches se aplican
 > encima. `git format-patch --base` incluye el hash base en cada `.patch`.
 
-**Última imagen: v0.2** — el audio analógico / jack de auriculares de 3,5 mm ya
-funciona. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
+**Última imagen: v0.3** — decodificación de vídeo por hardware (VPU) + escritorio
+**GNOME**. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 
-> **Aviso:** la serie de parches va bastante por delante de las imágenes
-> publicadas (fix del reloj de la GPU, bring-up de PCIe, decodificación de vídeo
-> por hardware…). **Se están preparando imágenes Debian actualizadas — Desktop y
-> CLI — construidas sobre este kernel.** Sin fecha prometida: aparecerán en la
-> página de [Releases](../../releases) cuando estén probadas. Mientras tanto
-> puedes compilarte el kernel actual con los parches de aquí.
+> **Aviso:** estos parches son el kernel que hay detrás de las **imágenes v0.3**
+> (fix del reloj de la GPU, bring-up de PCIe, decodificación de vídeo por
+> hardware). Las imágenes Debian actualizadas — una de escritorio **GNOME** y una
+> **CLI / headless**, construidas sobre este kernel — están en la página de
+> [Releases](../../releases). También puedes compilarte el kernel tú mismo con los
+> parches de aquí.
 
 ## Qué funciona (confirmado en hardware)
 
@@ -30,7 +30,7 @@ funciona. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 | **Display HDMI KMS** (DE33/DE3.5 + TCON-TV + DW-HDMI 2.0 + PHY Inno) | ✅ 720p/1080p, escalado VSU8 limpio |
 | **Consola de arranque por HDMI** (fbcon vía `simple-framebuffer` sobre el FB de U-Boot) | ✅ con U-Boot BSP (con U-Boot mainline sobra; ver §4) |
 | **HDMI HPD / hotplug** (detección nativa del conector) | ✅ connected al arrancar + hotplug (enchufar/desenchufar) sin forzar |
-| **GPU Mali-G57** (Panfrost) | ✅ acelerada (Cinnamon / KDE Plasma Wayland) |
+| **GPU Mali-G57** (Panfrost) | ✅ acelerada (GNOME sobre Wayland) |
 | **Audio HDMI** (i2s2 → dw-hdmi) | ✅ salida PCM por la TV |
 | **Audio analógico** (jack de auriculares 3,5 mm + detección de jack) | ✅ auriculares + hotplug (driver propio `sun55i-a523-codec` portado del BSP — no hay driver en mainline). Line-out / captura de micro cableados pero aún sin probar en banco |
 | **Ethernet GMAC1** (PHY YT8531, RGMII) | ✅ RX/TX |
@@ -49,11 +49,13 @@ de kernel incluida.** Este árbol trae el shim `cedar-ve` con su nodo de
 device-tree y los mapeos de IOMMU de los masters del motor de vídeo. Junto con el
 userspace de Allwinner (libcedarc + `gstreamer1.0-omx`), **H.264 y H.265
 decodifican por hardware**: YouTube se reproduce fluido en un navegador WebKit
-(probado con Cog) en esta placa. **VP8/VP9 no** — ese motor nunca dispara su
+(Epiphany / GNOME Web) en esta placa. **VP8/VP9 no** — ese motor nunca dispara su
 interrupción, así que esos códecs se capan en nuestra configuración y YouTube
 negocia H.264 en su lugar. Ojo: esto es la mitad de *kernel*; la pila de
-decodificación de userspace no forma parte de esta serie de parches, y las
-imágenes Debian publicadas aquí todavía no la incluyen. La **variante de 4 GB está confirmada
+decodificación de userspace no forma parte de esta serie de parches — pero las
+**imágenes Debian v0.3 sí la incluyen** (libcedarc + `gst-omx`), así que ahí la
+decodificación por hardware funciona de fábrica. Si solo compilas el kernel con
+estos parches, el userspace lo pones tú. La **variante de 4 GB está confirmada
 funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la
 eMMC; el bootloader auto-detecta el tamaño de RAM).
 
@@ -67,16 +69,36 @@ Decisiones tomadas en la imagen distribuida (no son parches del kernel):
 - **SSH activado desde el primer arranque**; usuario/contraseña `user` / `user`.
   **Cambia la contraseña de inmediato** (`passwd`) — una contraseña por defecto
   en un dispositivo en red es como acaban las placas en botnets.
-- **zram y swap desactivados de serie.** La placa viene en distintos tamaños de
-  RAM (2 GB / 4 GB), así que el swap/zram se deja para que lo configures a tu gusto.
-- **Sesión Wayland** — el escritorio es Plasma sobre **Wayland**. La sesión
-  **X11 no se soporta**: no se ha conseguido que funcione bien en este stack.
-- **Baloo desactivado** — el indexador de ficheros de Plasma (rastrea el `$HOME`
-  para acelerar búsquedas) va apagado: consume RAM que en la placa de 2 GB hace
-  falta. Reactívalo si tienes la variante de 4 GB y lo quieres.
-- **Auto-comprobación de actualizaciones de Discover desactivada** — el proceso
-  que sondea si hay actualizaciones se come **>150 MB de RAM** solo para eso. Las
-  actualizaciones por `apt` / Discover manual siguen funcionando con normalidad.
+- **zram de 1 GB activado de serie; swapfile en SD opcional.** El zram (zstd)
+  es un intercambio comprimido en RAM: mantiene el escritorio ágil cuando un
+  navegador llena la RAM de la placa de 2 GB, no toca la SD y no cuesta casi
+  nada mientras no se usa. Se desactiva con `systemctl disable --now
+  zram-swap.service`. Para colchón extra, el script `add-swapfile.sh` de la
+  carpeta home añade un swapfile opcional de 1 GB en la SD, usado solo como
+  desbordamiento.
+- **Sesión Wayland** — el escritorio es **GNOME sobre Wayland**. No se incluye
+  sesión **X11**: Panfrost da su mejor aceleración bajo Wayland, y el vídeo por
+  hardware en el navegador en concreto lo necesita.
+- **Escritorio pensado para todos** — GNOME viene con una **barra de tareas**
+  (Dash to Panel), soltura de bandeja del sistema / app-indicator y botones de
+  minimizar/maximizar en las ventanas, todo activado por defecto para que el
+  escritorio se comporte como la mayoría espera. Son extensiones estándar de
+  GNOME — desactiva cualquiera desde la app *Extensiones* si prefieres el GNOME
+  de serie.
+- **Indexador de ficheros (Tracker) desactivado** — el indexador del `$HOME` de
+  GNOME va apagado: consume RAM que en la placa de 2 GB hace falta. Reactívalo si
+  tienes la variante de 4 GB y quieres búsquedas más rápidas dentro de ficheros.
+- **Tienda de software quitada** — GNOME Software no está instalada; solo sondear
+  actualizaciones le cuesta >150 MB de RAM. Las actualizaciones van por `apt`
+  (ver la nota del pin del kernel más abajo).
+- **Ahorro de energía / suspensión desactivados (a propósito, de momento)** — la
+  suspensión automática *y* el apagado de pantalla por inactividad van los dos
+  apagados por defecto. En este SoC la ruta de *resume* de mainline aún necesita
+  pulido: el sistema no siempre vuelve una vez que la pantalla se ha apagado. Por
+  eso la placa se mantiene despierta y la pantalla encendida, antes que arriesgar
+  una sesión que no puedas despertar. Se reactivará cuando el *resume* esté
+  sólido; mientras tanto puedes volver a activar la suspensión, o poner un tiempo
+  de apagado de pantalla, en *Configuración → Energía*.
 - **La salida de audio sigue a lo conectado** — un pequeño servicio de usuario
   (`aureal-audio-autoswitch`) mueve el sink por defecto al jack de auriculares de
   3,5 mm al enchufarlos, y de vuelta al HDMI al quitarlos. Los auriculares
@@ -84,6 +106,20 @@ Decisiones tomadas en la imagen distribuida (no son parches del kernel):
   una elección BT o manual). PipeWire no lo hace solo aquí porque el códec
   analógico y el HDMI son dos tarjetas distintas. Puedes cambiarlo a mano en la
   bandeja; se desactiva con `systemctl --user disable --now aureal-audio-autoswitch`.
+
+## Hoja de ruta
+
+Es trabajo de tiempo libre, así que sin fechas prometidas — pero a la vista:
+
+- **Actualización del kernel a 6.18.40.** He estado repasando los cambios stable
+  desde la 6.18.38 y hay bastante que merece la pena: arreglos generales de
+  seguridad y estabilidad por todo el árbol, más un puñado de **mejoras
+  específicas del A523** — en particular un mejor manejo de las interrupciones de
+  GPIO en este SoC. Estoy estudiando sacar próximamente una actualización de
+  kernel por seguridad y mejoras para aprovecharlas.
+- Siguen en pie los flecos de hardware de arriba: **NVMe con un disco real**
+  (testers muy bienvenidos), **arranque desde eMMC**, y la captura de line-out /
+  micrófono.
 
 ## Contenido
 
@@ -128,12 +164,7 @@ tablas OPP de CPU/GPU y cooling-maps. cpufreq (little hasta 1.416 GHz, big
 hasta 1.8 GHz) + devfreq de
 GPU 150–600 MHz, ambos como cooling devices.
 
-### 3. Integración de la placa → **Armbian** (`armbian/build`, familia sun55iw3)
-- `arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts` (ethernet, audio,
-  pipeline HDMI, CMA baja).
-- `opi4a_blindboot_defconfig`.
-
-### 4. Workarounds del **U-Boot BSP** (NO enviar upstream)
+### 3. Workarounds del **U-Boot BSP** (NO enviar upstream)
 Muletas para arrancar bajo el U-Boot propietario del BSP (no rellena `/memory`,
 inyecta display en el FDT): stubs `/soc/{de,sunxi-drm}`, `/memory` estático,
 regiones secure del firmware, `simple-framebuffer` sobre el FB de U-Boot, LED
@@ -142,11 +173,17 @@ arranque tal cual, no como propuesta upstream.
 
 ## ☕ Apoya el proyecto
 
-Esto es trabajo de ingeniería inversa en tiempo libre (bring-up de display, GPU,
-audio, red…). Si te ha servido para tu Orange Pi 4A, puedes invitarme a un café:
+Esto es trabajo de habilitación de hardware (bring-up) en tiempo libre — display,
+GPU, audio y red — basado en la documentación pública y el BSP de Allwinner junto
+con parches de upstream y de la comunidad, con los parches propios del proyecto
+validados en hardware real. Si te ha servido para tu Orange Pi 4A, puedes
+invitarme a un café:
 
 - **Ko-fi:** https://ko-fi.com/aurealnix
-- **GitHub Sponsors:** botón *Sponsor* arriba en el repo (cuando esté activo)
+
+¿Prefieres apoyarlo de otra forma? Estoy disponible para trabajo freelance /
+por contrato en Linux embebido (bring-up de placas, drivers, mainline) —
+**juanmanuellopezcarrillo@gmail.com**.
 
 ## Créditos
 
@@ -191,7 +228,7 @@ bring-up conmigo, y tu nombre también pertenece aquí.
 ## Nota sobre el método
 
 Parte de este trabajo se hizo **con ayuda de agentes de IA**. Es justo por eso por lo que se
-mantiene honesto y se publica en abierto: el BSP de Allwinner fue la fuente de verdad del
+mantiene honesto y se publica en abierto: la documentación y el BSP de Allwinner fueron, ambos, la fuente de verdad del
 hardware — **no se inventó ninguna semántica de registros** — y **cada cambio se validó en
 hardware real**. Los parches están aquí para revisarse: rómpelos, y manda reportes de bugs o
 correcciones.

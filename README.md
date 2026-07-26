@@ -12,15 +12,14 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 > Working-tree base: `linux-6.18.38` vanilla. These patches apply on top.
 > `git format-patch --base` embeds the base hash in every `.patch`.
 
-**Latest image: v0.2** — analog audio / 3.5 mm headphone jack now works. See
+**Latest image: v0.3** — hardware video decode (VPU) + a **GNOME** desktop. See
 [CHANGELOG.md](CHANGELOG.md) for release history.
 
-> **Heads-up:** the patch series has moved well ahead of the published images
-> (GPU clock fix, PCIe bring-up, hardware video decode…). **Refreshed Debian
-> images — Desktop and CLI — built on this kernel are in preparation.** No date
-> promised; they land on the [Releases](../../releases) page when they are
-> tested. In the meantime you can build the current kernel yourself with the
-> patches here.
+> **Heads-up:** these patches are the kernel behind the **v0.3 images** (GPU
+> clock fix, PCIe bring-up, hardware video decode). Refreshed Debian images —
+> a **GNOME desktop** and a **CLI / headless** one, built on this kernel — are
+> on the [Releases](../../releases) page. You can also build the kernel yourself
+> from the patches here.
 
 ## What works (confirmed on hardware)
 
@@ -29,7 +28,7 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 | **HDMI KMS display** (DE33/DE3.5 + TCON-TV + DW-HDMI 2.0 + Inno PHY) | ✅ 720p/1080p, clean VSU8 scaling |
 | **HDMI boot console** (fbcon via `simple-framebuffer` over U-Boot's FB) | ✅ with the BSP U-Boot (not needed with mainline U-Boot; see §4) |
 | **HDMI HPD / hotplug** (native connector detection) | ✅ connected at boot + hotplug (plug/unplug) without forcing |
-| **Mali-G57 GPU** (Panfrost) | ✅ accelerated (Cinnamon / KDE Plasma Wayland) |
+| **Mali-G57 GPU** (Panfrost) | ✅ accelerated (GNOME on Wayland) |
 | **HDMI audio** (i2s2 → dw-hdmi) | ✅ PCM output to the TV |
 | **Analog audio** (3.5 mm headphone jack + jack detect) | ✅ headphones + hotplug (custom `sun55i-a523-codec` driver ported from the BSP — no mainline driver exists otherwise). Line-out / mic capture wired but not yet bench-tested |
 | **Ethernet GMAC1** (YT8531 PHY, RGMII) | ✅ RX/TX |
@@ -48,11 +47,13 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 ships the `cedar-ve` shim with its device-tree node and the IOMMU mappings for the
 video-engine masters. Paired with the Allwinner userspace (libcedarc +
 `gstreamer1.0-omx`), **H.264 and H.265 decode work**: YouTube plays smoothly in a
-WebKit browser (tested with Cog) on this board. **VP8/VP9 do not** — that engine
-never raises its interrupt, so those codecs are capped in our setup, which makes
-YouTube negotiate H.264 instead. Note this is the *kernel* half: the userspace
-decoding stack is not part of this patch set, and the Debian images published
-here do not ship it yet.
+WebKit browser (Epiphany / GNOME Web) on this board. **VP8/VP9 do not** — that
+engine never raises its interrupt, so those codecs are capped in our setup, which
+makes YouTube negotiate H.264 instead. Note this is the *kernel* half: the
+userspace decoding stack is not part of this patch set — but the **v0.3 Debian
+images do ship it** (libcedarc + `gst-omx`), so hardware decode works out of the
+box there. If you build only the kernel from these patches, you supply the
+userspace yourself.
 The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who
 also confirmed the eMMC; the bootloader auto-detects the RAM size).
 
@@ -65,16 +66,33 @@ Decisions made in the distributed image (these are not kernel patches):
 - **SSH is enabled from first boot**; user/password are `user` / `user`.
   **Change the password immediately** (`passwd`) — a default password on a
   network-facing device is how boards end up in botnets.
-- **zram and swap are disabled by default.** The board ships in different RAM
-  sizes (2 GB / 4 GB), so swap/zram is left for you to configure to taste.
-- **Wayland session** — the desktop is Plasma on **Wayland**. The **X11 session
-  is not supported**: it hasn't been made to work well on this stack.
-- **Baloo disabled** — Plasma's file indexer (crawls `$HOME` to speed up
-  searches) is off: it uses RAM that the 2 GB board needs. Re-enable it if you
-  have the 4 GB variant and want it.
-- **Discover update auto-check disabled** — the process that polls for updates
-  eats **>150 MB of RAM** just for that. Updates via `apt` / manual Discover
-  still work normally.
+- **1 GB zram swap on by default; SD swap file optional.** zram (zstd) is a
+  compressed in-RAM swap: it keeps the desktop responsive when a browser fills
+  the 2 GB board's RAM, never touches the SD, and costs almost nothing while
+  unused. Disable with `systemctl disable --now zram-swap.service`. For extra
+  headroom, the `add-swapfile.sh` script in the home folder adds an optional
+  1 GB swap file on the SD, used only as overflow.
+- **Wayland session** — the desktop is **GNOME on Wayland**. No **X11 session**
+  is shipped: Panfrost gives its best accelerated experience under Wayland, and
+  hardware video in the browser in particular needs it.
+- **Newcomer-friendly desktop** — GNOME ships with a **taskbar** (Dash to Panel),
+  system-tray / app-indicator support and minimise/maximise window buttons, all
+  on by default so the desktop behaves the way most people expect. These are
+  standard GNOME extensions — turn any of them off in the *Extensions* app if you
+  prefer stock GNOME.
+- **File indexer (Tracker) disabled** — GNOME's `$HOME` indexer is off: it uses
+  RAM that the 2 GB board needs. Re-enable it if you have the 4 GB variant and
+  want faster in-file search.
+- **Software store removed** — GNOME Software is not installed; just polling for
+  updates costs it >150 MB of RAM. Updates go through `apt` (see the kernel-pin
+  note below).
+- **Power saving / suspend disabled (on purpose, for now)** — automatic suspend
+  *and* the screen blanking after idle are both off by default. On this SoC the
+  mainline resume path still needs polishing: the system doesn't always come back
+  once the screen has powered off. So the board stays awake and the display stays
+  on, rather than risk a session you can't wake. This will be re-enabled once
+  resume is solid; meanwhile you can turn suspend back on, or set a screen-blank
+  timeout, in *Settings → Power*.
 - **Audio output follows what's connected** — a tiny user service
   (`aureal-audio-autoswitch`) moves the default sink to the 3.5 mm headphone
   jack when you plug in, and back to HDMI when you unplug. Bluetooth headsets
@@ -82,6 +100,18 @@ Decisions made in the distributed image (these are not kernel patches):
   BT or manual choice). PipeWire doesn't do this on its own here because the
   analog codec and HDMI are two separate cards. Override anytime in the tray;
   disable with `systemctl --user disable --now aureal-audio-autoswitch`.
+
+## Roadmap
+
+Spare-time work, so no dates promised — but on the horizon:
+
+- **Kernel refresh to 6.18.40.** I've been going through the stable changes since
+  6.18.38 and there's a fair amount worth having: general security and stability
+  fixes across the tree, plus a handful of **A523-specific improvements** —
+  notably better GPIO-interrupt handling on this SoC. I'm looking at rolling a
+  security-and-improvements kernel update soon to pick those up.
+- The open hardware items above still stand: **NVMe with a real drive** (testers
+  very welcome), **booting from eMMC**, and line-out / microphone capture.
 
 ## Contents
 
@@ -128,12 +158,7 @@ GPU devfreq 150–600 MHz, both as cooling devices. Asymmetric CPU topology
 scheduler/EAS knows the big cluster is the more capable one — verbatim from the
 BSP; without it the two clusters looked identical to the scheduler.
 
-### 3. Board integration → **Armbian** (`armbian/build`, sun55iw3 family)
-- `arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts` (ethernet, audio,
-  HDMI pipeline, low CMA).
-- `opi4a_blindboot_defconfig`.
-
-### 4. **BSP U-Boot** workarounds (do NOT send upstream)
+### 3. **BSP U-Boot** workarounds (do NOT send upstream)
 Crutches to boot under the BSP's proprietary U-Boot (it doesn't fill `/memory`,
 and injects display nodes into the FDT): `/soc/{de,sunxi-drm}` stubs, static
 `/memory`, firmware secure regions, `simple-framebuffer` over U-Boot's FB,
@@ -142,11 +167,16 @@ boot as-is, not as an upstream proposal.
 
 ## ☕ Support the project
 
-This is reverse-engineering work done in spare time (display, GPU, audio and
-network bring-up…). If it helped with your Orange Pi 4A, you can buy me a coffee:
+This is spare-time hardware-enablement (bring-up) work — display, GPU, audio and
+network — built on Allwinner's public documentation and vendor BSP together with
+upstream and community patches, with the project's own patches validated on real
+hardware. If it helped with your Orange Pi 4A, you can buy me a coffee:
 
 - **Ko-fi:** https://ko-fi.com/aurealnix
-- **GitHub Sponsors:** *Sponsor* button at the top of the repo (when active)
+
+Prefer to support it another way? I'm available for freelance / contract
+embedded-Linux work (board bring-up, drivers, mainlining) —
+**juanmanuellopezcarrillo@gmail.com**.
 
 ## Credits
 
@@ -197,7 +227,7 @@ own respective licenses.
 ## A note on method
 
 Parts of this work were done **with the help of AI agents**. That is exactly why it stays
-honest and is published in the open: the Allwinner BSP was the hardware source of truth —
+honest and is published in the open: Allwinner's documentation and BSP were both the hardware source of truth —
 **no register semantics were invented** — and **every change was validated on real
 hardware**. The patches are here to be reviewed: break them, and send bug reports or
 corrections.

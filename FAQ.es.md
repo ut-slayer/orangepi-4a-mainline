@@ -31,21 +31,23 @@ Sí, desde el primer arranque. Las host keys de SSH se regeneran en el primer
 boot, así que las de tu placa son únicas. La placa coge su IP por DHCP.
 
 **El primer arranque tarda / se queda en el logo — ¿está muerta?**
-No. En el primer arranque el sistema redimensiona el filesystem y genera las
-claves SSH. Además, el driver de display carga como módulo del kernel, así que
-el escritorio aparece <!-- TODO: medir --> **~XX segundos** después del logo.
-Ten paciencia, no quites la corriente.
+No. Desde microSD, el escritorio GNOME tarda **alrededor de un minuto** en
+aparecer desde que enchufas — las tarjetas SD tienen I/O aleatoria lenta y el
+escritorio carga muchos ficheros pequeños. Irá bastante más rápido desde eMMC o
+NVMe cuando estén soportados. El primerísimo arranque tarda aún más:
+redimensiona el filesystem para llenar tu tarjeta y genera claves SSH nuevas —
+dale un par de minutos esa primera vez y no quites la corriente.
 
 **El escritorio sale con todo enorme (escala mal).**
-KDE puede elegir mal la escala en la primerísima sesión. Se arregla en un clic:
-Preferencias del sistema → Pantalla → pon la Escala al 100% (mantén la
-resolución nativa).
+GNOME puede elegir mal la escala en la primerísima sesión. Se arregla en
+Configuración → Pantallas → pon la Escala al 100% (mantén la resolución nativa).
 
 ## Pantalla
 
 **¿Qué resoluciones/monitores se sabe que funcionan?**
-Probado en hardware real: <!-- TODO: lista exacta --> 1280x768, 1920x1080,
-1360x768. El escalado VSU es limpio en estos modos.
+Probado en hardware real: 1280x720, 1360x768 (panel nativo de mi monitor de
+pruebas) y 1920x1080. El escalado VSU es limpio en estos modos. Otros modos
+estándar deberían funcionar vía el EDID del monitor.
 
 La detección de hotplug del HDMI funciona de forma nativa: el conector reporta
 "connected" al arrancar y sigue al cable cuando lo enchufas/desenchufas (sin
@@ -53,34 +55,44 @@ forzar nada). Si aun así tu monitor no muestra nada, prueba primero otro cable
 o entrada HDMI, y luego abre un *issue* con el modelo del monitor.
 
 **¿Decodificación de vídeo por hardware (VPU)?**
-Todavía no — no hay driver de VPU en mainline para esta familia de SoC, así que
-el vídeo se reproduce por decodificación software, que va bien para uso de
-escritorio normal.
+En parte — **H.264 y H.265 decodifican por hardware; VP8/VP9 todavía no.** La
+mitad kernel va en esta serie de parches (el shim `cedar-ve`, su nodo del
+device-tree y los mapeos IOMMU de los masters del motor de vídeo). Con el
+userspace propio de Allwinner encima (libcedarc + `gstreamer1.0-omx`),
+H.264/H.265 decodifican por hardware — YouTube va fluido en un navegador WebKit
+(probado con Cog) en esta placa. **VP8/VP9 no he conseguido que funcionen
+todavía**: ese motor nunca dispara su interrupción, así que esos códecs están
+capados en nuestro montaje y YouTube negocia H.264 en su lugar. El datasheet
+lista VP9 hasta 4K@60, así que sigue en la lista — sin ETA y sin promesas.
+(AV1 no va por hardware en ningún SoC de Allwinner.)
 
-Al principio decidí **no** meterme con el VPU, porque creía que no serviría para
-YouTube (que usa VP9/AV1). **Resultó ser falso**: el datasheet del T527 lista
-**decodificación VP9 por hardware hasta 4K@60**, y VP9 es el códec principal de
-YouTube. Así que he cambiado de opinión y he empezado a investigarlo. Muy al
-principio — sin ETA y sin promesas. (AV1 no va por hardware en ningún SoC de
-Allwinner, pero YouTube sirve VP9 a los clientes que no tienen AV1.)
+Ojo: las **imágenes Debian publicadas aún no llevan la mitad userspace** — en
+ellas el vídeo sigue yendo por decodificación software, que va bien para uso de
+escritorio normal. Una imagen renovada incorporará el stack completo.
 
 Un matiz importante sobre el enfoque: usa el **userspace propio de Allwinner**
 (las librerías CedarX / libcedarc). En este SoC la lógica de programación del
 códec vive en ese blob cerrado del fabricante, no en el kernel, así que **no**
-sería un driver mainline V4L2 / cedrus totalmente abierto — es el stack del
+es un driver mainline V4L2 / cedrus totalmente abierto — es el stack del
 fabricante. Si lo que quieres es una vía 100% abierta, eso es otro trabajo (y
 mucho mayor).
 
 **¿YouTube?**
-Funciona por software. <!-- TODO: indicar lo verificado, p.ej. "720p fluido en
-Chromium; 1080p depende del vídeo" -->
+En las imágenes publicadas va por decodificación software: en ventana, 720p va
+fluido — en mis pruebas, en torno al 1% de frames perdidos. A pantalla completa
+sufre más porque el vídeo se escala (~6% perdidos), así que aguanta pero no es
+perfecto. Para visionado casual va bien en ambos casos; la placa se mantiene
+fresca (~55–60 °C, con la mitad de la CPU ociosa). Con el stack VPU de arriba
+(esta serie de kernel + el userspace del fabricante), YouTube reproduce con
+**decodificación H.264 por hardware** y va fluido — ese es el plan para la
+próxima imagen.
 
 ## Soporte de hardware
 
 Consulta la tabla completa de estado en el README. Versión corta — funcionando:
 HDMI KMS + audio + HPD/hotplug nativo, el **jack de auriculares de 3,5 mm**
-(códec analógico, con detección/hotplug de jack), Mali-G57 por Panfrost (Plasma
-Wayland acelerado), WiFi 2.4/5 GHz, Bluetooth, ethernet gigabit, los 4 puertos USB 2.0
+(códec analógico, con detección/hotplug de jack), Mali-G57 por Panfrost (GNOME
+sobre Wayland acelerado), WiFi 2.4/5 GHz, Bluetooth, ethernet gigabit, los 4 puertos USB 2.0
 traseros (todos USB 2.0 — ver "¿Por qué no hay USB 3.0?" más abajo;
 HID + almacenamiento, hotplug), los sensores térmicos THS (5 zonas:
 cpu_l/cpu_b/gpu/npu/ddr), cpufreq/DVFS de CPU y devfreq de GPU (ambos con
@@ -106,17 +118,24 @@ almacenamiento externo rápido en esta placa, el camino es la ranura M.2 NVMe.
   pero **aún sin probar en banco** (la placa no tiene altavoz/micro integrados
   donde probarlos). La salida de **auriculares** de 3,5 mm y la detección de
   jack sí funcionan.
-- Suspensión/hibernación: sin probar.
+- **Suspensión / hibernación: desactivadas por defecto.** La ruta de *resume* de
+  mainline en este SoC aún necesita trabajo — el sistema no vuelve de forma fiable
+  después de apagarse la pantalla — así que la suspensión automática *y* el
+  apagado de pantalla por inactividad van apagados en la imagen, y la pantalla se
+  mantiene encendida. Reactiva cualquiera de los dos en *Configuración → Energía*
+  si quieres probarlo.
 - eMMC: el módulo se **detecta y funciona a HS200** (lectura/escritura) —
   confirmado en hardware real por un tester (una eMMC de 58 GB apareció como
   `mmcblk2` y se usó como almacenamiento — ¡gracias a **JamesCL** por probar la eMMC y la placa de 4 GB! 🙏). **Arrancar desde eMMC** es un paso
   aparte que aún no está cableado — la imagen está preparada para arrancar
-  desde microSD. **SSD NVMe / M.2: aún NO funciona** — al kernel todavía le
-  faltan los drivers del controlador PCIe/PHY del T527, así que el bus no
-  enumera y no aparece nada en `lspci` (¡gracias al tester que diagnosticó
-  exactamente esto y lo reportó!). El bring-up de PCIe está en marcha para una
-  versión futura. Sigo sin tener un SSD NVMe con el que probar — conseguir el
-  hardware para esto es justo el tipo de cosa a la que van las propinas de Ko-fi.
+  desde microSD. **SSD NVMe / M.2: sin probar con un disco real.** La serie de
+  parches ya levanta el controlador PCIe y la combo PHY, y el root port
+  enumera — pero eso está verificado solo con el slot **vacío**. Si un SSD
+  NVMe real enumera, funciona y es estable es justo la parte que aún no puedo
+  confirmar. Las imágenes v0.2 publicadas son anteriores a esto, así que ahí
+  no aparece nada en `lspci` (¡gracias al tester que diagnosticó exactamente
+  esto y lo reportó!). Todavía no tengo un SSD NVMe con el que probar — si
+  tienes uno en el slot M.2, un informe de prueba vale oro.
 - Cabecera GPIO / I2C / SPI: sin probar.
 - NPU: el driver etnaviv la reconoce, pero está en la blacklist por defecto
   (al cargarla se anunciaba como el dispositivo de render principal y rompía la
@@ -128,10 +147,9 @@ almacenamiento externo rápido en esta placa, el camino es la ranura M.2 NVMe.
 
 **¿Cómo va de rápida?**
 Es un octa-core Cortex-A55 con una Mali-G57 — un escritorio modesto pero
-honrado. glmark2-es2 (Wayland) da ~531 con Panfrost <!-- TODO: re-medir con GPU
-devfreq — 531 era al reloj fijo antiguo de 432 MHz, el pico ahora es 600 MHz -->.
-El escritorio Plasma Wayland va fluido a 1080p; Chromium corre con aceleración
-GPU incluido WebGL.
+honrado. glmark2-es2 (Wayland) ronda los ~500 con Panfrost. El escritorio
+GNOME Wayland va fluido a 1080p; el navegador corre con aceleración GPU incluido
+WebGL.
 
 **¿Necesita disipador? ¿Hace throttling?**
 El escalado de frecuencia de CPU (cpufreq/DVFS) funciona: OPPs desde 480 MHz
@@ -140,25 +158,33 @@ grande (cpu4-7), governor schedutil, con los sensores térmicos del A523 (THS) y
 los cooling-maps de CPU cableados — bajo carga sostenida el chip hace throttling
 solo, con elegancia, en vez de achicharrarse. La GPU también escala (Panfrost
 devfreq, 150–600 MHz, simple_ondemand): reposa a 150 MHz y tiene su propio
-cooling-map en la zona térmica de la GPU. En uso de escritorio normal va fresca;
-el desarrollo se hizo <!-- TODO: confirmar --> sin refrigeración activa.
-Temperaturas medidas: <!-- TODO: reposo XX°C / carga sostenida XX°C
-(cat /sys/class/thermal/thermal_zone*/temp, stress-ng 10 min) -->
+cooling-map en la zona térmica de la GPU. En uso de escritorio normal va fresca,
+y el desarrollo se hizo sin disipador y sin ventilador.
+Medido (placa desnuda, sin refrigeración): ~47 °C en reposo, ~60 °C con los 8
+cores a plena carga — lejísimos del trip de throttling de 90 °C. No necesitas
+disipador para uso de escritorio; ponle uno solo si piensas machacar todos los
+cores durante ratos largos.
 
 **¿Hay swap / zram?**
-No — ambos van desactivados de serie (la placa viene en variantes de 2 GB y
-4 GB, así que se deja a tu elección). Con Baloo apagado, la placa de 2 GB va
-bien sin swap para uso de escritorio normal. Si quieres un colchón, hay un
-pequeño script de regalo en la carpeta home — basta con ejecutar:
+**zram: sí, activado de serie. Swapfile en SD: opcional.** La imagen activa un
+**intercambio comprimido en RAM de 1 GB (zram, zstd)**: en la placa de 2 GB
+un navegador reproduciendo vídeo puede agotar la RAM, y tirar de la microSD
+(lentísima) dejaba el escritorio pillado — el zram absorbe eso en RAM,
+comprimido, sin tocar la tarjeta. Su coste es casi cero mientras no se usa
+(solo ocupa memoria por las páginas que de verdad se intercambian), y puedes
+apagarlo cuando quieras con `sudo systemctl disable --now zram-swap.service`.
+
+Sigue **sin haber swapfile en la SD de serie**. Si quieres colchón extra
+(merece la pena en la variante de 2 GB con uso de escritorio intenso), el
+script de regalo de la carpeta home crea un `/swapfile` de 1 GB, lo activa y
+lo deja permanente (sobrevive a los reinicios):
 
 ```
 sudo ./add-swapfile.sh
 ```
 
-Crea un `/swapfile` de 512 MB, lo activa, lo deja permanente (sobrevive a los
-reinicios) y pone una *swappiness* suave para no machacar la SD. (¿Prefieres
-zram o un swap más grande? Móntalo como quieras — el script es solo una
-comodidad.)
+El zram tiene la prioridad más alta, así que el fichero de la SD solo recoge
+el desbordamiento cuando el zram se llena.
 
 ## Sesión de escritorio y ajustes de la imagen
 
@@ -176,33 +202,30 @@ puedes desactivar el comportamiento con
 `systemctl --user disable --now aureal-audio-autoswitch`.
 
 **¿Wayland o X11?**
-Solo Wayland. La imagen trae una sesión Plasma **Wayland** y todo está probado
-sobre ella. La **sesión X11 no está soportada** — no conseguí que funcionara de
-forma fiable en este stack.
+Solo Wayland. La imagen trae una sesión **GNOME Wayland** y todo está probado
+sobre ella. No se incluye sesión **X11** — Panfrost da su mejor aceleración bajo
+Wayland, y el vídeo por hardware en el navegador lo necesita.
 
-**¿Por qué está desactivado el indexado de ficheros (Baloo)? ¿Por qué Discover
-no comprueba actualizaciones solo?**
-Para dejar RAM libre en la placa de 2 GB. Dos servicios de fondo de Plasma van
-apagados por defecto:
+**¿Por qué está desactivado el indexado de ficheros (Tracker)? ¿Por qué no hay
+tienda de software?**
+Para dejar RAM libre en la placa de 2 GB:
 
-- **Baloo** — el indexador de ficheros de Plasma (rastrea tu `$HOME` para
-  acelerar las búsquedas). Apagado; gasta RAM que esta placa prefiere usar en
-  otras cosas.
-- **La comprobación automática de actualizaciones de Discover** — apagada; solo
-  sondear si hay actualizaciones se come **>150 MB de RAM**. Actualizar sigue
-  funcionando con normalidad por `apt` o abriendo Discover a mano.
-
-Reactiva cualquiera de los dos desde Preferencias del sistema si tienes la
-variante de 4 GB y los quieres.
+- **Tracker** — el indexador de ficheros de GNOME (rastrea tu `$HOME` para
+  acelerar la búsqueda dentro de ficheros). Apagado; gasta RAM que esta placa
+  prefiere usar en otras cosas. Reactívalo desde una terminal si tienes la
+  variante de 4 GB y lo quieres.
+- **GNOME Software** — la tienda gráfica de apps no está instalada; solo sondear
+  actualizaciones se come **>150 MB de RAM**. Actualizar sigue funcionando con
+  normalidad por `apt` (`sudo apt update && sudo apt upgrade`).
 
 ## Kernel y actualizaciones
 
 **¿Por qué está fijado el kernel? ¿Puedo hacer `apt upgrade` con seguridad?**
 Sí — el espacio de usuario es **Debian 13 puro** (construido con debootstrap,
 repos estándar + trixie-backports para Mesa) y se actualiza con normalidad por
-apt/Discover. Solo el kernel vive fuera de dpkg: un pin de apt impide que se
+apt. Solo el kernel vive fuera de dpkg: un pin de apt impide que se
 instale el `linux-image-*` de Debian, porque un kernel estándar de Debian no
-arrancaría esta placa (le faltan los ~106 parches que necesita este port, y la
+arrancaría esta placa (le faltan los 130 parches que necesita este port, y la
 cadena de arranque espera un uImage concreto).
 
 **¿Cómo llegan las actualizaciones del kernel?**
@@ -211,7 +234,7 @@ mano: sustituir `uImage` + módulos desde los artefactos compilados del repo.
 Instrucciones en el README.
 
 **¿Puedo compilar el kernel yo mismo?**
-Sí — el repo tiene la serie completa de parches (~106 sobre 6.18.38 vanilla), el
+Sí — el repo tiene la serie completa de parches (130 sobre 6.18.38 vanilla), el
 defconfig y el `.dts` de la placa. Instrucciones de compilación incluidas.
 
 **¿Qué U-Boot usa?**
@@ -258,6 +281,7 @@ consola serie si puedes conseguirlo (UART0, 115200) — es lo más útil que pue
 adjuntar.
 
 **¿Cómo puedo apoyar esto?**
-Es gratis en cualquier caso. Si te ahorró tiempo: ☕ [ko-fi.com/aurealnix](https://ko-fi.com/aurealnix)
-— propinas, o los niveles de membresía te dan acceso anticipado a las nuevas
-*releases* de la imagen y un voto sobre en qué se trabaja a continuación.
+Es gratis en cualquier caso — todo se publica aquí, para todos. Si te ahorró
+tiempo: ☕ [ko-fi.com/aurealnix](https://ko-fi.com/aurealnix) — propinas sueltas
+o una membresía mensual pequeña. Los miembros reciben las notas de desarrollo
+entre bambalinas; el código y las imágenes nunca van detrás de un muro.
