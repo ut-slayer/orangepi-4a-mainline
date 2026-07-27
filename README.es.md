@@ -225,6 +225,19 @@ en sus propias placas. Gracias:
 Si pruebas una imagen o un parche y reportas — éxito *o* fallo — estás haciendo
 bring-up conmigo, y tu nombre también pertenece aquí.
 
+## Nota del Autor
+
+Espero que mi trabajo os ayude a disfrutar un poco más de vuestras placas. Porque
+supongo que ya sabéis que no es mal hardware — un octa-core, aunque sea de A55,
+puede dar mucho de sí, y es una pena perderse actualizaciones, parches de
+seguridad y mejoras en el funcionamiento del sistema operativo solo porque el
+fabricante ni se molesta. Estoy seguro de que, si el fabricante hubiera hecho un
+mínimo esfuerzo y hubiera sacado al menos las longterm de vez en cuando, ya
+estaríamos todos más contentos. Pero ni eso hizo. Es cierto que no lo hice todo
+yo — pero puse lo que faltaba y le di la forma necesaria para poder disfrutarlo. Y
+con vuestra colaboración pude mejorarlo. En fin, nada más. Gracias por vuestra
+ayuda.
+
 ## Nota sobre el método
 
 Parte de este trabajo se hizo **con ayuda de agentes de IA**. Es justo por eso por lo que se

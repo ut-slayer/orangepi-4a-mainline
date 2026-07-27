@@ -217,6 +217,19 @@ boards. Thank you:
 If you test an image or a patch and report back — success *or* failure — you
 are doing bring-up with me, and your name belongs here too.
 
+## Author's Note
+
+I hope my work helps you enjoy your boards a bit more. Because I think you
+already know this isn't bad hardware — an octa-core, even if it's just A55s, can
+go a long way, and it's a shame to miss out on updates, security patches and
+general OS improvements simply because the manufacturer can't be bothered. I'm
+certain that if the vendor had made even a minimal effort and shipped at least
+the longterm kernels now and then, we'd all be a lot happier. But they didn't
+even do that. It's true I didn't do all of this myself — but I put in what was
+missing and gave it the shape it needed so it can actually be enjoyed. And with
+your collaboration I've been able to make it better. Anyway — that's all. Thanks
+for your help.
+
 ## License
 
 These patches derive from the Linux kernel and are distributed under the same
