@@ -2,6 +2,149 @@
 
 🌐 **English** · [Español](CHANGELOG.es.md)
 
+## v0.4 — Kernel 6.18.44, WireGuard/NAT, and a polished GNOME
+
+*Released 2026-08-23.* Kernel: Linux **6.18.44** (`6.18.44-g8c30dd587626`), up
+from 6.18.38 in v0.3 — 1073 upstream commits, mostly hardening across drm, net,
+wifi and media.
+
+### 🔐 New: WireGuard, nftables and iptables NAT
+Requested in [issue #4](https://github.com/ut-slayer/orangepi-4a-mainline/issues/4):
+the config had no way to do NAT or run a VPN. Now it does, as modules — nothing
+loads unless you configure it:
+
+- **WireGuard** (`CONFIG_WIREGUARD=m`).
+- **nftables** with the ct/log/limit/masq/redir/nat/fib expressions, plus
+  `NFT_COMPAT` — which is what `iptables-nft`, Debian's actual default iptables
+  backend, needs.
+- **The legacy xtables path** too (`NETFILTER_XTABLES_LEGACY=y`), so
+  `iptables-legacy` scripts keep working. Since kernel 6.12 that symbol is what
+  gates `IP_NF_FILTER` / `IP_NF_NAT` / `IP_NF_TARGET_MASQUERADE`; without it they
+  do not exist at all.
+
+Validated on the board: a rule added with `iptables` shows up under `nft` as a
+native rule, and `iptables-legacy` runs in parallel in its own table.
+
+### ⚠️ Known issue: the board can hang under sustained WireGuard saturation
+Worth knowing if you plan to use WireGuard heavily.
+
+A WireGuard tunnel pushed to **~880 Mbps** with `iperf3` can **hang the board**,
+which then reboots. It is intermittent: it has survived 25 runs in a row and it
+has also died on the 2nd.
+
+What we know after a full day of testing: it is **not** thermal (it dies at
+62 °C, throttling starts at 90), **not** power (`openssl chacha20` on 8 cores
+reaches load 7.18 and 77 °C without falling), **not** CPU frequency scaling, and
+**not** the network on its own (unencrypted `iperf3` sustains 925 Mbps fine).
+With every lockup detector enabled *and* a serial console recording, the kernel
+dies without printing a single line.
+
+**Only `iperf3` has ever triggered it.** Pushing the same tunnel with `netcat`
+moved **22.8 GB with no crash at all**, and copying a real 2 GB file over `scp`
+(SSH on top of WireGuard) went through fine. That is not proof that iperf3 is at
+fault — the failure is too intermittent to conclude that from these samples —
+but it does mean no ordinary workload has reproduced it so far.
+
+**In normal use it works**: 44 GB moved through the tunnel during testing, file
+transfers included, and it is rock solid at 100 and 300 Mbps. You need to
+saturate close to gigabit with a synthetic benchmark to trigger it — unusual for
+a home VPN. The investigation is documented in the repo and continues.
+
+### 🖥️ GNOME: it now behaves like a normal desktop
+- **Logs straight in** — no password prompt (autologin).
+- **Starts on the desktop**, not in the Activities overview.
+- **ArcMenu**: a Windows/Plasma-style application menu, replacing GNOME's
+  Activities and app-grid buttons in the panel.
+- **No more GNOME Tour** — that "Welcome to Debian, take a tour?" dialog no
+  longer opens on top of our own welcome page.
+- **The welcome page opens in its own window** instead of launching Epiphany.
+  Same page, same live board metrics, but it appears in about a second instead
+  of several, with no browser toolbar and no first-run dialog. It shows **once**;
+  you can reopen it any time from the menu ("AurealNix Welcome").
+
+### 🔧 Under the hood
+- **All images are now fully up to date**: the builder runs `apt dist-upgrade`
+  before packaging. It never did before, so images shipped with packages frozen
+  at the date the base was built. This release picks up security updates for
+  `libexpat1`, `libnss3`, `libde265`, `libheif`, `libaom3` and `libssh-4`,
+  among others.
+- **`ping` is included.** It was missing from every image, desktops included.
+- **Lockup detectors enabled** in the kernel (`SOFTLOCKUP`, `HARDLOCKUP` buddy,
+  `DETECT_HUNG_TASK`, `WQ_WATCHDOG`, `MAGIC_SYSRQ`). They were all off, so a hang
+  left no evidence whatsoever. Debian and Ubuntu ship them for the same reason.
+- **Every zram compression backend is built** (`lz4`, `lz4hc`, `deflate`, `842`
+  alongside `zstd` and `lzo`), so the algorithm can be switched at runtime via
+  `/sys/block/zram0/comp_algorithm`. Default is still zstd.
+- **Fixed: `/etc/skel` never reached the user's home.** It is only copied when
+  the account is created, and the account dates from July — so changes made
+  since then (the welcome page, these changelogs) stayed in the skel and the
+  real home kept the old copies. **This affected v0.3 as well.**
+
+### 🩹 Kernel: everything else that landed since v0.3
+
+52 patches between 2026-07-21 and 2026-08-21, on top of the jump from 6.18.38 to
+6.18.44. Most of it is robustness work found by auditing our own series — the
+kind of thing that does not show up in a screenshot but decides whether the
+board survives a week of uptime.
+
+- **PCIe / NVMe (13 patches, 21-24 Jul)** — the biggest block. The DMA-mapped
+  MSI target is now reprogrammed on resume (it silently lost interrupts after a
+  suspend/resume cycle), INTx and eDMA masks are restored on resume, the eDMA
+  cookie is cleared on release and the channel state serialised, IRQ domains
+  unwind in reverse order on error, and register access is kept ahead of clock
+  gating in `remove()`.
+- **Clocks / CCU (9 patches, 21-24 Jul)** — the `CLEAR_MOD` poll moved out of the
+  CCU spinlock, a stale update bit is never written back, `maskdiv` honours the
+  bounds `determine_rate()` was given, and `pll-cpu0`'s N factor is bounded so a
+  consumer with tight limits cannot be handed an out-of-range rate.
+- **Video decode / cedar-ve (6 patches, 21-25 Jul)** — **a heap overflow fixed**:
+  the debugfs `proc_info_len` was unbounded. Also the userspace mmap is now
+  bounded to the VE register window, the `STOP_PROC_INFO` channel id is checked,
+  a lock the caller never took is no longer released, and the engine is quiesced
+  when a client dies mid-job instead of leaving it running.
+- **Display / DE (7 patches, 21-24 Jul)** — hardware overlay and cursor planes,
+  plus the hardening that came out of auditing them: only the primary plane
+  advertises AFBC modifiers, overlays are re-checked when the primary moves or
+  resizes, and the inert alpha property was dropped from the RCQ primary.
+- **Combo PHY (4 patches, 21-24 Jul)** — the power notifier is registered only
+  after a successful probe and unregistered before exit (**it was a
+  use-after-free**), and the notifier chain is now blocking.
+- **DTS and frequencies (5 patches, 29 Jul - 1 Aug)** — the **696 MHz GPU OPP**
+  validated on this board's SID bin, a **voltage range for the little cluster's
+  OPPs** (DCDC1 also feeds the DSU, and a single fixed voltage per OPP makes it
+  impossible for a second consumer to raise the rail), the DSU clock and its PLL,
+  the A523 pin voltage-withstand encoding, and PJ10 out of the rgmii1 pin group.
+- **Audio (1 patch, 22 Jul)** — the jack detection work is cancelled if probe
+  fails.
+- **Infrared** — receiver nodes and the common protocol decoders. Note that this
+  board has **no IR receiver fitted**; this is for anyone wiring one to the
+  header.
+
+### 📊 Numbers
+- glmark2: **847** at 800x600 (v0.3: 790), GPU at 696 MHz
+- Boot: 16.5 s (CLI), 43 s (GNOME)
+- Images: CLI 197 MB · GNOME 710 MB (compressed)
+
+### 🎉 And for Plasma fans: Kubuntu 26.04!
+
+Saved the fun one for last. This release adds a **brand-new image for everyone
+who loves KDE Plasma: Kubuntu 26.04 (Resolute Raccoon)** — and it's **fantastic**
+on this board.
+
+- Plasma **6.6.6** on pure **Wayland** (KWin, zero X11), and it flies: glmark2
+  **880** at 800x600, even a hair above GNOME, with the GPU at 696 MHz. Boots to
+  the desktop in **26 seconds**.
+- **Autologin** straight into Plasma, its **own boot splash**, and the welcome
+  page in a **native Qt window** (using the QtWebEngine Plasma already ships — no
+  second web engine bloating the image).
+- KDE's **Info Center** even reads the Mali-G57 and the Orange Pi 4A straight
+  from the device-tree.
+
+First image of the project on an Ubuntu base. One caveat: **Plasma is hungrier
+with RAM** than GNOME (~880 MB plus swap with just a terminal open), so on 2 GB
+it leans on zram — great for light use, tighter with a browser and several apps
+at once. Want the leanest desktop? GNOME. Love Plasma? This one's for you.
+
 ## v0.3 — Hardware video decode + GNOME desktop
 
 This release folds in the kernel work from the 2026-07-20 patch drop (which had

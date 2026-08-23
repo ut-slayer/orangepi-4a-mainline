@@ -2,6 +2,159 @@
 
 🌐 [English](CHANGELOG.md) · **Español**
 
+## v0.4 — Kernel 6.18.44, WireGuard/NAT y un GNOME pulido
+
+*Publicada el 23-08-2026.* Kernel: Linux **6.18.44** (`6.18.44-g8c30dd587626`),
+desde el 6.18.38 de la v0.3 — 1073 commits de upstream, sobre todo *hardening*
+en drm, red, wifi y media.
+
+### 🔐 Nuevo: WireGuard, nftables e iptables NAT
+Pedido en la [issue #4](https://github.com/ut-slayer/orangepi-4a-mainline/issues/4):
+la configuración no permitía hacer NAT ni levantar una VPN. Ahora sí, todo como
+módulos — no se carga nada si no lo configuras:
+
+- **WireGuard** (`CONFIG_WIREGUARD=m`).
+- **nftables** con las expresiones ct/log/limit/masq/redir/nat/fib, más
+  `NFT_COMPAT`, que es lo que necesita `iptables-nft`: el backend que Debian usa
+  de verdad cuando escribes `iptables`.
+- **También la ruta legacy** (`NETFILTER_XTABLES_LEGACY=y`), para que los scripts
+  de `iptables-legacy` sigan funcionando. Desde el kernel 6.12 ese símbolo es el
+  que habilita `IP_NF_FILTER` / `IP_NF_NAT` / `IP_NF_TARGET_MASQUERADE`; sin él
+  esas opciones sencillamente no existen.
+
+Validado en la placa: una regla puesta con `iptables` aparece en `nft` como regla
+nativa, y `iptables-legacy` funciona en paralelo en su propia tabla.
+
+### ⚠️ Problema conocido: la placa puede colgarse saturando WireGuard
+Tenlo en cuenta si vas a usar WireGuard de forma intensiva.
+
+Un túnel WireGuard llevado a **~880 Mbps** con `iperf3` puede **colgar la placa**,
+que entonces se reinicia. Es intermitente: ha aguantado 25 pruebas seguidas y
+también ha caído en la segunda.
+
+Lo que sabemos tras un día entero de pruebas: **no** es térmico (muere a 62 °C y
+el *throttling* empieza a 90), **no** es consumo (`openssl chacha20` en 8 núcleos
+llega a load 7,18 y 77 °C sin caerse), **no** es el escalado de frecuencia, y
+**no** es la red por sí sola (`iperf3` sin cifrar sostiene 925 Mbps sin
+problema). Con todos los detectores de cuelgue activos **y** una consola serie
+grabando, el kernel muere sin imprimir una sola línea.
+
+**Solo lo ha provocado `iperf3`.** Saturando el mismo túnel con `netcat` se
+movieron **22,8 GB sin una sola caída**, y copiar un fichero real de 2 GB por
+`scp` (SSH sobre WireGuard) fue bien. Eso no demuestra que la culpa sea de
+iperf3 —el fallo es demasiado intermitente para concluirlo con estas muestras—
+pero sí significa que **ninguna carga de uso normal lo ha reproducido**.
+
+**En uso normal funciona**: durante las pruebas se movieron 44 GB por el túnel,
+transferencias de ficheros incluidas, y a 100 y 300 Mbps va perfecto. Hay que
+saturar cerca del gigabit **con un test sintético** para provocarlo, algo raro en
+una VPN doméstica. La investigación está documentada en el repositorio y sigue
+abierta.
+
+### 🖥️ GNOME: por fin se comporta como un escritorio normal
+- **Entra directo**, sin pedir contraseña (autologin).
+- **Arranca en el escritorio**, no en la vista de Actividades.
+- **ArcMenu**: menú de aplicaciones estilo Windows/Plasma, que sustituye en la
+  barra a los botones de Actividades y de la cuadrícula de aplicaciones.
+- **Se acabó el tour de GNOME**: ya no se abre el "Bienvenido a Debian, ¿quieres
+  hacer un tour?" encima de nuestra propia bienvenida.
+- **La bienvenida se abre en su propia ventana** en vez de lanzar Epiphany. La
+  misma página y las mismas métricas en vivo, pero aparece en aproximadamente un
+  segundo en lugar de varios, sin barra de navegador y sin diálogo de primer
+  arranque. Se muestra **una sola vez**; puedes volver a abrirla cuando quieras
+  desde el menú ("Bienvenida AurealNix").
+
+### 🔧 Por dentro
+- **Las imágenes salen totalmente al día**: el builder ejecuta `apt dist-upgrade`
+  antes de empaquetar. Nunca lo había hecho, así que las imágenes se publicaban
+  con los paquetes congelados en la fecha en que se creó la base. Esta versión
+  recoge actualizaciones de seguridad de `libexpat1`, `libnss3`, `libde265`,
+  `libheif`, `libaom3` y `libssh-4`, entre otras.
+- **Se incluye `ping`.** Faltaba en todas las imágenes, escritorios incluidos.
+- **Detectores de cuelgue activados** en el kernel (`SOFTLOCKUP`, `HARDLOCKUP`
+  buddy, `DETECT_HUNG_TASK`, `WQ_WATCHDOG`, `MAGIC_SYSRQ`). Estaban todos
+  apagados, así que un cuelgue no dejaba ninguna evidencia. Debian y Ubuntu los
+  llevan activados por la misma razón.
+- **Se compilan todos los backends de compresión de zram** (`lz4`, `lz4hc`,
+  `deflate`, `842` junto a `zstd` y `lzo`), así que el algoritmo se puede cambiar
+  en caliente con `/sys/block/zram0/comp_algorithm`. Por defecto sigue zstd.
+- **Corregido: `/etc/skel` nunca llegaba al home del usuario.** Solo se copia al
+  crear la cuenta, y la cuenta es de julio — así que lo que se cambiaba después
+  (la página de bienvenida, estos changelogs) se quedaba en el skel mientras el
+  home real conservaba las copias viejas. **Esto afectaba también a la v0.3.**
+
+### 🩹 Kernel: todo lo demás que ha entrado desde la v0.3
+
+52 parches entre el 21-07-2026 y el 21-08-2026, además del salto de 6.18.38 a
+6.18.44. Casi todo es trabajo de robustez salido de auditar nuestra propia
+serie: cosas que no se ven en una captura de pantalla pero que deciden si la
+placa aguanta una semana encendida.
+
+- **PCIe / NVMe (13 parches, 21-24 jul)** — el bloque más grande. El destino MSI
+  mapeado por DMA se reprograma al reanudar (perdía interrupciones en silencio
+  tras un ciclo de suspensión), las máscaras de INTx y eDMA se restauran al
+  reanudar, la *cookie* de eDMA se limpia al liberar y se serializa el estado del
+  canal, los dominios de IRQ se deshacen en orden inverso ante un error, y el
+  acceso a registros se mantiene por delante del apagado de relojes en
+  `remove()`.
+- **Relojes / CCU (9 parches, 21-24 jul)** — el sondeo de `CLEAR_MOD` sale del
+  spinlock del CCU, nunca se reescribe un bit de actualización obsoleto,
+  `maskdiv` respeta los límites que le dio `determine_rate()`, y se acota el
+  factor N de `pll-cpu0` para que a un consumidor con límites estrechos no se le
+  entregue una frecuencia fuera de rango.
+- **Decodificación de vídeo / cedar-ve (6 parches, 21-25 jul)** — **corregido un
+  desbordamiento de montículo**: el `proc_info_len` de debugfs no tenía cota.
+  Además el mmap desde espacio de usuario queda acotado a la ventana de
+  registros de la VE, se comprueba el identificador de canal de
+  `STOP_PROC_INFO`, ya no se libera un cerrojo que quien llama nunca tomó, y el
+  motor se detiene si un cliente muere a mitad de trabajo en vez de quedarse
+  funcionando.
+- **Display / DE (7 parches, 21-24 jul)** — planos de overlay y cursor por
+  hardware, más el endurecimiento que salió de auditarlos: solo el plano
+  primario anuncia modificadores AFBC, los overlays se vuelven a comprobar
+  cuando el primario se mueve o cambia de tamaño, y se retiró la propiedad alpha
+  inerte del primario RCQ.
+- **Combo PHY (4 parches, 21-24 jul)** — el notificador de energía se registra
+  solo tras un probe correcto y se da de baja antes de salir (**era un
+  use-after-free**), y la cadena de notificación pasa a ser bloqueante.
+- **DTS y frecuencias (5 parches, 29 jul - 1 ago)** — el **OPP de 696 MHz de la
+  GPU** validado para el bin del SID de esta placa, un **rango de tensión para
+  los OPP del cluster pequeño** (DCDC1 alimenta también la DSU, y un voltaje fijo
+  por OPP hace imposible que un segundo consumidor suba el raíl), el reloj de la
+  DSU y su PLL, la codificación de aguante de tensión de los pines del A523, y
+  PJ10 fuera del grupo de pines rgmii1.
+- **Audio (1 parche, 22 jul)** — se cancela el trabajo de detección del jack si
+  falla el probe.
+- **Infrarrojos** — nodos del receptor y los decodificadores de protocolos
+  comunes. Ojo: esta placa **no lleva receptor IR montado**; esto es para quien
+  conecte uno al header.
+
+### 📊 Cifras
+- glmark2: **847** a 800x600 (v0.3: 790), GPU a 696 MHz
+- Arranque: 16,5 s (CLI), 43 s (GNOME)
+- Imágenes: CLI 197 MB · GNOME 710 MB (comprimidas)
+
+### 🎉 Y para los fans de Plasma: ¡Kubuntu 26.04!
+
+Lo mejor, para el final. En esta versión añadimos una **imagen nueva para todos
+los que os gusta KDE Plasma: Kubuntu 26.04 (Resolute Raccoon)** — y en esta placa
+va **¡fantástica!**
+
+- Plasma **6.6.6** sobre **Wayland** puro (KWin, cero X11), y vuela: glmark2
+  **880** a 800x600, incluso un pelín por encima de GNOME, con la GPU a 696 MHz.
+  Arranca al escritorio en **26 segundos**.
+- **Autologin** directo a Plasma, su **propio logo de arranque**, y la bienvenida
+  en una **ventana Qt nativa** (aprovechando el QtWebEngine que Plasma ya trae,
+  sin un segundo motor web engordando la imagen).
+- El **Info Center** de KDE hasta lee el Mali-G57 y la Orange Pi 4A directamente
+  del device-tree.
+
+Es la primera imagen del proyecto sobre base Ubuntu. Un matiz: **Plasma es más
+goloso con la RAM** que GNOME (~880 MB más swap con solo un terminal abierto),
+así que en 2 GB se apoya en el zram — genial para uso ligero, más justo con un
+navegador y varias apps a la vez. ¿Quieres el escritorio más ligero? GNOME. ¿Te
+encanta Plasma? Esta es la tuya.
+
 ## v0.3 — Decodificación de vídeo por hardware + escritorio GNOME
 
 Esta versión incorpora el trabajo de kernel del lote de parches del 2026-07-20
