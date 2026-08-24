@@ -2,6 +2,23 @@
 
 🌐 [English](CHANGELOG.md) · **Español**
 
+## v0.4.1 — Soporte de impresoras USB
+
+*Publicada el 24-08-2026.* Respin de mantenimiento de la v0.4. El único cambio
+es el kernel, ahora `6.18.44-g61025ec85b88`, que añade — a petición de un
+usuario — soporte para impresoras USB:
+
+- **`usblp`** (driver de clase impresora USB): crea `/dev/usb/lp0` al enchufar
+  una impresora USB, con lo que CUPS y los cargadores de firmware tipo
+  `foo2zjs` (impresoras láser GDI antiguas) funcionan de fábrica.
+- **El stack de puerto paralelo** como módulos (`parport` con soporte
+  IEEE-1284, `lp`, `ppdev`, `parport_uss720`) para adaptadores USB-a-paralelo
+  que exponen un puerto paralelo crudo. Nada se carga si no se enchufa el
+  hardware correspondiente.
+
+Todo lo demás es idéntico a la v0.4 — si ya estás en la v0.4 y no necesitas
+impresora, no hay motivo para regrabar.
+
 ## v0.4 — Kernel 6.18.44, WireGuard/NAT y un GNOME pulido
 
 *Publicada el 23-08-2026.* Kernel: Linux **6.18.44** (`6.18.44-g8c30dd587626`),

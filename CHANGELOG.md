@@ -2,6 +2,22 @@
 
 🌐 **English** · [Español](CHANGELOG.es.md)
 
+## v0.4.1 — USB printer support
+
+*Released 2026-08-24.* Maintenance respin of v0.4. The only change is the
+kernel, now `6.18.44-g61025ec85b88`, which adds — at a user's request —
+support for USB printers:
+
+- **`usblp`** (USB printer class driver): creates `/dev/usb/lp0` when a USB
+  printer is plugged in, so CUPS and firmware downloaders like `foo2zjs`
+  (legacy GDI laser printers) work out of the box.
+- **The parallel port stack** as modules (`parport` with IEEE-1284 support,
+  `lp`, `ppdev`, `parport_uss720`) for USB-to-parallel adapters that expose a
+  raw parallel port. Nothing loads unless matching hardware is plugged in.
+
+Everything else is identical to v0.4 — if you're already on v0.4 and don't
+need a printer, there's no reason to reflash.
+
 ## v0.4 — Kernel 6.18.44, WireGuard/NAT, and a polished GNOME
 
 *Released 2026-08-23.* Kernel: Linux **6.18.44** (`6.18.44-g8c30dd587626`), up

@@ -1,4 +1,4 @@
-# Orange Pi 4A (Allwinner T527 / A523) — mainline Linux 6.18.38
+# Orange Pi 4A (Allwinner T527 / A523) — mainline Linux 6.18 (LTS)
 
 🌐 [English](README.md) · **Español**
 
@@ -13,15 +13,19 @@ cabeceras de los parches.
 > Base del árbol de trabajo: `linux-6.18.38` vanilla. Estos parches se aplican
 > encima. `git format-patch --base` incluye el hash base en cada `.patch`.
 
-**Última imagen: v0.3** — decodificación de vídeo por hardware (VPU) + escritorio
-**GNOME**. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
+**Últimas imágenes: v0.4.1** — kernel **6.18.44**, WireGuard + NAT por
+nftables/iptables, una imagen nueva de **Kubuntu 26.04 (KDE Plasma)** junto a
+GNOME y CLI, decodificación de vídeo por hardware (VPU) y soporte de impresoras
+USB. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 
-> **Aviso:** estos parches son el kernel que hay detrás de las **imágenes v0.3**
-> (fix del reloj de la GPU, bring-up de PCIe, decodificación de vídeo por
-> hardware). Las imágenes Debian actualizadas — una de escritorio **GNOME** y una
-> **CLI / headless**, construidas sobre este kernel — están en la página de
-> [Releases](../../releases). También puedes compilarte el kernel tú mismo con los
-> parches de aquí.
+> **Aviso:** la serie de parches de este repo es el kernel que hay detrás de las
+> **imágenes v0.3** (fix del reloj de la GPU, bring-up de PCIe, decodificación
+> de vídeo por hardware). Las **imágenes v0.4.x** llevan un kernel más nuevo
+> (**6.18.44**); la serie de parches actualizada para ese kernel aún no está
+> aquí — está en camino. Las imágenes listas para grabar — **CLI / headless**,
+> **GNOME** y **Kubuntu 26.04** — están en la página de
+> [Releases](../../releases). También puedes compilarte el kernel de la era v0.3
+> con los parches de aquí.
 
 ## Qué funciona (confirmado en hardware)
 
@@ -53,7 +57,8 @@ decodifican por hardware**: YouTube se reproduce fluido en un navegador WebKit
 interrupción, así que esos códecs se capan en nuestra configuración y YouTube
 negocia H.264 en su lugar. Ojo: esto es la mitad de *kernel*; la pila de
 decodificación de userspace no forma parte de esta serie de parches — pero las
-**imágenes Debian v0.3 sí la incluyen** (libcedarc + `gst-omx`), así que ahí la
+**imágenes Debian sí la incluyen** (libcedarc + `gst-omx`, de la v0.3 en
+adelante), así que ahí la
 decodificación por hardware funciona de fábrica. Si solo compilas el kernel con
 estos parches, el userspace lo pones tú. La **variante de 4 GB está confirmada
 funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la
@@ -111,12 +116,11 @@ Decisiones tomadas en la imagen distribuida (no son parches del kernel):
 
 Es trabajo de tiempo libre, así que sin fechas prometidas — pero a la vista:
 
-- **Actualización del kernel a 6.18.40.** He estado repasando los cambios stable
-  desde la 6.18.38 y hay bastante que merece la pena: arreglos generales de
-  seguridad y estabilidad por todo el árbol, más un puñado de **mejoras
-  específicas del A523** — en particular un mejor manejo de las interrupciones de
-  GPIO en este SoC. Estoy estudiando sacar próximamente una actualización de
-  kernel por seguridad y mejoras para aprovecharlas.
+- ~~Actualización del kernel~~ **hecha**: las imágenes pasaron a **6.18.44** en
+  la v0.4 (arreglos de seguridad y estabilidad por todo el árbol, más mejoras
+  específicas del A523 como un mejor manejo de las interrupciones de GPIO). La
+  siguiente tarea del repo es publicar la **serie de parches actualizada** de
+  ese kernel — la serie de aquí aún refleja la v0.3 (6.18.38).
 - Siguen en pie los flecos de hardware de arriba: **NVMe con un disco real**
   (testers muy bienvenidos), **arranque desde eMMC**, y la captura de line-out /
   micrófono.

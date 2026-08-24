@@ -1,4 +1,4 @@
-# Orange Pi 4A (Allwinner T527 / A523) — mainline Linux 6.18.38
+# Orange Pi 4A (Allwinner T527 / A523) — mainline Linux 6.18 (LTS)
 
 🌐 **English** · [Español](README.es.md)
 
@@ -12,14 +12,18 @@ original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
 > Working-tree base: `linux-6.18.38` vanilla. These patches apply on top.
 > `git format-patch --base` embeds the base hash in every `.patch`.
 
-**Latest image: v0.3** — hardware video decode (VPU) + a **GNOME** desktop. See
+**Latest images: v0.4.1** — kernel **6.18.44**, WireGuard + nftables/iptables
+NAT, a new **Kubuntu 26.04 (KDE Plasma)** image alongside GNOME and CLI,
+hardware video decode (VPU), and USB printer support. See
 [CHANGELOG.md](CHANGELOG.md) for release history.
 
-> **Heads-up:** these patches are the kernel behind the **v0.3 images** (GPU
-> clock fix, PCIe bring-up, hardware video decode). Refreshed Debian images —
-> a **GNOME desktop** and a **CLI / headless** one, built on this kernel — are
-> on the [Releases](../../releases) page. You can also build the kernel yourself
-> from the patches here.
+> **Heads-up:** the patch series in this repo is the kernel behind the **v0.3
+> images** (GPU clock fix, PCIe bring-up, hardware video decode). The **v0.4.x
+> images** run a newer kernel (**6.18.44**); the refreshed patch set for it
+> hasn't landed here yet — it's coming. The ready-to-flash images — **CLI /
+> headless**, **GNOME** and **Kubuntu 26.04** — are on the
+> [Releases](../../releases) page. You can also build the v0.3-era kernel
+> yourself from the patches here.
 
 ## What works (confirmed on hardware)
 
@@ -50,9 +54,9 @@ video-engine masters. Paired with the Allwinner userspace (libcedarc +
 WebKit browser (Epiphany / GNOME Web) on this board. **VP8/VP9 do not** — that
 engine never raises its interrupt, so those codecs are capped in our setup, which
 makes YouTube negotiate H.264 instead. Note this is the *kernel* half: the
-userspace decoding stack is not part of this patch set — but the **v0.3 Debian
-images do ship it** (libcedarc + `gst-omx`), so hardware decode works out of the
-box there. If you build only the kernel from these patches, you supply the
+userspace decoding stack is not part of this patch set — but the **Debian
+images do ship it** (libcedarc + `gst-omx`, v0.3 onward), so hardware decode
+works out of the box there. If you build only the kernel from these patches, you supply the
 userspace yourself.
 The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who
 also confirmed the eMMC; the bootloader auto-detects the RAM size).
@@ -105,11 +109,11 @@ Decisions made in the distributed image (these are not kernel patches):
 
 Spare-time work, so no dates promised — but on the horizon:
 
-- **Kernel refresh to 6.18.40.** I've been going through the stable changes since
-  6.18.38 and there's a fair amount worth having: general security and stability
-  fixes across the tree, plus a handful of **A523-specific improvements** —
-  notably better GPIO-interrupt handling on this SoC. I'm looking at rolling a
-  security-and-improvements kernel update soon to pick those up.
+- ~~Kernel refresh~~ **done**: the images moved to **6.18.44** in v0.4
+  (security and stability fixes across the tree, plus A523-specific
+  improvements such as better GPIO-interrupt handling). Next repo task is
+  publishing the **refreshed patch series** matching that kernel — the series
+  here still reflects v0.3 (6.18.38).
 - The open hardware items above still stand: **NVMe with a real drive** (testers
   very welcome), **booting from eMMC**, and line-out / microphone capture.
 
