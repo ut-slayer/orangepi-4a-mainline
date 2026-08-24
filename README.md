@@ -44,8 +44,8 @@ hardware video decode (VPU), and USB printer support. See
 | **CPU cpufreq/DVFS** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + thermal throttling at 90 °C | ✅ |
 | **Asymmetric CPU topology** (cpu-map + capacity-dmips-mhz 922/1024 + EAS energy model) | ✅ big cluster preferred for heavy tasks |
 | **GPU devfreq/DVFS** (Panfrost, 150–600 MHz) + thermal throttling | ✅ and now **at the right frequencies** — the A523 GPU divider turned out to be a *cycle-masking* (fractional) one, `rate = source × (16−M)/16`, not a linear divider; measured with the Mali cycle counter |
-| **eMMC** (MMC storage) | ✅ detected + HS200 read/write (confirmed by a tester); booting *from* eMMC not wired up yet |
-| **PCIe / M.2** (DesignWare RC + Innosilicon combo PHY) | ✅ controller and PHY probe, link training runs and the **root port enumerates** — verified here with an **empty** slot. **NVMe with a real drive is still untested** (no drive on hand — testers very welcome) |
+| **eMMC** (MMC storage) | ✅ detected + HS200 read/write, and **booting from eMMC works**: a tester runs the CLI image entirely from the eMMC module (no SD card), with the first-boot auto-resize filling its 58 GiB. A step-by-step *install to eMMC* guide is still to be written |
+| **PCIe / M.2 NVMe** (DesignWare RC + Innosilicon combo PHY) | ✅ **validated with real drives by two testers**: a KIOXIA KBG40ZNV256G and an Intel 760p-series SSD, both bound by the `nvme` driver, with `f3` integrity runs over the **full 256 GB (several passes)** and 50 GB — **0 corrupted sectors, clean dmesg**, ~130 MB/s write / ~275 MB/s read. Works as storage out of the box. **Root filesystem on NVMe is not set up yet** (`nvme` is a module and the images ship no initramfs — on the list) |
 
 **Hardware video decode (VPU) — partly working, kernel side included.** This tree
 ships the `cedar-ve` shim with its device-tree node and the IOMMU mappings for the
@@ -114,8 +114,9 @@ Spare-time work, so no dates promised — but on the horizon:
   improvements such as better GPIO-interrupt handling). Next repo task is
   publishing the **refreshed patch series** matching that kernel — the series
   here still reflects v0.3 (6.18.38).
-- The open hardware items above still stand: **NVMe with a real drive** (testers
-  very welcome), **booting from eMMC**, and line-out / microphone capture.
+- The open hardware items above still stand: **root filesystem on NVMe** (needs
+  `nvme` built in or an initramfs), an **install-to-eMMC guide**, and line-out /
+  microphone capture.
 
 ## Contents
 
@@ -205,13 +206,15 @@ This project became real the day other people started putting it on their own
 boards. Thank you:
 
 - **JamesCL** (Armbian forum) — confirmed the **4 GB variant** and the
-  **eMMC (HS200)** with detailed reports (dmesg, lsblk), and is helping figure
-  out booting from eMMC.
+  **eMMC (HS200)** with detailed reports (dmesg, lsblk), then **booting from
+  eMMC** (the CLI image running entirely from the module) and an **Intel NVMe**
+  with `f3` integrity runs.
 - **L. Jorge Soares** (Armbian forum) — first independent validation of both
   v0.2 images (CLI and KDE: Wi-Fi, HDMI, YouTube, audio), plus serial-console
   logs to help debug eMMC boot.
 - **bickns** (Armbian forum) — early feedback on the patch series and testing
-  it against Armbian builds.
+  it against Armbian builds, then the first **real NVMe** on this kernel (KIOXIA
+  256 GB) with `f3` over the whole drive, several passes, zero corruption.
 - **Nick_Sl** (Armbian forum) — asked for the CLI/headless image and
   volunteered to test it. It exists because of that.
 - **defencedog** (GitHub) — maintainer of the other community repo for this

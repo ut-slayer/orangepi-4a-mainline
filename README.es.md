@@ -45,8 +45,8 @@ USB. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 | **Sensores térmicos THS** (5 zonas: cpu_l / cpu_b / gpu / npu / ddr) | ✅ lectura en sysfs/hwmon + trip crítico 110 °C |
 | **cpufreq/DVFS de CPU** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + throttling térmico a 90 °C | ✅ |
 | **devfreq/DVFS de GPU** (Panfrost, 150–600 MHz) + throttling térmico | ✅ y ahora **a las frecuencias correctas** — el divisor de la GPU del A523 resultó ser de *enmascarado de ciclos* (fraccional), `frecuencia = fuente × (16−M)/16`, no un divisor lineal; medido con el contador de ciclos del Mali |
-| **eMMC** (almacenamiento MMC) | ✅ detectada + lectura/escritura HS200 (confirmado por un tester); arrancar *desde* eMMC aún sin cablear |
-| **PCIe / M.2** (RC DesignWare + PHY combo Innosilicon) | ✅ el controlador y el PHY hacen probe, el entrenamiento del enlace corre y el **root port enumera** — verificado aquí con la ranura **vacía**. **NVMe con un disco real sigue sin probarse** (no hay disco a mano — testers bienvenidos) |
+| **eMMC** (almacenamiento MMC) | ✅ detectada + lectura/escritura HS200, y **el arranque desde eMMC funciona**: un tester corre la imagen CLI entera desde el módulo eMMC (sin tarjeta SD), con el auto-resize del primer arranque llenando sus 58 GiB. Falta escribir la guía paso a paso de *instalar en eMMC* |
+| **PCIe / M.2 NVMe** (RC DesignWare + PHY combo Innosilicon) | ✅ **validado con discos reales por dos testers**: un KIOXIA KBG40ZNV256G y un SSD Intel de la serie 760p, ambos con el driver `nvme`, con pruebas de integridad `f3` sobre los **256 GB completos (varias pasadas)** y 50 GB — **0 sectores corruptos, dmesg limpio**, ~130 MB/s escritura / ~275 MB/s lectura. Como almacenamiento funciona de fábrica. **El sistema de ficheros raíz en NVMe aún no está montado** (`nvme` es módulo y las imágenes no llevan initramfs — en la lista) |
 
 **Decodificación de vídeo por hardware (VPU) — parcialmente funcionando, la parte
 de kernel incluida.** Este árbol trae el shim `cedar-ve` con su nodo de
@@ -121,8 +121,8 @@ Es trabajo de tiempo libre, así que sin fechas prometidas — pero a la vista:
   específicas del A523 como un mejor manejo de las interrupciones de GPIO). La
   siguiente tarea del repo es publicar la **serie de parches actualizada** de
   ese kernel — la serie de aquí aún refleja la v0.3 (6.18.38).
-- Siguen en pie los flecos de hardware de arriba: **NVMe con un disco real**
-  (testers muy bienvenidos), **arranque desde eMMC**, y la captura de line-out /
+- Siguen en pie los flecos de hardware de arriba: **raíz en NVMe** (necesita
+  `nvme` built-in o un initramfs), una **guía de instalación en eMMC**, y la captura de line-out /
   micrófono.
 
 ## Contenido
@@ -214,13 +214,16 @@ Este proyecto se hizo de verdad el día en que otras personas empezaron a ponerl
 en sus propias placas. Gracias:
 
 - **JamesCL** (foro de Armbian) — confirmó la **variante de 4 GB** y la
-  **eMMC (HS200)** con reportes detallados (dmesg, lsblk), y está ayudando a
-  descifrar el arranque desde eMMC.
+  **eMMC (HS200)** con reportes detallados (dmesg, lsblk), después el **arranque
+  desde eMMC** (la imagen CLI corriendo entera desde el módulo) y un **NVMe
+  Intel** con pruebas de integridad `f3`.
 - **L. Jorge Soares** (foro de Armbian) — primera validación independiente de
   las dos imágenes v0.2 (CLI y KDE: Wi-Fi, HDMI, YouTube, audio), además de logs
   de consola serie para ayudar a depurar el arranque desde eMMC.
 - **bickns** (foro de Armbian) — feedback temprano sobre la serie de parches y
-  pruebas contra builds de Armbian.
+  pruebas contra builds de Armbian, y después el primer **NVMe real** sobre este
+  kernel (KIOXIA 256 GB) con `f3` sobre el disco entero, varias pasadas, cero
+  corrupción.
 - **Nick_Sl** (foro de Armbian) — pidió la imagen CLI/headless y se ofreció a
   probarla. Existe gracias a eso.
 - **defencedog** (GitHub) — mantenedor del otro repo comunitario de esta placa,
