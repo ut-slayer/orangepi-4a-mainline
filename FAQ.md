@@ -237,9 +237,10 @@ uImage).
 **How do kernel updates arrive?**
 With new image releases, which also attach the kernel as `.deb` packages: install
 them with `sudo apt install ./aurealnix-kernel-common_*.deb ./linux-image-*.deb
-./linux-headers-*.deb` and reboot. The previous kernel stays installed, and
-`sudo aurealnix-kernel-switch <version>` goes back to it. The release notes say
-what changed.
+./linux-headers-*.deb` and reboot. The kernel that came with the image is kept once as
+`/boot/uImage.bak-aurealnix`; kernels installed from these packages stay
+installed side by side, and `sudo aurealnix-kernel-switch <version>` switches
+between them. The release notes say what changed.
 
 **Can I build the kernel myself?**
 Yes — the repo has the full patch series (143 patches on vanilla 6.18.55), the

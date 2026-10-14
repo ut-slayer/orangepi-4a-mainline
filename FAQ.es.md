@@ -246,9 +246,10 @@ cadena de arranque espera un uImage concreto).
 **¿Cómo llegan las actualizaciones del kernel?**
 Con nuevas *releases* de la imagen, que además adjuntan el kernel como paquetes
 `.deb`: instálalos con `sudo apt install ./aurealnix-kernel-common_*.deb
-./linux-image-*.deb ./linux-headers-*.deb` y reinicia. El kernel anterior se
-queda instalado, y `sudo aurealnix-kernel-switch <versión>` vuelve a él. Las
-notas de la versión dicen qué cambió.
+./linux-image-*.deb ./linux-headers-*.deb` y reinicia. El kernel que trae la imagen
+se guarda una vez como `/boot/uImage.bak-aurealnix`; los kernels instalados con
+estos paquetes conviven, y `sudo aurealnix-kernel-switch <versión>` cambia entre
+ellos. Las notas de la versión dicen qué cambió.
 
 **¿Puedo compilar el kernel yo mismo?**
 Sí — el repo tiene la serie completa de parches (143 sobre 6.18.55 vanilla), el
