@@ -1,13 +1,10 @@
-From c0d818b8439c46713af294776e889134e5d008c8 Mon Sep 17 00:00:00 2001
-From: Juan Manuel Lopez Carrillo <juanmanuellopezcarrillo@gmail.com>
+From 8d6df74b337e0250f63e80ede24f1159cf40e362 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
 Date: Sun, 21 Jun 2026 18:12:25 +0200
-Subject: [PATCH 001/130] dts: opi4a: LED PD20 default-trigger=heartbeat
- (sign of life without UART)
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+Subject: [PATCH 001/143] dts: opi4a: LED PD20 default-trigger=heartbeat (sign
+ of life without UART)
 
-Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 ---
  arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 1 +
  1 file changed, 1 insertion(+)
@@ -25,4 +22,28 @@ index 39a4e1947..65d8f52b3 100644
  	};
  
 
-base-commit: 1db74811bf8bf023b365e82f8fb57e95d9106cde
+base-commit: d52b3158412f5c7f53f963dfc69f1616f382b7da
+prerequisite-patch-id: fdd6cfd04a669c0b57417cb315cf26b9663a33e2
+prerequisite-patch-id: ab91e1c1026626f737d51c183d0783540370a49b
+prerequisite-patch-id: bb1b305b09e975e818d0870295119765f49597b6
+prerequisite-patch-id: a6bffb8a614923e9fdaf2d432a45da49412f3d4d
+prerequisite-patch-id: 4da599050dc48df1c43b9b9a6570284424e393af
+prerequisite-patch-id: 75fc651b6cd022000dccdfd347013cbec9245e6d
+prerequisite-patch-id: 1288cc530e12a52c0868f9ea9ac045cffd3325c4
+prerequisite-patch-id: a67c09041f4f0af53f892761fb5f57dce99a875f
+prerequisite-patch-id: 0a05332d5ae33b68c9a034c6756422254d97ac33
+prerequisite-patch-id: 480618ebf8560823ebb497b14da23897d2ac48b4
+prerequisite-patch-id: 79f9ac99c185c55910bfc91120d0d6020a80538f
+prerequisite-patch-id: 281c61d0acc9365cce156fba92f1d46423277416
+prerequisite-patch-id: ef55cf95a54cc7775de5ba423b68061e860613cd
+prerequisite-patch-id: 9cfd6ecddd51923659ec900a74de761284916a6d
+prerequisite-patch-id: 26939b2c579df49d1866239d51c6564cc35c7cf5
+prerequisite-patch-id: 21b7a9853b86c1678b4263fc3cd3faa284aa1d49
+prerequisite-patch-id: d31a5262ed1b816bfa0f6c80369ef8c00998ac7c
+prerequisite-patch-id: 53ff4dc2e637282d7261f9125b684dfcfd0dd451
+prerequisite-patch-id: 7b2da0362a86ec84fc7bd7ab753d82f37c140435
+prerequisite-patch-id: 8bf2e5aea33400077522a90d7590e286139aa545
+prerequisite-patch-id: 76c61e4cb47dcf6ccd7b2063d9fef07d3bfacf6d
+-- 
+2.53.0
+

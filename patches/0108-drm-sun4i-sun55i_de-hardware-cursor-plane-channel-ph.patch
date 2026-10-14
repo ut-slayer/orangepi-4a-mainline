@@ -1,0 +1,544 @@
+From f45919df5f556cb7263e59cd98ac47fae763f518 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 16:11:24 +0200
+Subject: [PATCH 108/143] drm/sun4i: sun55i_de: hardware cursor plane (channel
+ phys 7) + opaque LAY2/3
+
+Testing the LAY1 overlay on the board (modetest plus register dumps)
+showed that per-layer fetch works and LAY1 stacks above LAY0, but layers
+inside one OVL channel stack opaquely by rectangle priority: a plain
+AR24 0x77777777 buffer came out solid grey, with no per-pixel alpha
+blending. Real transparency only exists in the Porter-Duff blend
+between blender pipes ("four overlay windows to blend", "porter-duff
+compatible blending" in the manual).
+
+So:
+
+- The LAY1..3 overlay planes only advertise opaque formats (XR24 and
+  friends): advertising ARGB would invite the compositor to hand over
+  translucent content that would show up opaque. All three are
+  registered (zpos 1..3, immutable).
+
+- The CURSOR plane is UI channel phys 7 (UCH1 of chn_cfg_mode=3) on
+  blender pipe 1, with real alpha through SRCOVER and per-pipe premul.
+  It also works while the primary scans out AFBC (the Plasma/Wayland
+  case), where a cursor on a LAY would vanish because the AFBD turns off
+  the OVL of the whole channel. Minimal phys 7 datapath as new RCQ
+  blocks: OVL LAY0 + PARA + DS, VSU8 permanently bypassed (CTL=0 and
+  glb_alpha=0xff staged at init: the alpha stage applies even in
+  bypass), AFBD/CCSC at 0. No CDC or TFBD: mode 3 does not assign them to
+  UCH1. de_top muxes: uch2core phys7 -> disp0 and port 2 (reset value
+  0xa980, now explicit).
+
+- Pipe enable/route/premul in the blender are now composed in
+  sun55i_de_commit() (several planes share those registers), under the
+  same arm_lock as the staging, so an arm can never apply a
+  half-composed blender.
+
+Co-Authored-By: AI Agent
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c      | 154 +++++++++++++++++++++++--
+ drivers/gpu/drm/sun4i/sun55i_de.h      |  26 +++++
+ drivers/gpu/drm/sun4i/sun8i_mixer.c    |  39 +++++--
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c |  82 +++++++++++--
+ 4 files changed, 271 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 21197b0ab..63fc12187 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -194,6 +194,17 @@
+ #define SUN55I_DE_CCSC_BASE		0x1c0800
+ #define SUN55I_DE_CDC_BASE		0x1c8000
+ 
++/*
++ * Cursor channel: UI phys 7 (UCH1 of chn_cfg_mode=3), blender pipe 1.
++ * DE_CHN_OFFSET(7) = 0x1e0000; same sub-block offsets as phys 6.
++ * mode3 does NOT assign CDC or TFBD to UCH1: those addresses are not touched.
++ */
++#define SUN55I_DE_CUR_PHYS_CHN		7
++#define SUN55I_DE_CUR_OVL_BASE		0x1e1000
++#define SUN55I_DE_CUR_VSU_BASE		0x1e4000
++#define SUN55I_DE_CUR_AFBD_BASE		0x1e5000
++#define SUN55I_DE_CUR_CCSC_BASE		0x1e0800
++
+ /* per-layer fields within the LAY_0 block (union ovl_u_lay_reg) */
+ #define SUN55I_OVL_LAY_ATTCTL		0x00
+ #define SUN55I_OVL_LAY_MBSIZE		0x04	/* crop (w-1)|(h-1)<<16 */
+@@ -225,8 +236,10 @@
+ #define SUN55I_BLD_ATTR_PIPE_IN_SIZE(p)	(0x08 + (p) * 0x10)	/* ATTR block */
+ #define SUN55I_BLD_ATTR_PIPE_IN_COORD(p) (0x0c + (p) * 0x10)	/* ATTR block */
+ #define SUN55I_BLD_CTL_ROUT		0x00	/* CTL block: rout_ctl @0x80 */
++#define SUN55I_BLD_CTL_PREMUL		0x04	/* premul_ctl @0x84: one bit per pipe */
+ #define SUN55I_BLD_CTL_BLEND(p)		(0x10 + (p) * 0x04)	/* blend_ctl[p] */
+-#define SUN55I_BLD_PIPE_EN(p)		(BIT(0) | BIT(8 + (p)))
++#define SUN55I_BLD_PIPE_FC0_EN		BIT(0)	/* pipe 0 fill color (background) */
++#define SUN55I_BLD_PIPE_EN(p)		BIT(8 + (p))
+ #define SUN55I_BLD_ROUT(p, chn)		(((chn) & 0xf) << ((p) << 2))
+ #define SUN55I_BLD_BLEND_SRCOVER	0x03010301
+ 
+@@ -551,6 +564,18 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 		[SUN55I_DE_BLK_AFBD]     = { SUN55I_DE_AFBD_BASE, 0, 0x58 },
+ 		[SUN55I_DE_BLK_CCSC_CTL] = { SUN55I_DE_CCSC_BASE, 0, 4 },
+ 		[SUN55I_DE_BLK_CDC_CTL]  = { SUN55I_DE_CDC_BASE, 0, 4 },
++		[SUN55I_DE_BLK_CUR_LAY0] = { SUN55I_DE_CUR_OVL_BASE,
++			SUN55I_DE_OVL_LAY_OFF(0), SUN55I_DE_OVL_LAY0_SIZE },
++		[SUN55I_DE_BLK_CUR_PARA] = { SUN55I_DE_CUR_OVL_BASE,
++			SUN55I_DE_OVL_PARA_OFF, SUN55I_DE_OVL_PARA_SIZE },
++		[SUN55I_DE_BLK_CUR_DS]   = { SUN55I_DE_CUR_OVL_BASE,
++			SUN55I_DE_OVL_DS_OFF, SUN55I_DE_OVL_DS_SIZE },
++		[SUN55I_DE_BLK_CUR_VSU_CTL] = { SUN55I_DE_CUR_VSU_BASE,
++			SUN55I_DE_VSU_CTL_OFF, SUN55I_DE_VSU_CTL_SIZE },
++		[SUN55I_DE_BLK_CUR_VSU_ATTR] = { SUN55I_DE_CUR_VSU_BASE,
++			SUN55I_DE_VSU_ATTR_OFF, SUN55I_DE_VSU_ATTR_SIZE },
++		[SUN55I_DE_BLK_CUR_AFBD_CTL] = { SUN55I_DE_CUR_AFBD_BASE, 0, 4 },
++		[SUN55I_DE_BLK_CUR_CCSC_CTL] = { SUN55I_DE_CUR_CCSC_BASE, 0, 4 },
+ 	};
+ 	struct sun55i_de *de;
+ 	size_t heads_sz, off;
+@@ -648,6 +673,9 @@ int sun55i_de_init(struct sun8i_mixer *mixer)
+ 	 */
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_VSU_ATTR),
+ 		     SUN55I_VSU_ATTR_GLB_ALPHA, 0xff);
++	/* same for the VSU of the cursor channel (phys 7, permanent bypass) */
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_CUR_VSU_ATTR),
++		     SUN55I_VSU_ATTR_GLB_ALPHA, 0xff);
+ 
+ 	/* static output-formatter setup: RGB, 8-bit, full range */
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_FMT),
+@@ -933,11 +961,16 @@ void sun55i_de_enable(struct sun8i_mixer *mixer,
+ 	 */
+ 	regmap_read(mixer->detop_regs, SUN55I_DETOP_UCH2CORE_MUX, &mux);
+ 	mux &= ~(0x3 << (((SUN55I_DE_OVL_UI_PHYS_CHN - 6) << 1) + 16));
++	/* same for the cursor channel: phys 7 -> core/disp 0 */
++	mux &= ~(0x3 << (((SUN55I_DE_CUR_PHYS_CHN - 6) << 1) + 16));
+ 	regmap_write(mixer->detop_regs, SUN55I_DETOP_UCH2CORE_MUX, mux);
+ 
+ 	regmap_read(mixer->detop_regs, SUN55I_DETOP_PORT2CHN_MUX, &mux);
+ 	mux &= ~(0xf << (SUN55I_DE_OVL_UI_LOGIC_CHN << 2));
+ 	mux |= (SUN55I_DE_OVL_UI_PHYS_CHN + 2) << (SUN55I_DE_OVL_UI_LOGIC_CHN << 2);
++	/* port 2 <- phys 7 (this is the reset value 0xa980, written explicitly) */
++	mux &= ~(0xf << (SUN55I_DE_CUR_LOGIC_CHN << 2));
++	mux |= (SUN55I_DE_CUR_PHYS_CHN + 2) << (SUN55I_DE_CUR_LOGIC_CHN << 2);
+ 	regmap_write(mixer->detop_regs, SUN55I_DETOP_PORT2CHN_MUX, mux);
+ 
+ 	regmap_write(mixer->top_regs, SUN50I_MIXER_GLOBAL_SIZE, size);
+@@ -1216,6 +1249,11 @@ static void sun55i_de_layer_disable(struct sun8i_mixer *mixer)
+ 	}
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_OVL_PARA),
+ 		     SUN55I_OVL_PARA_TOP_HADDR, 0);
++	/* and the cursor channel (phys 7) */
++	de->pipe0_en = false;
++	de->pipe1_en = false;
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_CUR_LAY0),
++		     SUN55I_OVL_LAY_ATTCTL, 0);
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR),
+ 		     SUN55I_BLD_ATTR_PIPE_EN, 0);
+ }
+@@ -1281,6 +1319,79 @@ static void sun55i_de_ovl_stage(struct sun8i_mixer *mixer, unsigned int n,
+ 	de->ovl_lay[n].en = true;
+ }
+ 
++/*
++ * Stage the cursor plane: the whole UI channel phys 7 (OVL layer 0 + PARA,
++ * VSU in bypass staged at init) plus its blender pipe 1 (on-screen
++ * geometry + SRCOVER). The cursor's alpha is applied by the pipe's Porter-Duff
++ * blend - the only real translucent mixing in the DE (verified on the board
++ * 2026-07-21: the intra-channel OVL stacks opaquely) - which is why it also works
++ * with the primary scanning out AFBC. The pipes' enable/route/premul are
++ * compone sun55i_de_commit().
++ */
++static void sun55i_de_cursor_stage(struct sun8i_mixer *mixer,
++				   struct drm_plane_state *state)
++{
++	struct sun55i_de *de = mixer->de;
++	struct sun55i_de_block *lay = de_blk(mixer, SUN55I_DE_BLK_CUR_LAY0);
++	struct sun55i_de_block *para = de_blk(mixer, SUN55I_DE_BLK_CUR_PARA);
++	struct sun55i_de_block *attr = de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR);
++	struct sun55i_de_block *ctl = de_blk(mixer, SUN55I_DE_BLK_BLD_CTL);
++	struct drm_framebuffer *fb = state->fb;
++	u32 src_w, src_h, size, attctl;
++	dma_addr_t addr;
++	u32 fmt;
++
++	de->pipe1_en = false;
++
++	if (!state->crtc || !state->visible || !fb)
++		goto off;
++
++	if (fb->modifier != DRM_FORMAT_MOD_LINEAR ||
++	    sun55i_de_fmt(fb->format->format, &fmt)) {
++		DRM_DEBUG_DRIVER("sun55i_de: cursor fmt/mod no soportado\n");
++		goto off;
++	}
++
++	src_w = drm_rect_width(&state->src) >> 16;
++	src_h = drm_rect_height(&state->src) >> 16;
++	size = SUN55I_DE_OUT_SIZE(src_w, src_h);
++	addr = drm_fb_dma_get_gem_addr(fb, state, 0);
++
++	/*
++	 * A single layer in this channel: attctl directly, no compose (the channel
++	 * hands its output - premul if the source is - to the pipe, which is
++	 * the one that mixes it).
++	 */
++	attctl = SUN55I_OVL_ATTCTL_EN |
++		 SUN55I_OVL_ATTCTL_ALPHA_MODE(SUN55I_OVL_ATTCTL_COMBINED_ALPHA) |
++		 SUN55I_OVL_ATTCTL_FMT(fmt) |
++		 SUN55I_OVL_ATTCTL_ALPHA(state->alpha >> 8);
++	if (fb->format->has_alpha)
++		attctl |= SUN55I_OVL_ATTCTL_PREMUL(SUN55I_OVL_PREMUL_HAS_PREMUL);
++	de_blk_write(lay, SUN55I_OVL_LAY_ATTCTL, attctl);
++	de_blk_write(lay, SUN55I_OVL_LAY_MBSIZE, size);
++	de_blk_write(lay, SUN55I_OVL_LAY_MBCOOR, 0);
++	de_blk_write(lay, SUN55I_OVL_LAY_PITCH, fb->pitches[0]);
++	de_blk_write(lay, SUN55I_OVL_LAY_TOP_LADDR, lower_32_bits(addr));
++	de_blk_write(lay, SUN55I_OVL_LAY_BOT_LADDR, 0);
++	de_blk_write(para, SUN55I_OVL_PARA_TOP_HADDR,
++		     upper_32_bits(addr) & 0xff);
++	de_blk_write(para, SUN55I_OVL_PARA_WIN_SIZE, size);
++
++	/* pipe 1: on-screen position/size (absolute coordinates) */
++	de_blk_write(attr, SUN55I_BLD_ATTR_PIPE_IN_SIZE(1), size);
++	de_blk_write(attr, SUN55I_BLD_ATTR_PIPE_IN_COORD(1),
++		     (state->dst.x1 & 0xffff) | ((state->dst.y1 & 0xffff) << 16));
++	de_blk_write(ctl, SUN55I_BLD_CTL_BLEND(1), SUN55I_BLD_BLEND_SRCOVER);
++
++	de->pipe1_premul = fb->format->has_alpha;
++	de->pipe1_en = true;
++	return;
++
++off:
++	de_blk_write(lay, SUN55I_OVL_LAY_ATTCTL, 0);
++}
++
+ /*
+  * Stage one RGB UI layer (phys channel 6, pipe 0) into the RCQ shadow from a
+  * DRM plane state: the de_ovl layer registers (de_ovl_u_apply_lay) plus the
+@@ -1307,8 +1418,16 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 	 * comparison against the physical one (7.1 semantics) made ALL
+ 	 * planes return here and left the RCQ pool without OVL/BLD (green).
+ 	 */
+-	if (layer->type != SUN8I_LAYER_TYPE_UI ||
+-	    layer->channel != SUN55I_DE_OVL_UI_LOGIC_CHN)
++	if (layer->type != SUN8I_LAYER_TYPE_UI)
++		return;
++
++	/* cursor plane: channel phys 7 + pipe 1, its own datapath */
++	if (layer->channel == SUN55I_DE_CUR_LOGIC_CHN) {
++		sun55i_de_cursor_stage(mixer, state);
++		return;
++	}
++
++	if (layer->channel != SUN55I_DE_OVL_UI_LOGIC_CHN)
+ 		return;
+ 
+ 	/* overlay layers of the same channel: only their LAY_n block + compose */
+@@ -1396,15 +1515,17 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 		sun55i_de_afbd_stage(mixer, fb, src_w, src_h);
+ 	}
+ 
+-	/* --- blender: enable pipe 0, route to the channel, set geometry --- */
+-	de_blk_write(attr, SUN55I_BLD_ATTR_PIPE_EN, SUN55I_BLD_PIPE_EN(0));
++	/*
++	 * --- blender pipe 0: geometry + blend; the enable and route of
++	 * ALL the pipes are composed by sun55i_de_commit() (several planes
++	 * comparten esos registros) ---
++	 */
+ 	de_blk_write(attr, SUN55I_BLD_ATTR_PIPE_IN_SIZE(0),
+ 		     SUN55I_DE_OUT_SIZE(dst_w, dst_h));
+ 	de_blk_write(attr, SUN55I_BLD_ATTR_PIPE_IN_COORD(0),
+ 		     (dst_x & 0xffff) | ((dst_y & 0xffff) << 16));
+-	de_blk_write(ctl, SUN55I_BLD_CTL_ROUT,
+-		     SUN55I_BLD_ROUT(0, SUN55I_DE_OVL_UI_LOGIC_CHN));
+ 	de_blk_write(ctl, SUN55I_BLD_CTL_BLEND(0), SUN55I_BLD_BLEND_SRCOVER);
++	mixer->de->pipe0_en = true;
+ 
+ 	/*
+ 	 * TEMP diagnostic disabled: this runs on every page flip and a
+@@ -1474,6 +1595,25 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_OVL_PARA),
+ 		     SUN55I_OVL_PARA_TOP_HADDR, haddr);
+ 
++	/*
++	 * Compose the blender registers shared between planes:
++	 * pipe enables (+ pipe 0 fill color = background), route (port
++	 * per pipe: 1 = phys6/primary, 2 = phys7/cursor) and per-pipe premul
++	 * (pipe 0 has no premul in this blender, a vendor note).
++	 */
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR),
++		     SUN55I_BLD_ATTR_PIPE_EN,
++		     SUN55I_BLD_PIPE_FC0_EN |
++		     (de->pipe0_en ? SUN55I_BLD_PIPE_EN(0) : 0) |
++		     (de->pipe1_en ? SUN55I_BLD_PIPE_EN(1) : 0));
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CTL),
++		     SUN55I_BLD_CTL_ROUT,
++		     SUN55I_BLD_ROUT(0, SUN55I_DE_OVL_UI_LOGIC_CHN) |
++		     SUN55I_BLD_ROUT(1, SUN55I_DE_CUR_LOGIC_CHN));
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CTL),
++		     SUN55I_BLD_CTL_PREMUL,
++		     de->pipe1_en && de->pipe1_premul ? BIT(1) : 0);
++
+ 	/*
+ 	 * Turn the ACCUMULATED dirty state of each block (real changes only,
+ 	 * see de_blk_write) into a budget of 2 arms (arms_left). The dirty
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index 1cf7a60b9..5c2e47b17 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -33,6 +33,8 @@ struct drm_plane_state;
+ 
+ /* LOGICAL channel of the primary UI (map[1]=phys 6): blender route + port */
+ #define SUN55I_DE_OVL_UI_LOGIC_CHN	1
++/* LOGICAL channel of the cursor (map[2]=phys 7): port 2, blender pipe 1 */
++#define SUN55I_DE_CUR_LOGIC_CHN		2
+ 
+ /* one RCQ head: if dirty, DMA @len bytes from phys -> DE_base + reg_offset */
+ struct sun55i_de_rcq_head {
+@@ -105,6 +107,21 @@ enum {
+ 	SUN55I_DE_BLK_AFBD,
+ 	SUN55I_DE_BLK_CCSC_CTL,	/* channel CSC ctl: zeroed (en=0 bypass) */
+ 	SUN55I_DE_BLK_CDC_CTL,	/* channel CDC colour ctl: zeroed (de_cdc_disable) */
++	/*
++	 * CURSOR channel: UI phys 7 (UCH1 of the BSP's chn_cfg_mode=3, with
++	 * its own VSU8 in permanent bypass and blender pipe 1). Same
++	 * minimal datapath as phys 6 except: no CDC or TFBD (mode3 does not
++	 * assign them to UCH1 - do not touch those addresses) and no VSU
++	 * scaling blocks (the cursor never scales: only CTL=0 + ATTR with
++	 * glb_alpha=0xff, the alpha stage applies even in bypass).
++	 */
++	SUN55I_DE_BLK_CUR_LAY0,		/* OVL phys7 layer 0 */
++	SUN55I_DE_BLK_CUR_PARA,		/* OVL phys7 haddr/win_size */
++	SUN55I_DE_BLK_CUR_DS,		/* OVL phys7 down-sampler: 0 */
++	SUN55I_DE_BLK_CUR_VSU_CTL,	/* VSU8 phys7 ctl: 0 (bypass) */
++	SUN55I_DE_BLK_CUR_VSU_ATTR,	/* VSU8 phys7 glb_alpha=0xff */
++	SUN55I_DE_BLK_CUR_AFBD_CTL,	/* AFBD phys7 ctl: 0 */
++	SUN55I_DE_BLK_CUR_CCSC_CTL,	/* CSC phys7 ctl: 0 (bypass) */
+ 	SUN55I_DE_BLK_NUM
+ };
+ 
+@@ -230,6 +247,15 @@ struct sun55i_de {
+ 	/* on-screen origin of the channel window (the primary's dst) */
+ 	u32				chn_win_x;
+ 	u32				chn_win_y;
++	/*
++	 * Blender pipes staged as visible in this commit (the pipes' enable/route/
++	 * premul are registers shared between planes: the
++	 * compone sun55i_de_commit). pipe 0 = primario (phys 6),
++	 * pipe 1 = cursor (phys 7).
++	 */
++	bool				pipe0_en;
++	bool				pipe1_en;
++	bool				pipe1_premul;	/* cursor source is premul */
+ 
+ 	/* TEMP instrumentation — revert with the dev_info diagnostics */
+ 	u32				commit_seq;	/* commits staged */
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index 6f83a119a..a0aca35d0 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -428,13 +428,15 @@ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
+ }
+ 
+ /*
+- * v35x RCQ: primary (logical UI channel 1 = phys 6, layer 0, AFBD) + one
+- * overlay plane = layer LAY1 of the SAME channel (per-layer OVL fetch,
+- * intra-channel mixing). The overlay is only valid with an unscaled LINEAR primary
+- * (the AFBD replaces the whole OVL and the VSU scales the whole window):
+- * sun55i_overlay_atomic_check enforces it and the compose in
+- * sun55i_de_commit guarantees it. The VI/cursor planes of other channels will come with their
+- * own blender pipes.
++ * v35x RCQ: primary (logical UI channel 1 = phys 6, layer 0, AFBD) + 3
++ * overlay planes = layers LAY1..3 of the SAME channel (per-layer OVL fetch,
++ * opaque stacking by rectangle priority - verified on the board
++ * 2026-07-21) + CURSOR plane = channel phys 7 on blender pipe 1
++ * (real alpha through SRCOVER, independent of the primary/AFBC). The overlays
++ * are only valid with an unscaled LINEAR primary (the AFBD replaces the
++ * whole OVL and the VSU scales the whole window): enforced by
++ * sun55i_overlay_atomic_check and guaranteed by the compose in
++ * sun55i_de_commit.
+  */
+ static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
+ 					     struct sunxi_engine *engine)
+@@ -442,8 +444,9 @@ static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
+ 	struct sun8i_mixer *mixer = engine_to_sun8i_mixer(engine);
+ 	struct drm_plane **planes;
+ 	struct sun8i_layer *layer;
++	int i;
+ 
+-	planes = devm_kcalloc(drm->dev, 3, sizeof(*planes), GFP_KERNEL);
++	planes = devm_kcalloc(drm->dev, 6, sizeof(*planes), GFP_KERNEL);
+ 	if (!planes)
+ 		return ERR_PTR(-ENOMEM);
+ 
+@@ -454,13 +457,25 @@ static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
+ 	}
+ 	planes[0] = &layer->plane;
+ 
+-	layer = sun55i_ui_overlay_init(drm, mixer, DRM_PLANE_TYPE_OVERLAY,
+-				       SUN55I_DE_OVL_UI_LOGIC_CHN, 1, 1);
++	for (i = 1; i <= 3; i++) {
++		layer = sun55i_ui_overlay_init(drm, mixer,
++					       DRM_PLANE_TYPE_OVERLAY,
++					       SUN55I_DE_OVL_UI_LOGIC_CHN, i, i);
++		if (IS_ERR(layer)) {
++			dev_err(drm->dev, "Couldn't initialize overlay plane\n");
++			return ERR_CAST(layer);
++		}
++		planes[i] = &layer->plane;
++	}
++
++	/* cursor on top of everything: channel phys 7, maximum zpos */
++	layer = sun55i_ui_overlay_init(drm, mixer, DRM_PLANE_TYPE_CURSOR,
++				       SUN55I_DE_CUR_LOGIC_CHN, 0, 4);
+ 	if (IS_ERR(layer)) {
+-		dev_err(drm->dev, "Couldn't initialize overlay plane\n");
++		dev_err(drm->dev, "Couldn't initialize cursor plane\n");
+ 		return ERR_CAST(layer);
+ 	}
+-	planes[1] = &layer->plane;
++	planes[4] = &layer->plane;
+ 
+ 	return planes;
+ }
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index 619979fa5..9f1f8889d 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -384,6 +384,32 @@ static int sun55i_primary_atomic_check(struct drm_plane *plane,
+ 	return 0;
+ }
+ 
++/*
++ * atomic_check of the v35x cursor: its own channel (phys 7) on its blender
++ * pipe, independent of the primary (it also works with an AFBC
++ * primary). Unscaled only: the channel's VSU is permanently bypassed.
++ */
++static int sun55i_cursor_atomic_check(struct drm_plane *plane,
++				      struct drm_atomic_state *state)
++{
++	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
++									   plane);
++	struct drm_crtc *crtc = new_state->crtc;
++	struct drm_crtc_state *crtc_state;
++
++	if (!crtc)
++		return 0;
++
++	crtc_state = drm_atomic_get_existing_crtc_state(state, crtc);
++	if (WARN_ON(!crtc_state))
++		return -EINVAL;
++
++	return drm_atomic_helper_check_plane_state(new_state, crtc_state,
++						   DRM_PLANE_NO_SCALING,
++						   DRM_PLANE_NO_SCALING,
++						   true, true);
++}
++
+ static const struct drm_plane_helper_funcs sun55i_primary_helper_funcs = {
+ 	.atomic_check	= sun55i_primary_atomic_check,
+ 	.atomic_update	= sun8i_ui_layer_atomic_update,
+@@ -394,6 +420,11 @@ static const struct drm_plane_helper_funcs sun55i_overlay_helper_funcs = {
+ 	.atomic_update	= sun8i_ui_layer_atomic_update,
+ };
+ 
++static const struct drm_plane_helper_funcs sun55i_cursor_helper_funcs = {
++	.atomic_check	= sun55i_cursor_atomic_check,
++	.atomic_update	= sun8i_ui_layer_atomic_update,
++};
++
+ /*
+  * v35x: the primary UI channel has an AFBC decoder (AFBD). LINEAR works
+  * for everything; AFBC only in the combinations sun55i_de decodes.
+@@ -464,12 +495,34 @@ static const uint64_t sun55i_layer_modifiers[] = {
+ };
+ 
+ /*
+- * Formats of the v35x overlay planes: exactly the ones sun55i_de_fmt
+- * programs in the OVL fetch (the primary inherits the generic DE2 table
+- * for compatibility, but an overlay advertising 4444/1555 would end up as a
+- * disabled layer + a screen silently missing the overlay).
++ * Formats of the v35x LAY1..3 overlay planes: opaque formats ONLY.
++ * VERIFIED ON THE BOARD 2026-07-21 (modetest, SMPTE primary + LAY1 AR24
++ * plain 0x77777777): intra-channel OVL stacking is by rectangle
++ * priority (LAY_n covers LAY_(n-1)), with NO per-pixel alpha mixing between
++ * layers - the translucent grey came out opaque despite combined alpha_mode +
++ * staged premul. Advertising ARGB here would invite the compositor to hand over
++ * translucent content that would show up opaque; real alpha lives in the
++ * Porter-Duff blend BETWEEN the blender pipes (the cursor plane, channel
++ * phys 7). Also, only formats that sun55i_de_fmt programs (advertising
++ * 4444/1555 like the primary would end up as a silently disabled layer).
+  */
+ static const u32 sun55i_ovl_formats[] = {
++	DRM_FORMAT_XRGB8888,
++	DRM_FORMAT_XBGR8888,
++	DRM_FORMAT_RGBX8888,
++	DRM_FORMAT_BGRX8888,
++	DRM_FORMAT_RGB888,
++	DRM_FORMAT_BGR888,
++	DRM_FORMAT_RGB565,
++	DRM_FORMAT_BGR565,
++};
++
++/*
++ * Formats of the v35x cursor plane (channel phys 7, blender pipe 1): here
++ * alpha IS real - applied by the pipe's SRCOVER blend_ctl, not the
++ * OVL - so the formats with alpha are advertised too.
++ */
++static const u32 sun55i_cursor_formats[] = {
+ 	DRM_FORMAT_ARGB8888,
+ 	DRM_FORMAT_ABGR8888,
+ 	DRM_FORMAT_RGBA8888,
+@@ -485,10 +538,12 @@ static const u32 sun55i_ovl_formats[] = {
+ };
+ 
+ /*
+- * v35x overlay/cursor plane: a layer LAY1..3 of the primary's UI channel
+- * (phys 6), LINEAR only and unscaled (see sun55i_overlay_atomic_check).
+- * Immutable zpos: the intra-channel stacking order is fixed by the hardware layer
+- * index, it cannot be reordered on the fly.
++ * v35x overlay/cursor plane. type OVERLAY = a layer LAY1..3 of the primary's UI
++ * channel (phys 6): LINEAR only, unscaled, opaque stacking by
++ * priority (see sun55i_overlay_atomic_check). type CURSOR = layer 0 of the
++ * channel phys 7 on blender pipe 1: real alpha through SRCOVER,
++ * independent of the primary (survives AFBC). Immutable zpos: the
++ * stacking (layer index / pipe order) is fixed in hardware.
+  */
+ struct sun8i_layer *sun55i_ui_overlay_init(struct drm_device *drm,
+ 					   struct sun8i_mixer *mixer,
+@@ -496,6 +551,7 @@ struct sun8i_layer *sun55i_ui_overlay_init(struct drm_device *drm,
+ 					   int channel, int overlay,
+ 					   unsigned int zpos)
+ {
++	bool cursor = type == DRM_PLANE_TYPE_CURSOR;
+ 	struct sun8i_layer *layer;
+ 	int ret;
+ 
+@@ -508,8 +564,10 @@ struct sun8i_layer *sun55i_ui_overlay_init(struct drm_device *drm,
+ 
+ 	ret = drm_universal_plane_init(drm, &layer->plane, 0,
+ 				       &sun8i_ui_layer_funcs,
+-				       sun55i_ovl_formats,
+-				       ARRAY_SIZE(sun55i_ovl_formats),
++				       cursor ? sun55i_cursor_formats :
++						sun55i_ovl_formats,
++				       cursor ? ARRAY_SIZE(sun55i_cursor_formats) :
++						ARRAY_SIZE(sun55i_ovl_formats),
+ 				       sun8i_layer_modifiers, type, NULL);
+ 	if (ret) {
+ 		dev_err(drm->dev, "Couldn't initialize overlay plane\n");
+@@ -528,7 +586,9 @@ struct sun8i_layer *sun55i_ui_overlay_init(struct drm_device *drm,
+ 		return ERR_PTR(ret);
+ 	}
+ 
+-	drm_plane_helper_add(&layer->plane, &sun55i_overlay_helper_funcs);
++	drm_plane_helper_add(&layer->plane, cursor ?
++			     &sun55i_cursor_helper_funcs :
++			     &sun55i_overlay_helper_funcs);
+ 	layer->type = SUN8I_LAYER_TYPE_UI;
+ 	layer->channel = channel;
+ 	layer->overlay = overlay;
+-- 
+2.53.0
+

@@ -1,0 +1,189 @@
+From 694fe56d5d3d0a0f951664c8eb8f26403eb71a0b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?= <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 11 Oct 2026 17:25:47 +0200
+Subject: [PATCH 4/4] wayland: Advertise the GPU render node when the KMS
+ device has none
+
+On many ARM SoCs the display controller muffin drives (sun4i-drm, rockchip,
+meson...) and the GPU (panfrost, lima, etnaviv...) are separate DRM devices.
+The KMS device has no render node and rendering goes through Mesa's
+kmsro/renderonly layer, so drmGetRenderDeviceNameFromFd() returns NULL:
+wl_drm is then not advertised at all and dma-buf v4 advertises the card
+node as main device. Mesa clients can't find a GPU ("failed to get driver
+name for fd -1") and silently fall back to llvmpipe.
+
+Fall back to the lowest-numbered render node in that case, which is the
+GPU the kernel registered first, and use it for both wl_drm and the
+dma-buf v4 main device.
+
+Also, for the backport onto 6.4.x: add meta_renderer_native_get_primary_gpu()
+(as in mutter) and a should_send_modifiers() that keeps 6.4.x behaviour of
+always advertising the real importable modifiers.
+
+Tested on an Orange Pi 4A (Allwinner T527: sun4i-drm + panfrost).
+
+Co-authored-by: AI Agent
+---
+ src/backends/native/meta-renderer-native.c |  6 +++
+ src/backends/native/meta-renderer-native.h |  2 +
+ src/wayland/meta-wayland-dma-buf.c         | 11 ++++-
+ src/wayland/meta-wayland-drm.c             | 50 +++++++++++++++++++++-
+ src/wayland/meta-wayland-drm.h             |  5 +++
+ 5 files changed, 72 insertions(+), 2 deletions(-)
+
+diff --git a/src/backends/native/meta-renderer-native.c b/src/backends/native/meta-renderer-native.c
+index 7e75ab9f..b6b997f6 100644
+--- a/src/backends/native/meta-renderer-native.c
++++ b/src/backends/native/meta-renderer-native.c
+@@ -319,6 +319,12 @@ meta_create_renderer_native_gpu_data (MetaGpuKms *gpu_kms)
+   return g_new0 (MetaRendererNativeGpuData, 1);
+ }
+ 
++MetaGpuKms *
++meta_renderer_native_get_primary_gpu (MetaRendererNative *renderer_native)
++{
++  return renderer_native->primary_gpu_kms;
++}
++
+ static MetaEgl *
+ meta_renderer_native_get_egl (MetaRendererNative *renderer_native)
+ {
+diff --git a/src/backends/native/meta-renderer-native.h b/src/backends/native/meta-renderer-native.h
+index 1f61e261..10acde78 100644
+--- a/src/backends/native/meta-renderer-native.h
++++ b/src/backends/native/meta-renderer-native.h
+@@ -57,4 +57,6 @@ int64_t meta_renderer_native_get_frame_counter (MetaRendererNative *renderer_nat
+ 
+ void meta_renderer_native_reset_modes (MetaRendererNative *renderer_native);
+ 
++MetaGpuKms * meta_renderer_native_get_primary_gpu (MetaRendererNative *renderer_native);
++
+ #endif /* META_RENDERER_NATIVE_H */
+diff --git a/src/wayland/meta-wayland-dma-buf.c b/src/wayland/meta-wayland-dma-buf.c
+index 2604784f..e7876274 100644
+--- a/src/wayland/meta-wayland-dma-buf.c
++++ b/src/wayland/meta-wayland-dma-buf.c
+@@ -38,6 +38,7 @@
+ #include "config.h"
+ 
+ #include "wayland/meta-wayland-dma-buf.h"
++#include "wayland/meta-wayland-drm.h"
+ 
+ #include <drm_fourcc.h>
+ #include <sys/stat.h>
+@@ -804,6 +805,14 @@ dma_buf_bind (struct wl_client *client,
+   send_modifiers (resource, DRM_FORMAT_RGB565);
+ }
+ 
++/* muffin 6.4.x already advertises the real importable modifiers in v3
++ * (send_modifiers() queries EGL unconditionally), so keep doing that. */
++static gboolean
++should_send_modifiers (MetaBackend *backend)
++{
++  return TRUE;
++}
++
+ static void
+ add_format (MetaWaylandDmaBufManager *dma_buf_manager,
+             EGLDisplay                egl_display,
+@@ -1008,7 +1017,7 @@ get_main_device_id (void)
+           const char *device_path;
+           struct stat device_stat;
+ 
+-          render_node = drmGetRenderDeviceNameFromFd (meta_gpu_kms_get_fd (gpu_kms));
++          render_node = meta_wayland_drm_find_render_node (meta_gpu_kms_get_fd (gpu_kms));
+           device_path = render_node ? render_node
+                                     : meta_gpu_kms_get_file_path (gpu_kms);
+           g_warning ("DMABUF: primary device path = %s (render node %s)",
+diff --git a/src/wayland/meta-wayland-drm.c b/src/wayland/meta-wayland-drm.c
+index 12f3f024..9a4ea74a 100644
+--- a/src/wayland/meta-wayland-drm.c
++++ b/src/wayland/meta-wayland-drm.c
+@@ -21,6 +21,8 @@
+ 
+ #include "wayland/meta-wayland-drm.h"
+ 
++#include <string.h>
++#include <stdlib.h>
+ #include <xf86drm.h>
+ 
+ #include "backends/meta-backend-private.h"
+@@ -114,6 +116,52 @@ drm_bind (struct wl_client *client,
+   wl_drm_send_capabilities (resource, WL_DRM_CAPABILITY_PRIME);
+ }
+ 
++/*
++ * On many ARM SoCs the display controller (the KMS device muffin drives, e.g.
++ * sun4i-drm, rockchip, meson) and the GPU (panfrost, lima, etnaviv...) are
++ * separate DRM devices: the KMS device has no render node and rendering goes
++ * through Mesa's kmsro/renderonly layer. drmGetRenderDeviceNameFromFd() then
++ * returns NULL, so we'd advertise nothing (or the card node), Mesa clients
++ * can't find a GPU and silently fall back to llvmpipe. In that case advertise
++ * the render node of the GPU instead: the lowest-numbered render node, which
++ * is the first GPU the kernel registered.
++ */
++char *
++meta_wayland_drm_find_render_node (int kms_fd)
++{
++  drmDevicePtr devices[64];
++  char *render_node;
++  int n, i, best = -1;
++
++  render_node = drmGetRenderDeviceNameFromFd (kms_fd);
++  if (render_node)
++    return render_node;
++
++  n = drmGetDevices2 (0, devices, G_N_ELEMENTS (devices));
++  if (n <= 0)
++    return NULL;
++
++  for (i = 0; i < n; i++)
++    {
++      if (!(devices[i]->available_nodes & (1 << DRM_NODE_RENDER)))
++        continue;
++      if (best < 0 ||
++          strcmp (devices[i]->nodes[DRM_NODE_RENDER],
++                  devices[best]->nodes[DRM_NODE_RENDER]) < 0)
++        best = i;
++    }
++
++  if (best >= 0)
++    {
++      render_node = strdup (devices[best]->nodes[DRM_NODE_RENDER]);
++      g_message ("KMS device has no render node (display-only controller); "
++                 "using GPU render node %s", render_node);
++    }
++
++  drmFreeDevices (devices, n);
++  return render_node;
++}
++
+ void
+ meta_wayland_drm_init (MetaWaylandCompositor *compositor)
+ {
+@@ -129,7 +177,7 @@ meta_wayland_drm_init (MetaWaylandCompositor *compositor)
+ 
+   gpu_kms = META_GPU_KMS (gpus->data);
+   kms_fd = meta_gpu_kms_get_fd (gpu_kms);
+-  render_node_path = drmGetRenderDeviceNameFromFd (kms_fd);
++  render_node_path = meta_wayland_drm_find_render_node (kms_fd);
+ 
+   if (!render_node_path)
+     {
+diff --git a/src/wayland/meta-wayland-drm.h b/src/wayland/meta-wayland-drm.h
+index 23caa2ab..b72b43c5 100644
+--- a/src/wayland/meta-wayland-drm.h
++++ b/src/wayland/meta-wayland-drm.h
+@@ -24,4 +24,9 @@
+ 
+ void meta_wayland_drm_init (MetaWaylandCompositor *compositor);
+ 
++/* Render node to advertise to clients for the GPU behind kms_fd. Falls back
++ * to the system's render node when the KMS device has none (display-only
++ * controllers on ARM SoCs, rendered through kmsro/renderonly). Free with free(). */
++char * meta_wayland_drm_find_render_node (int kms_fd);
++
+ #endif /* META_WAYLAND_DRM_H */
+-- 
+2.53.0
+

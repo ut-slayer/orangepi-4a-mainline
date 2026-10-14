@@ -1,0 +1,60 @@
+From 6b238ec373e3970e58ebb4aeed7b9722b1db0360 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 18:41:48 +0200
+Subject: [PATCH 113/143] clk: sunxi-ng: gate: never write a stale CLEAR_MOD
+ update bit back
+
+Since the CLEAR_MOD wait moved outside the CCU spinlock, the
+self-clearing update bit of the A523/T527 CPU PLLs can still read back
+as 1 while ccu_mult_set_rate() polls for it with the lock dropped.  The
+gate helpers are the one path that can interleave with that window:
+clk_enable()/clk_disable() run under the framework's enable_lock, not
+prepare_lock, so their read-modify-write of the same PLL register can
+read the bit as set, have the hardware auto-clear it, and then write the
+stale 1 back -- re-arming the handshake behind the poll and potentially
+tripping its 10 ms timeout WARN.  Every other writer of the register
+(set_rate, set_parent, the frac helpers) is serialized against the
+handshake by prepare_lock and can never observe the bit mid-flight.
+
+Mask the clear bit out of the read value in both gate helpers.  No
+behavior change for any other platform: common->clear is only nonzero
+on clocks with CCU_FEATURE_CLEAR_MOD, i.e. the A523/T527 CPU PLLs.
+
+Co-Authored-By: AI Agent
+---
+ drivers/clk/sunxi-ng/ccu_gate.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/clk/sunxi-ng/ccu_gate.c b/drivers/clk/sunxi-ng/ccu_gate.c
+index 30673fe4e..baa7f282f 100644
+--- a/drivers/clk/sunxi-ng/ccu_gate.c
++++ b/drivers/clk/sunxi-ng/ccu_gate.c
+@@ -22,6 +22,14 @@ void ccu_gate_helper_disable(struct ccu_common *common, u32 gate)
+ 	reg = readl(common->base + common->reg);
+ 	if (common->features & CCU_FEATURE_UPDATE_BIT)
+ 		reg |= CCU_SUNXI_UPDATE_BIT;
++	/*
++	 * A CLEAR_MOD update bit armed by set_rate may still read back as
++	 * set while its wait runs outside the spinlock; do not write a
++	 * stale 1 back, or the handshake would be re-armed behind the
++	 * hardware's auto-clear.
++	 */
++	if (common->features & CCU_FEATURE_CLEAR_MOD)
++		reg &= ~common->clear;
+ 	writel(reg & ~gate, common->base + common->reg);
+ 
+ 	spin_unlock_irqrestore(common->lock, flags);
+@@ -48,6 +56,9 @@ int ccu_gate_helper_enable(struct ccu_common *common, u32 gate)
+ 	reg = readl(common->base + common->reg);
+ 	if (common->features & CCU_FEATURE_UPDATE_BIT)
+ 		reg |= CCU_SUNXI_UPDATE_BIT;
++	/* See ccu_gate_helper_disable(): never write a stale CLEAR_MOD bit back. */
++	if (common->features & CCU_FEATURE_CLEAR_MOD)
++		reg &= ~common->clear;
+ 	writel(reg | gate, common->base + common->reg);
+ 
+ 	spin_unlock_irqrestore(common->lock, flags);
+-- 
+2.53.0
+

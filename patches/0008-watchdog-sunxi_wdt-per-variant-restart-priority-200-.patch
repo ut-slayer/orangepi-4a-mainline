@@ -1,0 +1,67 @@
+From b894fda862e26d8edd403a8b34113a88645c2515 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:32:33 +0200
+Subject: [PATCH 008/143] watchdog: sunxi_wdt: per-variant restart priority,
+ 200 on the A523
+
+The SYSTEM_RESET call of the vendor BL31 shipped on T527 boards never
+returns and never resets. With the driver's default restart priority
+(128) the PSCI handler (129) runs first, so 'reboot' froze the board
+until the power was cut.
+
+Add a restart_priority field to sunxi_wdt_reg and set it to 200 for the
+sun55i-a523 variant only, so on that SoC the reset goes through the
+watchdog. Every other SoC keeps the framework default of 128, so PSCI
+still wins on boards with working firmware.
+---
+ drivers/watchdog/sunxi_wdt.c | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/watchdog/sunxi_wdt.c b/drivers/watchdog/sunxi_wdt.c
+index 3db34524e..5759519d1 100644
+--- a/drivers/watchdog/sunxi_wdt.c
++++ b/drivers/watchdog/sunxi_wdt.c
+@@ -48,6 +48,12 @@ struct sunxi_wdt_reg {
+ 	u8 wdt_reset_mask;
+ 	u8 wdt_reset_val;
+ 	u32 wdt_key_val;
++	/*
++	 * Restart handler priority. 0 = default (128, loses against
++	 * PSCI's 129). On SoCs whose EL3 firmware hangs in SYSTEM_RESET (T527:
++	 * vendor ATF) we have to beat PSCI for `reboot` to work.
++	 */
++	int restart_priority;
+ };
+ 
+ struct sunxi_wdt_dev {
+@@ -276,6 +282,7 @@ static const struct sunxi_wdt_reg sun55i_wdt_reg = {
+ 	.wdt_reset_mask = 0x03,
+ 	.wdt_reset_val = 0x01,
+ 	.wdt_key_val = 0x16aa0000,
++	.restart_priority = 200,
+ };
+ 
+ static const struct of_device_id sunxi_wdt_dt_ids[] = {
+@@ -315,7 +322,17 @@ static int sunxi_wdt_probe(struct platform_device *pdev)
+ 
+ 	watchdog_init_timeout(&sunxi_wdt->wdt_dev, timeout, dev);
+ 	watchdog_set_nowayout(&sunxi_wdt->wdt_dev, nowayout);
+-	watchdog_set_restart_priority(&sunxi_wdt->wdt_dev, 128);
++	/*
++	 * Priority > 129 (the PSCI handler's) ONLY where the variant
++	 * asks for it: on the T527/OPi4A the vendor ATF's SYSTEM_RESET hangs without
++	 * returning, and with the standard priority (128 < 129) this handler
++	 * never got to run -> `reboot` froze the board. The 5.15
++	 * BSP also resets through the watchdog. Other SoCs (A64/H3/H6...)
++	 * keep the vanilla behaviour (PSCI wins).
++	 */
++	if (sunxi_wdt->wdt_regs->restart_priority)
++		watchdog_set_restart_priority(&sunxi_wdt->wdt_dev,
++					      sunxi_wdt->wdt_regs->restart_priority);
+ 
+ 	watchdog_set_drvdata(&sunxi_wdt->wdt_dev, sunxi_wdt);
+ 
+-- 
+2.53.0
+

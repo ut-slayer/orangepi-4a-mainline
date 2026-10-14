@@ -2,6 +2,72 @@
 
 🌐 **English** · [Español](CHANGELOG.es.md)
 
+## v0.5 — Kernel 6.18.55, Ubuntu Cinnamon on Wayland, patch series in sync
+
+*Released 2026-10-14.* Kernel: Linux **6.18.55** (`6.18.55-g3f67628a8bff`), up
+from 6.18.44 in v0.4.x: eleven stable releases, rebased onto kernel.org's
+official incrementals. Four images: **CLI**, **GNOME**, **Kubuntu 26.04** and,
+new and experimental, **Ubuntu 26.04 Cinnamon on Wayland**.
+
+### 🧩 Patch series updated to 6.18.55, and cleaned up
+The series in `patches/` was still the v0.3 kernel (6.18.38). It is now exactly
+the kernel the v0.5 images run, on top of vanilla **6.18.55**. It was also
+tidied: experiments that a later patch reverted are gone, and features that
+took several attempts (RGMII delays, AFBC, the CPU PLL update handshake…) are
+one patch each with the final result. **175 → 143 patches, same logic.**
+Commit messages, code comments and log messages are all in English now, the
+series' defconfig matches the images, and every ported patch keeps its original
+author.
+
+### 🐧 Kernel
+- **Upstream A523 pin voltage fix** (the GPIO "withstand voltage" fix by Andre
+  Przywara) now comes from mainline / 6.18.y stable. It was tested on this board
+  before it was merged.
+- **Allwinner DMA fixes** (`dmaengine: sun6i`) under the analog codec and HDMI
+  audio, plus HDMI codec, ALSA, Bluetooth, `brcmfmac`, arm64, `xpad`, memory and
+  netfilter fixes from stable.
+- **NVMe built in**, so the root filesystem can live on an NVMe drive while
+  booting from the SD card (no initramfs needed). Not yet tested with a drive.
+- **nftables bridge filtering** (bridge family + reject), e.g. for OpenVPN in
+  TAP mode ([issue #7](https://github.com/ut-slayer/orangepi-4a-mainline/issues/7)).
+- **Snaps work**: all squashfs decompressors (xz, lzo, lz4, zstd) and squashfs
+  xattrs are built in.
+- **NPU (VIP9000)** kernel support via `etnaviv`, not loaded by default.
+- exFAT, NTFS3 and UTF-8 NLS as modules, F2FS built in.
+
+Measured on the board: Ethernet 941 / 939 Mbit/s (iperf3), GPU at 696 MHz,
+glmark2 ~840 (GNOME) / ~850 (Kubuntu), H.264 hardware decode in Epiphany.
+
+### 🎉 New (experimental): Ubuntu 26.04 Cinnamon on Wayland
+Boots straight into Cinnamon's Wayland session; the X11 session is there as a
+fallback. Two Ubuntu packages are shipped patched and pinned:
+
+- **Xwayland** 24.1.10 crashes in `damage_report()` (also hits Kubuntu); fixed
+  with the upstream patch released in 24.1.11. apt replaces it automatically
+  once Ubuntu ships 24.1.11 or later.
+- **Muffin** 6.4.1 left every Wayland app on software rendering (glmark2 52).
+  Upstream's `wl_drm` and dma-buf v4 support are backported, plus a new fix
+  for boards whose display controller and GPU are separate devices: **~610**.
+
+Sources and rebuild notes: [userspace-patches/](userspace-patches/).
+
+### 🔒 Security fix for v0.4 / v0.4.1 installs
+Those images shipped the kernel modules, the VPU libraries and some firmware
+owned by the default `user` account instead of root. Fixed in v0.5; on an
+existing install run once:
+`sudo find / -xdev \( -uid 1000 -o -gid 1000 \) -not -path '/home/*' -exec chown -h root:root {} +`
+
+### 🔧 Other changes
+- **Suspend disabled on every image.** The A523 does not resume from suspend
+  yet (the board hangs completely), and Plasma and Cinnamon suspend on their own
+  when idle. Turning only the screen off still works.
+- **Wi-Fi power saving off**: it could drop the connection for a few seconds.
+- **zram uses lzo-rle** (fastest when benchmarked on the board); `/tmp` is on
+  the SD card instead of RAM.
+- `ping` works as a normal user on the Debian images; the Ubuntu images use
+  the image-loading sandbox (glycin) again.
+- All images rebuilt from a clean base, fully up to date at build time.
+
 ## v0.4.1 — USB printer support
 
 *Released 2026-08-24.* Maintenance respin of v0.4. The only change is the

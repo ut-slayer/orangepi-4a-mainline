@@ -1,0 +1,178 @@
+From fd3f87eec58d3ed3c717b91222de2df300324d79 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 17:22:39 +0200
+Subject: [PATCH 109/143] drm/sun4i: sun55i_de: harden the multi-plane support
+
+Targeted review (races, leaks, validation) of the overlay and cursor
+planes. No corruption or leaks found; four gaps closed:
+
+1. The overlay check requires a primary with a non-negative origin: the
+   staging anchors the channel window to the CLIPPED destination of the
+   primary, and a negative crtc_x/y broke the crtc_x == dst.x1
+   equivalence the content check relies on (mbcoor would have been
+   offset; no out-of-bounds, the fetch is bounded by the fb's own
+   mbsize/pitch).
+
+2. The primary check also pulls the visible overlays into the commit
+   when the primary is turned off (crtc/fb NULL), not only when it
+   switches to AFBC/scaling. A commit that only turned off the primary
+   used to leave overlays visible in the DRM state, pointing at a
+   window that no longer existed (the hardware was already off, but the
+   UAPI state was wrong). A commit that turns everything off at once
+   still passes.
+
+3. The LAY1..3 overlay planes no longer expose the alpha property: the
+   stacking inside a channel is opaque (verified on the board) and the
+   property promised a translucency the hardware ignores. The cursor
+   keeps it (its pipe does apply it).
+
+4. The cursor channel output is ALWAYS premultiplied: sources without
+   alpha are converted in the OVL (NON_TO_EXC, the identity for opaque
+   sources) and the premul bit of pipe 1 is fixed together with the
+   pipe. Before, an X-format with global alpha < 1 blended too bright
+   (the SRCOVER coefficients pfs=1/pfd=1-As assume premul). The case
+   validated on the board (premultiplied AR24) produces exactly the same
+   registers.
+
+Also checked against the DRM core: drm_atomic_get_plane_state() pulls
+in the plane's crtc_state, so peeking at other->state in the primary
+check is serialized by the shared CRTC lock; all shadow block offsets are
+within the declared RCQ sizes.
+
+Co-Authored-By: AI Agent
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c      | 16 ++++++---
+ drivers/gpu/drm/sun4i/sun55i_de.h      |  1 -
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 46 ++++++++++++++++++++------
+ 3 files changed, 47 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index 63fc12187..60690a8b4 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -1366,8 +1366,16 @@ static void sun55i_de_cursor_stage(struct sun8i_mixer *mixer,
+ 		 SUN55I_OVL_ATTCTL_ALPHA_MODE(SUN55I_OVL_ATTCTL_COMBINED_ALPHA) |
+ 		 SUN55I_OVL_ATTCTL_FMT(fmt) |
+ 		 SUN55I_OVL_ATTCTL_ALPHA(state->alpha >> 8);
+-	if (fb->format->has_alpha)
+-		attctl |= SUN55I_OVL_ATTCTL_PREMUL(SUN55I_OVL_PREMUL_HAS_PREMUL);
++	/*
++	 * The channel output is ALWAYS premultiplied: the pipe's SRCOVER
++	 * coefficients (pfs=1, pfd=1-As) assume a premul source. A source without
++	 * alpha with global alpha <1 (X-format + alpha property) would blend
++	 * too bright without this conversion; for an opaque source the
++	 * conversion is the identity, and premul (the DRM default) passes through.
++	 */
++	attctl |= SUN55I_OVL_ATTCTL_PREMUL(fb->format->has_alpha ?
++					   SUN55I_OVL_PREMUL_HAS_PREMUL :
++					   SUN55I_OVL_PREMUL_NON_TO_EXC);
+ 	de_blk_write(lay, SUN55I_OVL_LAY_ATTCTL, attctl);
+ 	de_blk_write(lay, SUN55I_OVL_LAY_MBSIZE, size);
+ 	de_blk_write(lay, SUN55I_OVL_LAY_MBCOOR, 0);
+@@ -1384,7 +1392,6 @@ static void sun55i_de_cursor_stage(struct sun8i_mixer *mixer,
+ 		     (state->dst.x1 & 0xffff) | ((state->dst.y1 & 0xffff) << 16));
+ 	de_blk_write(ctl, SUN55I_BLD_CTL_BLEND(1), SUN55I_BLD_BLEND_SRCOVER);
+ 
+-	de->pipe1_premul = fb->format->has_alpha;
+ 	de->pipe1_en = true;
+ 	return;
+ 
+@@ -1610,9 +1617,10 @@ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ 		     SUN55I_BLD_CTL_ROUT,
+ 		     SUN55I_BLD_ROUT(0, SUN55I_DE_OVL_UI_LOGIC_CHN) |
+ 		     SUN55I_BLD_ROUT(1, SUN55I_DE_CUR_LOGIC_CHN));
++	/* the cursor channel output is ALWAYS premul (see cursor_stage) */
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_CTL),
+ 		     SUN55I_BLD_CTL_PREMUL,
+-		     de->pipe1_en && de->pipe1_premul ? BIT(1) : 0);
++		     de->pipe1_en ? BIT(1) : 0);
+ 
+ 	/*
+ 	 * Turn the ACCUMULATED dirty state of each block (real changes only,
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index 5c2e47b17..212512bf3 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -255,7 +255,6 @@ struct sun55i_de {
+ 	 */
+ 	bool				pipe0_en;
+ 	bool				pipe1_en;
+-	bool				pipe1_premul;	/* cursor source is premul */
+ 
+ 	/* TEMP instrumentation — revert with the dev_info diagnostics */
+ 	u32				commit_seq;	/* commits staged */
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index 9f1f8889d..fcff35e39 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -325,6 +325,14 @@ static int sun55i_overlay_atomic_check(struct drm_plane *plane,
+ 	if ((pri->src_w >> 16) != pri->crtc_w ||
+ 	    (pri->src_h >> 16) != pri->crtc_h)
+ 		return -EINVAL;
++	/*
++	 * The staging anchors the channel window to the primary's CLIPPED dst
++	 * (dst.x1 = max(crtc_x, 0)); a primary with a negative origin breaks the
++	 * crtc_x == dst.x1 equivalence and would misplace the mbcoor. Nobody
++	 * positions a primary like that; rejecting it keeps the calculation exact.
++	 */
++	if (pri->crtc_x < 0 || pri->crtc_y < 0)
++		return -EINVAL;
+ 	/* inside the channel window (mbcoor does not accept negative values) */
+ 	if (new_state->dst.x1 < pri->crtc_x || new_state->dst.y1 < pri->crtc_y ||
+ 	    new_state->dst.x2 > pri->crtc_x + (int)pri->crtc_w ||
+@@ -358,13 +366,21 @@ static int sun55i_primary_atomic_check(struct drm_plane *plane,
+ 	if (ret)
+ 		return ret;
+ 
+-	if (!new_state->crtc || !fb)
+-		return 0;
+-
+-	scaled = (new_state->src_w >> 16) != new_state->crtc_w ||
+-		 (new_state->src_h >> 16) != new_state->crtc_h;
+-	if (!scaled && fb->modifier == DRM_FORMAT_MOD_LINEAR)
+-		return 0;
++	/*
++	 * A primary valid for overlays = with crtc+fb, LINEAR and
++	 * unscaled. If it stops being so BY ANY route - AFBC, scaling or
++	 * TURNING OFF (crtc/fb NULL) - a visible overlay not included in
++	 * this commit would be left hanging off a channel window that no longer
++	 * exists: pulling its state in forces its re-check and the atomic
++	 * rejection. (In a commit that turns ALL planes off at once the
++	 * overlay is invisible too and its check passes.)
++	 */
++	if (new_state->crtc && fb) {
++		scaled = (new_state->src_w >> 16) != new_state->crtc_w ||
++			 (new_state->src_h >> 16) != new_state->crtc_h;
++		if (!scaled && fb->modifier == DRM_FORMAT_MOD_LINEAR)
++			return 0;
++	}
+ 
+ 	drm_for_each_plane(other, plane->dev) {
+ 		struct sun8i_layer *l = plane_to_sun8i_layer(other);
+@@ -574,10 +590,18 @@ struct sun8i_layer *sun55i_ui_overlay_init(struct drm_device *drm,
+ 		return ERR_PTR(ret);
+ 	}
+ 
+-	ret = drm_plane_create_alpha_property(&layer->plane);
+-	if (ret) {
+-		dev_err(drm->dev, "Couldn't add alpha property\n");
+-		return ERR_PTR(ret);
++	/*
++	 * Plane alpha ONLY on the cursor (the blender pipe really applies
++	 * it). On the LAY overlays the intra-channel stacking is opaque
++	 * (verified on the board): advertising the property would promise a
++	 * translucency the hardware does not deliver.
++	 */
++	if (cursor) {
++		ret = drm_plane_create_alpha_property(&layer->plane);
++		if (ret) {
++			dev_err(drm->dev, "Couldn't add alpha property\n");
++			return ERR_PTR(ret);
++		}
+ 	}
+ 
+ 	ret = drm_plane_create_zpos_immutable_property(&layer->plane, zpos);
+-- 
+2.53.0
+

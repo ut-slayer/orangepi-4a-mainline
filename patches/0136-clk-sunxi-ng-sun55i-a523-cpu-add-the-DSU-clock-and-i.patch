@@ -1,0 +1,247 @@
+From c01b6c0c9aa548ae687df556f2dbc5bb9fd2a4dc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 1 Aug 2026 01:15:09 +0200
+Subject: [PATCH 136/143] clk: sunxi-ng: sun55i-a523-cpu: add the DSU clock and
+ its PLL
+
+The CPU clock block also hosts the clock feeding the DSU -- the DynamIQ
+Shared Unit, that is the coherent interconnect and the 1 MB shared L3 --
+but only the two cluster paths were modelled, so nothing could drive it
+and it stayed at whatever rate the boot firmware happened to leave.
+
+Add CPU_DSU_PLL (0x0008) and the DSU mux (0x006c). The PLL has the same
+24 MHz * N shape and the same self-clearing update-bit handshake as the
+cluster PLLs; per the manuals it is InputFreq * N / (M0 * M1) with N in
+bits 15:8, M0 in bits 21:20 and M1 in bits 3:0, and InputFreq * N must
+stay within 480 MHz .. 2.05 GHz, hence N = 20..85. As for pll-cpul and
+pll-cpub, the output dividers are not modelled because the firmware
+leaves them at /1; that was verified on the board, where the register
+reads M0 = M1 = 0 and 24 MHz * N matches the measured rate exactly.
+
+The DSU mux does not share the cluster muxes' parent ordering: index 4
+is PLL_PERIPH0(2X) and the 600 MHz output sits at index 5, where the
+cluster muxes have pll-cpu0. Reusing the cluster table would reparent
+the interconnect onto the wrong source, so the tables are kept separate
+and the DSU mux notifier bypasses to index 5. The extra post-divider in
+bits 17:16 of the mux register is only needed below 288 MHz and the
+firmware leaves it at /1, so it is not modelled either.
+
+Register layout and mux encoding taken from T527 UM v0.92 and A523 UM
+V1.4, sections 2.2.9.2 and 2.2.9.25, which agree. The vendor BSP models
+the PLL dividers as _SUNXI_CCU_DIV(16, 4) and _SUNXI_CCU_DIV(0, 1),
+which contradicts both manuals -- bits 19:16 are reserved and M1 is four
+bits wide -- so the manuals are followed here.
+
+Also arm LOCK_ENABLE on the DSU PLL at probe, like the cluster PLLs.
+The firmware leaves that bit clear (its documented reset value, and
+confirmed by reading the register after boot), and without it the lock
+bit never asserts and a rate change can never be observed to complete.
+
+Co-Authored-By: AI Agent
+---
+ .../arm64/boot/dts/allwinner/sun55i-a523.dtsi |  6 +-
+ drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c    | 99 ++++++++++++++++++-
+ .../dt-bindings/clock/sun55i-a523-cpu-ccu.h   |  2 +
+ 3 files changed, 101 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index c2886eb52..411912d3d 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -1405,8 +1405,10 @@ cpu_ccu: clock-controller@8817000 {
+ 			compatible = "allwinner,sun55i-a523-cpu-ccu";
+ 			reg = <0x08817000 0x4000>;
+ 			clocks = <&osc24M>, <&rtc CLK_OSC32K>, <&rtc CLK_IOSC>,
+-				 <&ccu CLK_PLL_PERIPH0_600M>;
+-			clock-names = "hosc", "losc", "iosc", "pll-periph0-600m";
++				 <&ccu CLK_PLL_PERIPH0_600M>,
++				 <&ccu CLK_PLL_PERIPH0_2X>;
++			clock-names = "hosc", "losc", "iosc", "pll-periph0-600m",
++				      "pll-periph0-2x";
+ 			#clock-cells = <1>;
+ 		};
+ 	};
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+index f36135c70..3d2a5e41c 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+@@ -7,9 +7,11 @@
+  * On this SoC the CPU PLLs and the two per-cluster clock muxes live in a
+  * dedicated register block (0x08817000) separate from the main CCU. The
+  * little cluster (cpu0-3) is clocked from "cpul" (mux -> pll-cpul), the big
+- * cluster (cpu4-7) from "cpub" (mux -> pll-cpub). Each PLL is a plain
+- * 24 MHz * N multiplier, like the H616 pll-cpux; the boot firmware leaves the
+- * post-divider present in the mux register at /1, so it is not modelled here.
++ * cluster (cpu4-7) from "cpub" (mux -> pll-cpub), and the DSU (the DynamIQ
++ * Shared Unit, i.e. the coherent interconnect and the shared L3) from "dsu"
++ * (mux -> pll-cpu2). Each PLL is a plain 24 MHz * N multiplier, like the H616
++ * pll-cpux; the boot firmware leaves the post-dividers at /1, so they are not
++ * modelled here.
+  *
+  * Ported from the vendor driver (bsp/drivers/clk/sunxi-ng/ccu-sun55iw3-displl.c).
+  */
+@@ -27,9 +29,11 @@
+ 
+ #define SUN55I_A523_PLL_CPU0_REG	0x0000
+ #define SUN55I_A523_PLL_CPUL_REG	0x0004
++#define SUN55I_A523_PLL_CPU2_REG	0x0008
+ #define SUN55I_A523_PLL_CPUB_REG	0x000c
+ #define SUN55I_A523_CPUL_REG		0x0060
+ #define SUN55I_A523_CPUB_REG		0x0064
++#define SUN55I_A523_DSU_REG		0x006c
+ 
+ /* PLL control bits (BSP ccu-sun55iw3-displl.c) */
+ #define SUN55I_A523_PLL_EN		BIT(31)
+@@ -108,6 +112,41 @@ static struct ccu_mult pll_cpub_clk = {
+ 	},
+ };
+ 
++/*
++ * DSU PLL (CPU_DSU_PLL, feeding the DynamIQ Shared Unit: the coherent
++ * interconnect and the shared L3). Same 24 MHz * N shape and the same
++ * update-bit handshake as the two cluster PLLs.
++ *
++ * The manual gives CPU_DSU_PLL = InputFreq * N / (M0 * M1) with N in bits
++ * 15:8, M0 in bits 21:20 and M1 in bits 3:0 (both "+1"), and requires
++ * InputFreq * N to stay within 480 MHz .. 2.05 GHz, hence N = 20..85.
++ * Like pll-cpul and pll-cpub above, the two output dividers are not
++ * modelled: the boot firmware leaves both at /1, which was verified on the
++ * board (CPU_DSU_PLL_CTRL_REG reads M0 = M1 = 0 both at the firmware
++ * default and after a rate change, and 24 MHz * N matches the measured
++ * rate exactly).
++ *
++ * Note the vendor BSP (ccu-sun55iw3-displl.c) models these dividers as
++ * _SUNXI_CCU_DIV(16, 4) and _SUNXI_CCU_DIV(0, 1), which contradicts both
++ * the T527 UM v0.92 and the A523 UM V1.4: bits 19:16 are reserved there
++ * and M1 is four bits wide, not one. Follow the manuals.
++ */
++static struct ccu_mult pll_cpu2_clk = {
++	.enable		= BIT(27),
++	.lock		= BIT(28),
++	.mult		= _SUNXI_CCU_MULT_OFFSET_MIN_MAX(8, 8, 0, 20, 85),
++	.common		= {
++		.reg		= SUN55I_A523_PLL_CPU2_REG,
++		.clear		= SUN55I_A523_PLL_UPDATE,
++		.features	= CCU_FEATURE_CLEAR_MOD,
++		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpu2", osc24M,
++							   &ccu_mult_ops,
++							   CLK_GET_RATE_NOCACHE |
++							   CLK_IS_CRITICAL |
++							   CLK_SET_RATE_UNGATE),
++	},
++};
++
+ static const struct clk_parent_data cpul_parents[] = {
+ 	{ .fw_name = "hosc" },
+ 	{ .fw_name = "losc" },
+@@ -134,12 +173,39 @@ static SUNXI_CCU_MUX_DATA(cpub_clk, "cpub", cpub_parents,
+ 			  SUN55I_A523_CPUB_REG, 24, 3,
+ 			  CLK_SET_RATE_PARENT | CLK_IS_CRITICAL);
+ 
++/*
++ * The DSU mux does NOT share the cluster muxes' parent ordering: index 4 is
++ * PLL_PERIPH0(2X) and the 600 MHz output moves to index 5, where the cluster
++ * muxes have pll-cpu0 instead (T527 UM v0.92 and A523 UM V1.4 both document
++ * 2.2.9.25 0x006C DSU_CLK_REG identically). Getting this wrong would reparent
++ * the interconnect onto the wrong source, so keep the two tables separate.
++ *
++ * Bits 17:16 of the same register hold an extra post-divider on the PLL input
++ * (CPU_DSU_PLL_OUT_EXT_DIVP, /1 /2 /4), which is only needed below 288 MHz.
++ * The firmware leaves it at /1 and no OPP goes that low, so it is not
++ * modelled, matching how the cluster post-dividers are handled above.
++ */
++static const struct clk_parent_data dsu_parents[] = {
++	{ .fw_name = "hosc" },
++	{ .fw_name = "losc" },
++	{ .fw_name = "iosc" },
++	{ .hw = &pll_cpu2_clk.common.hw },
++	{ .fw_name = "pll-periph0-2x" },
++	{ .fw_name = "pll-periph0-600m" },
++};
++
++static SUNXI_CCU_MUX_DATA(dsu_clk, "dsu", dsu_parents,
++			  SUN55I_A523_DSU_REG, 24, 3,
++			  CLK_SET_RATE_PARENT | CLK_IS_CRITICAL);
++
+ static struct ccu_common *sun55i_a523_cpu_ccu_clks[] = {
+ 	&pll_cpu0_clk.common,
+ 	&pll_cpul_clk.common,
++	&pll_cpu2_clk.common,
+ 	&pll_cpub_clk.common,
+ 	&cpul_clk.common,
+ 	&cpub_clk.common,
++	&dsu_clk.common,
+ };
+ 
+ static struct clk_hw_onecell_data sun55i_a523_cpu_ccu_hw_clks = {
+@@ -147,10 +213,12 @@ static struct clk_hw_onecell_data sun55i_a523_cpu_ccu_hw_clks = {
+ 		[CLK_PLL_CPU0]	= &pll_cpu0_clk.common.hw,
+ 		[CLK_PLL_CPUL]	= &pll_cpul_clk.common.hw,
+ 		[CLK_PLL_CPUB]	= &pll_cpub_clk.common.hw,
++		[CLK_PLL_CPU2]	= &pll_cpu2_clk.common.hw,
+ 		[CLK_CPUL]	= &cpul_clk.common.hw,
+ 		[CLK_CPUB]	= &cpub_clk.common.hw,
++		[CLK_DSU]	= &dsu_clk.common.hw,
+ 	},
+-	.num	= CLK_CPUB + 1,
++	.num	= CLK_DSU + 1,
+ };
+ 
+ static const struct sunxi_ccu_desc sun55i_a523_cpu_ccu_desc = {
+@@ -192,10 +260,29 @@ static struct ccu_pll_nb sun55i_a523_pll_cpub_nb = {
+ 	.lock		= BIT(28),
+ };
+ 
++/*
++ * Same treatment for the DSU: it is the path to RAM for both clusters, so it
++ * must keep running while its PLL re-locks. Note bypass_index is 5 here, not
++ * 4 as for the clusters -- see the dsu_parents comment.
++ */
++static struct ccu_mux_nb sun55i_a523_dsu_nb = {
++	.common		= &dsu_clk.common,
++	.cm		= &dsu_clk.mux,
++	.delay_us	= 1,
++	.bypass_index	= 5,		/* PERI0_600M */
++};
++
++static struct ccu_pll_nb sun55i_a523_pll_cpu2_nb = {
++	.common		= &pll_cpu2_clk.common,
++	.enable		= BIT(29),	/* LOCK_ENABLE */
++	.lock		= BIT(28),
++};
++
+ static int sun55i_a523_cpu_ccu_probe(struct platform_device *pdev)
+ {
+ 	static const u16 pll_regs[] = {
+ 		SUN55I_A523_PLL_CPUL_REG,
++		SUN55I_A523_PLL_CPU2_REG,
+ 		SUN55I_A523_PLL_CPUB_REG,
+ 	};
+ 	void __iomem *reg;
+@@ -243,6 +330,10 @@ static int sun55i_a523_cpu_ccu_probe(struct platform_device *pdev)
+ 				  &sun55i_a523_cpub_nb);
+ 	ccu_pll_notifier_register(&sun55i_a523_pll_cpub_nb);
+ 
++	ccu_mux_notifier_register(pll_cpu2_clk.common.hw.clk,
++				  &sun55i_a523_dsu_nb);
++	ccu_pll_notifier_register(&sun55i_a523_pll_cpu2_nb);
++
+ 	return 0;
+ }
+ 
+diff --git a/include/dt-bindings/clock/sun55i-a523-cpu-ccu.h b/include/dt-bindings/clock/sun55i-a523-cpu-ccu.h
+index 2d17ce64c..ac754317e 100644
+--- a/include/dt-bindings/clock/sun55i-a523-cpu-ccu.h
++++ b/include/dt-bindings/clock/sun55i-a523-cpu-ccu.h
+@@ -11,5 +11,7 @@
+ #define CLK_PLL_CPU0		2
+ #define CLK_CPUL		3
+ #define CLK_CPUB		4
++#define CLK_PLL_CPU2		5
++#define CLK_DSU			6
+ 
+ #endif /* _DT_BINDINGS_CLK_SUN55I_A523_CPU_CCU_H_ */
+-- 
+2.53.0
+

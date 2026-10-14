@@ -1,0 +1,50 @@
+From c84a436b0e59d052c9243ac0eb4a0bc85e390968 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 12:12:51 +0200
+Subject: [PATCH 102/143] drm/sun4i: sun55i_de: document why do_arm() cannot
+ defer without timing info
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+sun55i_de_vblank_quirk() calls sun55i_de_do_arm() in its !ns_per_line
+branch without collecting the return value, which looks like the
+beam-gate defer path (lines > 0) is being silently dropped there.
+
+It is not: do_arm()'s own beam-gate requires the same ns_per_line, so
+when vblank_quirk runs without timing info the gate inside do_arm is a
+no-op and the function is guaranteed to return 0.  Capture that
+invariant in a comment and explicitly keep lines = 0 so the hrtimer is
+not (re)started -- with no ns_per_line there is no meaningful delay to
+schedule.
+
+No functional change; purely defensive documentation against future
+reorderings of the guards.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index f1e16f8d2..e421492d5 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -1852,6 +1852,13 @@ void sun55i_de_vblank_quirk(struct sun8i_mixer *mixer, unsigned int cur_line)
+ 	if (!de->ns_per_line) {
+ 		/* no timing info (mode_set not run yet): arm now */
+ 		sun55i_de_do_arm(de);
++		/*
++		 * do_arm() cannot defer here: its beam-gate also requires
++		 * ns_per_line, so when we have no timing info the gate is
++		 * a no-op and the return is guaranteed to be 0.  Leave
++		 * lines = 0 so the hrtimer is not (re)started below -- with
++		 * no ns_per_line there is no meaningful delay to program.
++		 */
+ 	} else if (cur_line <= target && !arm_at_target) {
+ 		/* already before the target and not asked to wait: arm now */
+ 		dbg_arm_now++;
+-- 
+2.53.0
+

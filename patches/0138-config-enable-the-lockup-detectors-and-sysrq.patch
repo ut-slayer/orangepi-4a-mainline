@@ -1,0 +1,66 @@
+From 8a14f297db579920f4f42339ead62cbc984da48e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 21 Aug 2026 18:06:11 +0200
+Subject: [PATCH 138/143] config: enable the lockup detectors and sysrq
+
+A sustained WireGuard transfer (~880 Mbps over iperf3) hangs the board.
+It was reproduced four times, and every single time the gap between the
+last line a 1 Hz logger managed to write and the next boot was exactly
+14 seconds -- which is the sunxi watchdog (timeout=16 sec) resetting a
+machine that stopped responding, not a power loss, which would be
+instantaneous.
+
+So the kernel hard-locks. The reason we have no trace whatsoever is that
+every detector is off: SOFTLOCKUP_DETECTOR, HARDLOCKUP_DETECTOR,
+DETECT_HUNG_TASK and WQ_WATCHDOG were all unset, so the CPU wedges and
+nothing is ever printed.
+
+Turn them on. On arm64 without pseudo-NMI the perf-based hard lockup
+detector is unavailable, so this gets HARDLOCKUP_DETECTOR_BUDDY, where
+each CPU watches another one -- which is what we need, since the lockup
+takes the CPU down with interrupts disabled.
+
+Also enable SOFTLOCKUP_DETECTOR_INTR_STORM (it names the interrupt that
+is starving the CPU, and pulls in IRQ_TIME_ACCOUNTING), MAGIC_SYSRQ so
+stack dumps can be requested over the serial console of a wedged board,
+and PANIC_ON_OOPS with a 10 s timeout so an oops reboots instead of
+leaving a half-dead system.
+
+These stay on permanently: Debian and Ubuntu ship them for the same
+reason, and a hang that leaves no evidence is far more expensive than
+the detectors.
+
+Co-Authored-By: AI Agent
+---
+ arch/arm64/configs/opi4a_blindboot_defconfig | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/arch/arm64/configs/opi4a_blindboot_defconfig b/arch/arm64/configs/opi4a_blindboot_defconfig
+index 948ff0a7a..07c8b2460 100644
+--- a/arch/arm64/configs/opi4a_blindboot_defconfig
++++ b/arch/arm64/configs/opi4a_blindboot_defconfig
+@@ -227,6 +227,8 @@ CONFIG_MTD_UBI=m
+ CONFIG_MTD_HYPERBUS=m
+ CONFIG_OF_OVERLAY=y
+ CONFIG_ZRAM=m
++CONFIG_ZRAM_BACKEND_LZ4=y
++CONFIG_ZRAM_BACKEND_LZ4HC=y
+ CONFIG_ZRAM_BACKEND_ZSTD=y
+ CONFIG_ZRAM_BACKEND_LZO=y
+ CONFIG_ZRAM_DEF_COMP_ZSTD=y
+@@ -1054,6 +1056,11 @@ CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
+ CONFIG_DEBUG_INFO_REDUCED=y
+ CONFIG_MAGIC_SYSRQ=y
+ CONFIG_DEBUG_FS=y
++CONFIG_PANIC_ON_OOPS=y
++CONFIG_PANIC_TIMEOUT=10
++CONFIG_SOFTLOCKUP_DETECTOR_INTR_STORM=y
++CONFIG_HARDLOCKUP_DETECTOR=y
++CONFIG_WQ_WATCHDOG=y
+ # CONFIG_FTRACE is not set
+ CONFIG_CORESIGHT=m
+ CONFIG_CORESIGHT_LINK_AND_SINK_TMC=m
+-- 
+2.53.0
+

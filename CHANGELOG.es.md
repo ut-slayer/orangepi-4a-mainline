@@ -2,6 +2,74 @@
 
 🌐 [English](CHANGELOG.md) · **Español**
 
+## v0.5 — Kernel 6.18.55, Ubuntu Cinnamon sobre Wayland, serie de parches al día
+
+*Publicada el 14-10-2026.* Kernel: Linux **6.18.55** (`6.18.55-g3f67628a8bff`),
+desde el 6.18.44 de la v0.4.x: once versiones estables, rebasado sobre los
+incrementales oficiales de kernel.org. Cuatro imágenes: **CLI**, **GNOME**,
+**Kubuntu 26.04** y, nueva y experimental, **Ubuntu 26.04 Cinnamon sobre Wayland**.
+
+### 🧩 Serie de parches actualizada al 6.18.55, y limpiada
+La serie de `patches/` seguía siendo el kernel de la v0.3 (6.18.38). Ahora es
+exactamente el kernel de las imágenes v0.5, sobre un **6.18.55** vanilla. Además
+se ha ordenado: se quitaron los experimentos que luego deshacía otro parche, y lo
+que necesitó varios intentos (retardos RGMII, AFBC, el handshake de los PLL de
+CPU…) es ahora un parche por tema con el resultado final. **De 175 a 143
+parches, misma lógica.** Los mensajes de los commits, los comentarios del código
+y los mensajes del log están ya en inglés, el defconfig de la serie coincide con
+el de las imágenes y cada parche portado conserva a su autor original.
+
+### 🐧 Kernel
+- **Arreglo upstream del voltaje de los pines del A523** (el del "withstand
+  voltage" de los GPIO, de Andre Przywara), ahora desde mainline / 6.18.y
+  estable. Se probó en esta placa antes de que entrara.
+- **Arreglos de DMA de Allwinner** (`dmaengine: sun6i`) bajo el códec analógico
+  y el audio HDMI, más arreglos de estable en códec HDMI, ALSA, Bluetooth,
+  `brcmfmac`, arm64, `xpad`, memoria y netfilter.
+- **NVMe integrado**, para tener el sistema raíz en un NVMe arrancando desde la
+  SD (sin initramfs). Aún sin probar con un disco.
+- **Filtrado de bridge en nftables** (familia bridge + reject), p. ej. para
+  OpenVPN en modo TAP ([issue #7](https://github.com/ut-slayer/orangepi-4a-mainline/issues/7)).
+- **Los snaps funcionan**: todos los descompresores de squashfs (xz, lzo, lz4,
+  zstd) y sus xattrs van integrados.
+- **NPU (VIP9000)** en el kernel vía `etnaviv`, sin cargar por defecto.
+- exFAT, NTFS3 y NLS UTF-8 como módulos, F2FS integrado.
+
+Medido en la placa: Ethernet 941 / 939 Mbit/s (iperf3), GPU a 696 MHz, glmark2
+~840 (GNOME) / ~850 (Kubuntu), decodificación H.264 por hardware en Epiphany.
+
+### 🎉 Nuevo (experimental): Ubuntu 26.04 Cinnamon sobre Wayland
+Arranca directamente en la sesión Wayland de Cinnamon; la sesión X11 queda como
+respaldo. Dos paquetes de Ubuntu van parcheados y fijados:
+
+- **Xwayland** 24.1.10 se cae en `damage_report()` (también afecta a Kubuntu);
+  arreglado con el parche upstream publicado en la 24.1.11. apt lo sustituye solo
+  en cuanto Ubuntu publique la 24.1.11 o posterior.
+- **Muffin** 6.4.1 dejaba todas las aplicaciones Wayland en renderizado por
+  software (glmark2 52). Se han portado el `wl_drm` y el dma-buf v4 de upstream,
+  más un arreglo nuevo para placas con el controlador de pantalla y la GPU en
+  dispositivos separados: **~610**.
+
+Fuentes e instrucciones para recompilar: [userspace-patches/](userspace-patches/).
+
+### 🔒 Arreglo de seguridad para instalaciones v0.4 / v0.4.1
+Esas imágenes llevaban los módulos del kernel, las librerías del VPU y parte del
+firmware a nombre de la cuenta `user` en vez de root. Arreglado en la v0.5; en
+una instalación existente, ejecuta una vez:
+`sudo find / -xdev \( -uid 1000 -o -gid 1000 \) -not -path '/home/*' -exec chown -h root:root {} +`
+
+### 🔧 Otros cambios
+- **Suspensión desactivada en todas las imágenes.** El A523 aún no vuelve de la
+  suspensión (la placa se cuelga del todo), y Plasma y Cinnamon suspenden solos
+  sin uso. Apagar solo la pantalla sigue funcionando.
+- **Ahorro de energía del WiFi desactivado**: podía cortar la conexión unos
+  segundos.
+- **zram con lzo-rle** (el más rápido medido en la placa); `/tmp` en la SD en
+  vez de en RAM.
+- `ping` funciona como usuario normal en las Debian; las Ubuntu vuelven a usar
+  el sandbox de carga de imágenes (glycin).
+- Todas las imágenes reconstruidas desde una base limpia y al día.
+
 ## v0.4.1 — Soporte de impresoras USB
 
 *Publicada el 24-08-2026.* Respin de mantenimiento de la v0.4. El único cambio

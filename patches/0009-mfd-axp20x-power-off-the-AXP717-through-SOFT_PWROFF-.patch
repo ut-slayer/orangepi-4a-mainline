@@ -1,0 +1,91 @@
+From 0b9a812d5103588a94c0949b8356311dc69cb86f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 11:32:34 +0200
+Subject: [PATCH 009/143] mfd: axp20x: power off the AXP717 through SOFT_PWROFF
+ (0x27)
+
+axp20x_power_off() wrote AXP20X_OFF_CTRL (0x32) for the AXP717 through the
+default branch, but that register does not exist on the AXP717/AXP2202:
+the register map jumps from 0x30 (I2C_CFG) to 0x3e (BUS_MODE_SEL), and
+0x32 is not in the writeable ranges either. The regmap write failed
+silently, the handler returned NOTIFY_DONE and the poweroff chain fell
+through to PSCI SYSTEM_OFF, which hangs with the vendor firmware on the
+T527, so the board never powered off.
+
+The real soft power-off is SOFT_PWROFF (0x27) bit 0, the same register
+mainline U-Boot uses for the AXP717 (AXP_SHUTDOWN_REG 0x27, BIT(0)). Add
+an AXP717_ID case that sets it with update_bits (bits 2-3 of the same
+register hold power-on configuration) and open 0x27 in the writeable
+ranges.
+---
+ drivers/mfd/axp20x.c       | 24 ++++++++++++++++++++++++
+ include/linux/mfd/axp20x.h |  2 ++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/drivers/mfd/axp20x.c b/drivers/mfd/axp20x.c
+index c5f0ebae3..3c0b4aed6 100644
+--- a/drivers/mfd/axp20x.c
++++ b/drivers/mfd/axp20x.c
+@@ -221,7 +221,16 @@ static const struct regmap_access_table axp313a_volatile_table = {
+ static const struct regmap_range axp717_writeable_ranges[] = {
+ 	regmap_reg_range(AXP717_PMU_FAULT, AXP717_MODULE_EN_CONTROL_1),
+ 	regmap_reg_range(AXP717_MIN_SYS_V_CONTROL, AXP717_BOOST_CONTROL),
++	/*
++	 * SOFT_PWROFF (0x27, bit0) is the REAL soft power-off of the AXP717/
++	 * AXP2202: BSP axp2101.h (AXP2202_SOFT_PWROFF) y U-Boot axp_spl
++	 * (AXP_SHUTDOWN_REG 0x27 / MASK BIT(0)). The generic 0x32 of
++	 * axp20x_power_off() does not exist in this chip's map (it jumps from
++	 * 0x30 I2C_CFG to 0x3e BUS_MODE_SEL), and the PSCI SYSTEM_OFF fallback
++	 * hangs in the T527's ATF.
++	 */
+ 	regmap_reg_range(AXP717_VSYS_V_POWEROFF, AXP717_VSYS_V_POWEROFF),
++	regmap_reg_range(AXP717_SOFT_PWROFF, AXP717_SOFT_PWROFF),
+ 	regmap_reg_range(AXP717_IRQ0_EN, AXP717_IRQ4_EN),
+ 	regmap_reg_range(AXP717_IRQ0_STATE, AXP717_IRQ4_STATE),
+ 	regmap_reg_range(AXP717_TS_PIN_CFG, AXP717_TS_PIN_CFG),
+@@ -1245,6 +1254,19 @@ static int axp20x_power_off(struct sys_off_data *data)
+ 	case AXP313A_ID:
+ 		shutdown_reg = AXP313A_SHUTDOWN_CTRL;
+ 		break;
++	case AXP717_ID:
++		/*
++		 * The AXP717/AXP2202 register map has no 0x32 (it jumps from
++		 * 0x30 I2C_CFG to 0x3e BUS_MODE_SEL); its soft power-off is
++		 * SOFT_PWROFF (0x27) bit 0 - per the vendor BSP header
++		 * (AXP2202_SOFT_PWROFF) and U-Boot's axp_spl AXP717 support
++		 * (AXP_SHUTDOWN_REG 0x27 / AXP_SHUTDOWN_MASK BIT(0)). RMW:
++		 * bits 2-3 of the same register hold power-on configuration.
++		 */
++		regmap_update_bits(axp20x->regmap, AXP717_SOFT_PWROFF,
++				   AXP717_SOFT_PWROFF_EN,
++				   AXP717_SOFT_PWROFF_EN);
++		goto wait;
+ 	default:
+ 		shutdown_reg = AXP20X_OFF_CTRL;
+ 		break;
+@@ -1252,6 +1274,8 @@ static int axp20x_power_off(struct sys_off_data *data)
+ 
+ 	regmap_write(axp20x->regmap, shutdown_reg, AXP20X_OFF);
+ 
++wait:
++
+ 	/* Give capacitors etc. time to drain to avoid kernel panic msg. */
+ 	mdelay(500);
+ 
+diff --git a/include/linux/mfd/axp20x.h b/include/linux/mfd/axp20x.h
+index 3c5aecf1d..c430f03d4 100644
+--- a/include/linux/mfd/axp20x.h
++++ b/include/linux/mfd/axp20x.h
+@@ -127,6 +127,8 @@ enum axp20x_variants {
+ #define AXP717_MODULE_EN_CONTROL_2	0x19
+ #define AXP717_BOOST_CONTROL		0x1e
+ #define AXP717_VSYS_V_POWEROFF		0x24
++#define AXP717_SOFT_PWROFF		0x27
++#define AXP717_SOFT_PWROFF_EN		BIT(0)
+ #define AXP717_IRQ0_EN			0x40
+ #define AXP717_IRQ1_EN			0x41
+ #define AXP717_IRQ2_EN			0x42
+-- 
+2.53.0
+

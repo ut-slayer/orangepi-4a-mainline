@@ -1,0 +1,52 @@
+From 2bc77729e580536564d5a22e2a2f2b3e5f2d1168 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 18:41:09 +0200
+Subject: [PATCH 112/143] clk: sunxi-ng: a523-cpu: document the conflicting CPU
+ PLL range specs
+
+The pll-cpu0 comment cited only the T527 UM v0.92 figure (480 MHz to
+2.05 GHz), which made the N = 108 cap (24 MHz * 108 = 2.592 GHz) look
+like it exceeds the spec it quotes.  The two manuals actually disagree
+on the CPU PLL output range for the same registers: the T527 UM v0.92
+(section 2.2.9.1) documents 480 MHz to 2.05 GHz, while the A523 UM V1.1
+(same section number) documents 480 MHz to 2.6 GHz.  N = 108 is the
+BSP's own limit for the cluster PLLs
+(bsp/drivers/clk/sunxi-ng/ccu-sun55iw3-displl.c) and stays within the
+wider A523 range.
+
+Spell out the doc-vs-doc conflict so the cap does not look mismatched
+against either manual.  No functional change.
+
+Co-Authored-By: AI Agent
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+index 80dc43746..f36135c70 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+@@ -47,12 +47,14 @@ static const struct clk_parent_data osc24M[] = {
+  * pll-cpu0 is a backup/alternate CPU PLL. Model it like the H616 pll-cpux
+  * (24 MHz * N, offset 1). It is not on the active cluster path but is one of
+  * the mux inputs, so it needs to exist.  Cap N at 108 to match the active
+- * cluster PLLs (pll_cpul/pll_cpub) below: the manual documents the CPU PLL
+- * family's InputFreq*N range as 480 MHz .. 2.05 GHz (T527 UM v0.92
+- * §2.2.9.1), and the cluster PLLs already cap N at 108 (= 2.592 GHz) for
+- * headroom.  The unbounded _SUNXI_CCU_MULT_MIN(8,8,12) would otherwise let a
++ * cluster PLLs (pll_cpul/pll_cpub) below.  The two manuals disagree on the
++ * CPU PLL output range for the same registers (section 2.2.9.1 in both):
++ * the T527 UM v0.92 documents 480 MHz .. 2.05 GHz, the A523 UM V1.1
++ * documents 480 MHz .. 2.6 GHz.  N = 108 (2.592 GHz) is the BSP's own
++ * limit for the cluster PLLs and stays within the wider A523 range.  The
++ * unbounded _SUNXI_CCU_MULT_MIN(8,8,12) would otherwise let a
+  * clk_set_rate() program N up to 256 (24 MHz * 256 = 6.144 GHz), far above
+- * what the hardware is specified to deliver.
++ * anything either manual specifies.
+  */
+ static struct ccu_mult pll_cpu0_clk = {
+ 	.enable		= BIT(27) | BIT(29) | BIT(30) | BIT(31),
+-- 
+2.53.0
+

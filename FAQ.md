@@ -118,22 +118,21 @@ external storage on this board, the M.2 NVMe slot is the way.
 - Analog line-out and microphone capture: wired in the codec driver but **not
   bench-tested yet** (the board has no onboard speaker/mic to try them on).
   The 3.5 mm **headphone** output and jack detection do work.
-- **Suspend / hibernate: disabled by default.** The mainline resume path on this
-  SoC still needs work — the system doesn't reliably come back after the screen
-  powers off — so automatic suspend *and* idle screen-blanking are turned off in
-  the image, and the display stays on. Re-enable either in *Settings → Power* if
-  you want to test it.
+- **Suspend / hibernate: disabled on every image.** On mainline the A523 does
+  not wake up from suspend yet: the board hangs completely (not even the
+  heartbeat LED) until you cut the power. KDE Plasma and Cinnamon suspend on
+  their own after a while idle, so since v0.5 suspend and hibernation are turned
+  off system-wide (sleep targets masked, logind reports `CanSuspend=no`).
+  Turning only the screen off when idle is fine.
 - eMMC: the module is **detected and works at HS200** (read/write) — confirmed
   on real hardware by a tester (a 58 GB eMMC came up as `mmcblk2` and was used
   as storage — thanks to **JamesCL** for testing the eMMC and the 4 GB board! 🙏). **Booting from eMMC** is a separate step that isn't wired up yet
-  — the image is set up to boot from microSD. **NVMe / M.2 SSD: untested with
-  a real drive.** The patch series now brings up the PCIe controller and the
-  combo PHY, and the root port enumerates — but that's verified only with an
-  **empty** slot. Whether a real NVMe drive enumerates, works and stays stable
-  is exactly the part I can't confirm yet. The published v0.2 images predate
-  this, so nothing shows in `lspci` there (thanks to the tester who diagnosed
-  exactly this and reported it!). I don't have an NVMe drive to test with —
-  if you have one in the M.2 slot, a test report would be gold.
+  — the image is set up to boot from microSD. **NVMe / M.2 SSD: validated by
+  two testers** with real drives (KIOXIA and Intel), with full-drive `f3`
+  integrity runs and zero corruption. Since v0.5 the `nvme` driver is built
+  into the kernel, so you can boot from the SD card with the **root filesystem on
+  the NVMe** (`root=` pointing at the NVMe partition, no initramfs needed). That
+  last setup hasn't been tested on a real drive yet: a report would be gold.
 - GPIO header / I2C / SPI: untested.
 - NPU: the etnaviv driver recognizes it, but it is blacklisted by default
   (when loaded it registered itself as the main render device and broke GPU
@@ -144,7 +143,8 @@ external storage on this board, the M.2 NVMe slot is the way.
 
 **How fast is it?**
 It's an octa-core Cortex-A55 with a Mali-G57 — a modest but honest desktop.
-glmark2-es2 (Wayland) scores in the ~500s with Panfrost. The GNOME Wayland
+glmark2-es2 (Wayland, 800×600) scores ~840 on GNOME and ~850 on Kubuntu with
+Panfrost (GPU at 696 MHz). The GNOME Wayland
 desktop is smooth at 1080p; the browser runs with GPU acceleration including WebGL.
 
 **Does it need a heatsink? Does it throttle?**
@@ -153,7 +153,7 @@ CPU frequency scaling (cpufreq/DVFS) works: OPPs from 480 MHz up to
 cluster (cpu4-7), schedutil governor, with the A523 thermal sensors (THS) and
 CPU cooling maps wired — under sustained load the chip throttles itself
 gracefully instead of cooking. The GPU scales too (Panfrost devfreq,
-150–600 MHz, simple_ondemand): it idles at 150 MHz and has its own cooling
+150–696 MHz, simple_ondemand): it idles at 150 MHz and has its own cooling
 map on the GPU thermal zone. In normal desktop use it runs cool, and
 development was done with no heatsink and no fan.
 Measured (bare board, no cooling): ~47 °C idle, ~60 °C under a full 8-core CPU
@@ -162,12 +162,14 @@ desktop use; add one only if you plan to hammer all cores for long stretches.
 
 **Is there swap / zram?**
 **zram: yes, on by default. SD swap file: optional.** The image enables a
-**1 GB compressed in-RAM swap (zram, zstd)**: on the 2 GB board a browser
+**1 GB compressed in-RAM swap (zram, lzo-rle — the fastest of the kernel's
+compressors when benchmarked on this board)**: on the 2 GB board a browser
 playing video can exhaust the RAM, and swapping to the slow microSD used to
 stall the desktop — zram absorbs that in RAM instead, compressed, without
 touching the card. Its cost is close to zero while unused (it only takes
 memory for pages that actually get swapped out), and you can turn it off any
-time with `sudo systemctl disable --now zram-swap.service`.
+time with `sudo systemctl disable --now zram-swap.service`. To see what it's
+doing: `sudo zramctl`.
 
 There is still **no swap file on the SD by default**. If you want extra
 headroom (worth it on the 2 GB variant for heavy desktop use), the gift script
@@ -196,9 +198,21 @@ in the system tray or *System Settings → Audio*, and you can turn the behaviou
 off with `systemctl --user disable --now aureal-audio-autoswitch`.
 
 **Wayland or X11?**
-Wayland only. The image ships a **GNOME Wayland** session and everything is
-tested under it. No **X11 session** is shipped — Panfrost gives its best
-accelerated experience under Wayland, and hardware video in the browser needs it.
+Wayland. **GNOME** and **Kubuntu** ship only their Wayland sessions — Panfrost
+gives its best accelerated experience under Wayland, and hardware video in the
+browser needs it. **Cinnamon** boots into its Wayland session, which the
+Cinnamon project itself still calls experimental; its X11 session is installed
+too, as a fallback (pick **Cinnamon** instead of **Cinnamon (Wayland)** on the
+login screen).
+
+**Why are some Ubuntu packages pinned?**
+The Kubuntu and Cinnamon images ship two Ubuntu packages patched: **Xwayland**
+(24.1.10 in Ubuntu 26.04 crashes as the session starts) and, on Cinnamon,
+**Muffin** (without the patches every Wayland app renders in software). An apt
+pin (`/etc/apt/preferences.d/aurealnix-patched-packages`) stops a plain Ubuntu
+update from replacing them with versions that lack the fix. Xwayland 24.1.11 or
+later is allowed through, so that pin lifts itself once Ubuntu ships the fix.
+Sources and details: [userspace-patches/](userspace-patches/).
 
 **Why is file indexing (Tracker) disabled? Why is there no software store?**
 To keep RAM free on the 2 GB board:
@@ -217,16 +231,18 @@ Yes — userspace is **pure Debian 13** (built with debootstrap, standard repos
 + trixie-backports for Mesa) and updates normally through apt. Only
 the kernel lives outside dpkg: an apt pin prevents Debian's `linux-image-*`
 from installing, because a stock Debian kernel would not boot this board (it
-lacks the 130 patches this port needs, and the boot chain expects a specific
+lacks the 143 patches this port needs, and the boot chain expects a specific
 uImage).
 
 **How do kernel updates arrive?**
-With new image releases (release notes will say what changed), or manually:
-replace `uImage` + modules from the repo's built artifacts. Instructions in
-the README.
+With new image releases, which also attach the kernel as `.deb` packages: install
+them with `sudo apt install ./aurealnix-kernel-common_*.deb ./linux-image-*.deb
+./linux-headers-*.deb` and reboot. The previous kernel stays installed, and
+`sudo aurealnix-kernel-switch <version>` goes back to it. The release notes say
+what changed.
 
 **Can I build the kernel myself?**
-Yes — the repo has the full patch series (130 patches on vanilla 6.18.38), the
+Yes — the repo has the full patch series (143 patches on vanilla 6.18.55), the
 defconfig and the board `.dts`. Build instructions included.
 
 **Which U-Boot does it use?**

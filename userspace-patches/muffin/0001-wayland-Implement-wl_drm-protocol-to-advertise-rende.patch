@@ -1,0 +1,457 @@
+From 2baed75f7deaa6e0fa41cad564e518cabeb9470a Mon Sep 17 00:00:00 2001
+From: Clement Lefebvre <clement.lefebvre@linuxmint.com>
+Date: Sun, 21 Jun 2026 13:30:31 +0200
+Subject: [PATCH 1/4] wayland: Implement wl_drm protocol to advertise render
+ node to clients
+
+Implement the wl_drm protocol and advertise the render node path on
+client bind. This gives Mesa and Xwayland the render node path directly,
+restoring hardware acceleration for both native Wayland EGL clients and
+Xwayland Glamor.
+
+This fixes acceleration for most apps and games in Wayland except
+thoses which require dma-buf v4 (glmark2-es2-wayland for instance).
+
+Note: dma-buf v4 (implemented in the next 3 commits) supersedes wl_drm
+but wl_drm is a tiny protocol, costs nothing to keep, and potentially
+covers older clients.
+
+(cherry picked from commit 11d90f79fe866287b4aea0e96b9fc81ffc53ae6a)
+---
+ src/meson.build                      |   3 +
+ src/wayland/meta-wayland-drm.c       | 149 +++++++++++++++++++++
+ src/wayland/meta-wayland-drm.h       |  27 ++++
+ src/wayland/meta-wayland.c           |   2 +
+ src/wayland/protocol/wayland-drm.xml | 189 +++++++++++++++++++++++++++
+ 5 files changed, 370 insertions(+)
+ create mode 100644 src/wayland/meta-wayland-drm.c
+ create mode 100644 src/wayland/meta-wayland-drm.h
+ create mode 100644 src/wayland/protocol/wayland-drm.xml
+
+diff --git a/src/meson.build b/src/meson.build
+index 2dd095e2..77a81506 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -516,6 +516,8 @@ if have_wayland
+     'wayland/meta-wayland-data-source-primary-legacy.h',
+     'wayland/meta-wayland-dma-buf.c',
+     'wayland/meta-wayland-dma-buf.h',
++    'wayland/meta-wayland-drm.c',
++    'wayland/meta-wayland-drm.h',
+     'wayland/meta-wayland-dnd-surface.c',
+     'wayland/meta-wayland-dnd-surface.h',
+     'wayland/meta-wayland-gtk-shell.c',
+@@ -818,6 +820,7 @@ if have_wayland
+     ['xdg-shell', 'unstable', 'v6', ],
+     ['xdg-shell', 'stable', ],
+     ['xwayland-keyboard-grab', 'unstable', 'v1', ],
++    ['wayland-drm', 'private', ],
+   ]
+   if have_wayland_eglstream
+     wayland_eglstream_protocols_dir = wayland_eglstream_protocols_dep.get_variable(pkgconfig: 'pkgdatadir')
+diff --git a/src/wayland/meta-wayland-drm.c b/src/wayland/meta-wayland-drm.c
+new file mode 100644
+index 00000000..12f3f024
+--- /dev/null
++++ b/src/wayland/meta-wayland-drm.c
+@@ -0,0 +1,149 @@
++/*
++ * Copyright (C) 2024 Linux Mint
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
++ * 02111-1307, USA.
++ */
++
++#include "config.h"
++
++#include "wayland/meta-wayland-drm.h"
++
++#include <xf86drm.h>
++
++#include "backends/meta-backend-private.h"
++#include "backends/native/meta-gpu-kms.h"
++#include "wayland/meta-wayland-private.h"
++
++#include "wayland-drm-server-protocol.h"
++
++static void
++drm_authenticate (struct wl_client   *client,
++                  struct wl_resource *resource,
++                  uint32_t            id)
++{
++  /* We advertise the render node, which doesn't require authentication.
++   * Just respond immediately so clients don't stall. */
++  wl_drm_send_authenticated (resource);
++}
++
++static void
++drm_create_buffer (struct wl_client   *client,
++                   struct wl_resource *resource,
++                   uint32_t            id,
++                   uint32_t            name,
++                   int32_t             width,
++                   int32_t             height,
++                   uint32_t            stride,
++                   uint32_t            format)
++{
++  wl_resource_post_error (resource, WL_DRM_ERROR_INVALID_NAME,
++                          "flink buffer creation not supported");
++}
++
++static void
++drm_create_planar_buffer (struct wl_client   *client,
++                          struct wl_resource *resource,
++                          uint32_t            id,
++                          uint32_t            name,
++                          int32_t             width,
++                          int32_t             height,
++                          uint32_t            format,
++                          int32_t             offset0,
++                          int32_t             stride0,
++                          int32_t             offset1,
++                          int32_t             stride1,
++                          int32_t             offset2,
++                          int32_t             stride2)
++{
++  wl_resource_post_error (resource, WL_DRM_ERROR_INVALID_NAME,
++                          "flink buffer creation not supported");
++}
++
++static void
++drm_create_prime_buffer (struct wl_client   *client,
++                         struct wl_resource *resource,
++                         uint32_t            id,
++                         int32_t             name,
++                         int32_t             width,
++                         int32_t             height,
++                         uint32_t            format,
++                         int32_t             offset0,
++                         int32_t             stride0,
++                         int32_t             offset1,
++                         int32_t             stride1,
++                         int32_t             offset2,
++                         int32_t             stride2)
++{
++  wl_resource_post_error (resource, WL_DRM_ERROR_INVALID_NAME,
++                          "prime buffer creation not supported");
++}
++
++static const struct wl_drm_interface drm_implementation = {
++  drm_authenticate,
++  drm_create_buffer,
++  drm_create_planar_buffer,
++  drm_create_prime_buffer,
++};
++
++static void
++drm_bind (struct wl_client *client,
++          void             *data,
++          uint32_t          version,
++          uint32_t          id)
++{
++  const char *device_path = data;
++  struct wl_resource *resource;
++
++  resource = wl_resource_create (client, &wl_drm_interface, version, id);
++  wl_resource_set_implementation (resource, &drm_implementation, NULL, NULL);
++
++  wl_drm_send_device (resource, device_path);
++  wl_drm_send_capabilities (resource, WL_DRM_CAPABILITY_PRIME);
++}
++
++void
++meta_wayland_drm_init (MetaWaylandCompositor *compositor)
++{
++  MetaBackend *backend = meta_get_backend ();
++  GList *gpus;
++  MetaGpuKms *gpu_kms;
++  int kms_fd;
++  char *render_node_path;
++
++  gpus = meta_backend_get_gpus (backend);
++  if (!gpus)
++    return;
++
++  gpu_kms = META_GPU_KMS (gpus->data);
++  kms_fd = meta_gpu_kms_get_fd (gpu_kms);
++  render_node_path = drmGetRenderDeviceNameFromFd (kms_fd);
++
++  if (!render_node_path)
++    {
++      g_warning ("wl_drm: could not get render node path, skipping");
++      return;
++    }
++
++  wl_global_create (compositor->wayland_display,
++                    &wl_drm_interface,
++                    2,
++                    render_node_path,
++                    drm_bind);
++
++  g_message ("wl_drm: advertising render node %s", render_node_path);
++  /* render_node_path is intentionally leaked — it lives for the lifetime
++   * of the global and there is no teardown path for Wayland globals here. */
++}
+diff --git a/src/wayland/meta-wayland-drm.h b/src/wayland/meta-wayland-drm.h
+new file mode 100644
+index 00000000..23caa2ab
+--- /dev/null
++++ b/src/wayland/meta-wayland-drm.h
+@@ -0,0 +1,27 @@
++/*
++ * Copyright (C) 2024 Linux Mint
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of the
++ * License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
++ * 02111-1307, USA.
++ */
++
++#ifndef META_WAYLAND_DRM_H
++#define META_WAYLAND_DRM_H
++
++#include "wayland/meta-wayland-types.h"
++
++void meta_wayland_drm_init (MetaWaylandCompositor *compositor);
++
++#endif /* META_WAYLAND_DRM_H */
+diff --git a/src/wayland/meta-wayland.c b/src/wayland/meta-wayland.c
+index e4b09cbf..b8f8894e 100644
+--- a/src/wayland/meta-wayland.c
++++ b/src/wayland/meta-wayland.c
+@@ -33,6 +33,7 @@
+ #include "core/main-private.h"
+ #include "wayland/meta-wayland-data-device.h"
+ #include "wayland/meta-wayland-dma-buf.h"
++#include "wayland/meta-wayland-drm.h"
+ #include "wayland/meta-wayland-egl-stream.h"
+ #include "wayland/meta-wayland-inhibit-shortcuts-dialog.h"
+ #include "wayland/meta-wayland-inhibit-shortcuts.h"
+@@ -434,6 +435,7 @@ meta_wayland_compositor_setup (MetaWaylandCompositor *wayland_compositor)
+   meta_wayland_pointer_constraints_init (compositor);
+   meta_wayland_xdg_foreign_init (compositor);
+   meta_wayland_dma_buf_init (compositor);
++  meta_wayland_drm_init (compositor);
+   meta_wayland_keyboard_shortcuts_inhibit_init (compositor);
+   meta_wayland_surface_inhibit_shortcuts_dialog_init ();
+   meta_wayland_text_input_init (compositor);
+diff --git a/src/wayland/protocol/wayland-drm.xml b/src/wayland/protocol/wayland-drm.xml
+new file mode 100644
+index 00000000..eaf2654a
+--- /dev/null
++++ b/src/wayland/protocol/wayland-drm.xml
+@@ -0,0 +1,189 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="drm">
++
++  <copyright>
++    Copyright © 2008-2011 Kristian Høgsberg
++    Copyright © 2010-2011 Intel Corporation
++
++    Permission to use, copy, modify, distribute, and sell this
++    software and its documentation for any purpose is hereby granted
++    without fee, provided that\n the above copyright notice appear in
++    all copies and that both that copyright notice and this permission
++    notice appear in supporting documentation, and that the name of
++    the copyright holders not be used in advertising or publicity
++    pertaining to distribution of the software without specific,
++    written prior permission.  The copyright holders make no
++    representations about the suitability of this software for any
++    purpose.  It is provided "as is" without express or implied
++    warranty.
++
++    THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS
++    SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
++    FITNESS, IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY
++    SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
++    AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
++    ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
++    THIS SOFTWARE.
++  </copyright>
++
++  <!-- drm support. This object is created by the server and published
++       using the display's global event. -->
++  <interface name="wl_drm" version="2">
++    <enum name="error">
++      <entry name="authenticate_fail" value="0"/>
++      <entry name="invalid_format" value="1"/>
++      <entry name="invalid_name" value="2"/>
++    </enum>
++
++    <enum name="format">
++      <!-- The drm format codes match the #defines in drm_fourcc.h.
++           The formats actually supported by the compositor will be
++           reported by the format event. New codes must not be added,
++           unless directly taken from drm_fourcc.h. -->
++      <entry name="c8" value="0x20203843"/>
++      <entry name="rgb332" value="0x38424752"/>
++      <entry name="bgr233" value="0x38524742"/>
++      <entry name="xrgb4444" value="0x32315258"/>
++      <entry name="xbgr4444" value="0x32314258"/>
++      <entry name="rgbx4444" value="0x32315852"/>
++      <entry name="bgrx4444" value="0x32315842"/>
++      <entry name="argb4444" value="0x32315241"/>
++      <entry name="abgr4444" value="0x32314241"/>
++      <entry name="rgba4444" value="0x32314152"/>
++      <entry name="bgra4444" value="0x32314142"/>
++      <entry name="xrgb1555" value="0x35315258"/>
++      <entry name="xbgr1555" value="0x35314258"/>
++      <entry name="rgbx5551" value="0x35315852"/>
++      <entry name="bgrx5551" value="0x35315842"/>
++      <entry name="argb1555" value="0x35315241"/>
++      <entry name="abgr1555" value="0x35314241"/>
++      <entry name="rgba5551" value="0x35314152"/>
++      <entry name="bgra5551" value="0x35314142"/>
++      <entry name="rgb565" value="0x36314752"/>
++      <entry name="bgr565" value="0x36314742"/>
++      <entry name="rgb888" value="0x34324752"/>
++      <entry name="bgr888" value="0x34324742"/>
++      <entry name="xrgb8888" value="0x34325258"/>
++      <entry name="xbgr8888" value="0x34324258"/>
++      <entry name="rgbx8888" value="0x34325852"/>
++      <entry name="bgrx8888" value="0x34325842"/>
++      <entry name="argb8888" value="0x34325241"/>
++      <entry name="abgr8888" value="0x34324241"/>
++      <entry name="rgba8888" value="0x34324152"/>
++      <entry name="bgra8888" value="0x34324142"/>
++      <entry name="xrgb2101010" value="0x30335258"/>
++      <entry name="xbgr2101010" value="0x30334258"/>
++      <entry name="rgbx1010102" value="0x30335852"/>
++      <entry name="bgrx1010102" value="0x30335842"/>
++      <entry name="argb2101010" value="0x30335241"/>
++      <entry name="abgr2101010" value="0x30334241"/>
++      <entry name="rgba1010102" value="0x30334152"/>
++      <entry name="bgra1010102" value="0x30334142"/>
++      <entry name="yuyv" value="0x56595559"/>
++      <entry name="yvyu" value="0x55595659"/>
++      <entry name="uyvy" value="0x59565955"/>
++      <entry name="vyuy" value="0x59555956"/>
++      <entry name="ayuv" value="0x56555941"/>
++      <entry name="xyuv8888" value="0x56555958"/>
++      <entry name="nv12" value="0x3231564e"/>
++      <entry name="nv21" value="0x3132564e"/>
++      <entry name="nv16" value="0x3631564e"/>
++      <entry name="nv61" value="0x3136564e"/>
++      <entry name="yuv410" value="0x39565559"/>
++      <entry name="yvu410" value="0x39555659"/>
++      <entry name="yuv411" value="0x31315559"/>
++      <entry name="yvu411" value="0x31315659"/>
++      <entry name="yuv420" value="0x32315559"/>
++      <entry name="yvu420" value="0x32315659"/>
++      <entry name="yuv422" value="0x36315559"/>
++      <entry name="yvu422" value="0x36315659"/>
++      <entry name="yuv444" value="0x34325559"/>
++      <entry name="yvu444" value="0x34325659"/>
++      <entry name="abgr16f" value="0x48344241"/>
++      <entry name="xbgr16f" value="0x48344258"/>
++    </enum>
++
++    <!-- Call this request with the magic received from drmGetMagic().
++         It will be passed on to the drmAuthMagic() or
++         DRIAuthConnection() call.  This authentication must be
++         completed before create_buffer could be used. -->
++    <request name="authenticate">
++      <arg name="id" type="uint"/>
++    </request>
++
++    <!-- Create a wayland buffer for the named DRM buffer.  The DRM
++         surface must have a name using the flink ioctl -->
++    <request name="create_buffer">
++      <arg name="id" type="new_id" interface="wl_buffer"/>
++      <arg name="name" type="uint"/>
++      <arg name="width" type="int"/>
++      <arg name="height" type="int"/>
++      <arg name="stride" type="uint"/>
++      <arg name="format" type="uint"/>
++    </request>
++
++    <!-- Create a wayland buffer for the named DRM buffer.  The DRM
++         surface must have a name using the flink ioctl -->
++    <request name="create_planar_buffer">
++      <arg name="id" type="new_id" interface="wl_buffer"/>
++      <arg name="name" type="uint"/>
++      <arg name="width" type="int"/>
++      <arg name="height" type="int"/>
++      <arg name="format" type="uint"/>
++      <arg name="offset0" type="int"/>
++      <arg name="stride0" type="int"/>
++      <arg name="offset1" type="int"/>
++      <arg name="stride1" type="int"/>
++      <arg name="offset2" type="int"/>
++      <arg name="stride2" type="int"/>
++    </request>
++
++    <!-- Notification of the path of the drm device which is used by
++         the server.  The client should use this device for creating
++         local buffers.  Only buffers created from this device should
++         be be passed to the server using this drm object's
++         create_buffer request. -->
++    <event name="device">
++      <arg name="name" type="string"/>
++    </event>
++
++    <event name="format">
++      <arg name="format" type="uint"/>
++    </event>
++
++    <!-- Raised if the authenticate request succeeded -->
++    <event name="authenticated"/>
++
++    <enum name="capability" since="2">
++      <description summary="wl_drm capability bitmask">
++        Bitmask of capabilities.
++      </description>
++      <entry name="prime" value="1" summary="wl_drm prime available"/>
++    </enum>
++
++    <event name="capabilities">
++      <arg name="value" type="uint"/>
++    </event>
++
++    <!-- Version 2 additions -->
++
++    <!-- Create a wayland buffer for the prime fd.  Use for regular and planar
++         buffers.  Pass 0 for offset and stride for unused planes. -->
++    <request name="create_prime_buffer" since="2">
++      <arg name="id" type="new_id" interface="wl_buffer"/>
++      <arg name="name" type="fd"/>
++      <arg name="width" type="int"/>
++      <arg name="height" type="int"/>
++      <arg name="format" type="uint"/>
++      <arg name="offset0" type="int"/>
++      <arg name="stride0" type="int"/>
++      <arg name="offset1" type="int"/>
++      <arg name="stride1" type="int"/>
++      <arg name="offset2" type="int"/>
++      <arg name="stride2" type="int"/>
++    </request>
++
++  </interface>
++
++</protocol>
+-- 
+2.53.0
+

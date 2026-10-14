@@ -26,16 +26,16 @@
 		stdout-path = "serial0:115200n8";
 
 		/*
-		 * ETAPA A display: consola HDMI via SIMPLEDRM usando el FB que el
-		 * U-Boot BSP deja pintado (logo) y con el DE aun escaneando tras
-		 * bootm. Direccion/tamano VERIFICADOS EN VIVO 2026-07-08: es el
-		 * memreserve que sunxi_drm_kernel_para_flush() anade al FDT
-		 * (/sys/firmware/fdt del 6.18 corriendo): 0xbbea2000 + 0x3fc000
-		 * = 5440 (stride) x 768 -> 1360x768 32bpp. OJO: el modo lo elige
-		 * U-Boot segun el monitor conectado; si se cambia de monitor,
-		 * revalidar contra el memreserve del FDT vivo. El formato real es
-		 * ARGB8888 (fb0 del 5.15); declaramos x8r8g8b8 (mismo layout)
-		 * para que DRM no asuma blending por alpha.
+		 * Display stage A: HDMI console via SIMPLEDRM using the FB that the
+		 * vendor U-Boot leaves painted (logo), with the DE still scanning out after
+		 * bootm. Address/size VERIFIED LIVE 2026-07-08: it is the
+		 * memreserve that sunxi_drm_kernel_para_flush() adds to the FDT
+		 * (/sys/firmware/fdt of the running 6.18): 0xbbea2000 + 0x3fc000
+		 * = 5440 (stride) x 768 -> 1360x768 32bpp. NOTE: U-Boot picks the mode
+		 * from the connected monitor; if the monitor changes,
+		 * re-check against the memreserve in the live FDT. The real format is
+		 * ARGB8888 (fb0 on 5.15); we declare x8r8g8b8 (same layout)
+		 * so that DRM does not assume alpha blending.
 		 */
 		framebuffer@bbea2000 {
 			compatible = "simple-framebuffer";
@@ -46,25 +46,25 @@
 			stride = <5440>;
 			format = "x8r8g8b8";
 			/*
-			 * Reclamar los dominios del pipeline de display que dejo
-			 * encendidos U-Boot. Sin esto, en cuanto TODOS los
-			 * consumidores del pck600 prueban (p.ej. panfrost via
-			 * modulo), su sync_state() barre los dominios sin
-			 * consumidor y apaga DE y VO0 -> pantalla negra a mitad
-			 * de boot (visto en vivo 2026-07-08: DE/VO0 off-0 en
+			 * Claim the display pipeline power domains that U-Boot left
+			 * powered on. Without this, as soon as ALL the
+			 * pck600 consumers have probed (e.g. panfrost as a
+			 * module), its sync_state() sweeps the domains with no
+			 * consumer and powers DE and VO0 off -> black screen half-way
+			 * through boot (seen live 2026-07-08: DE/VO0 off-0 in
 			 * pm_genpd_summary tras modprobe panfrost). simpledrm
-			 * soporta multiples power-domains y los mantiene on.
+			 * supports multiple power-domains and keeps them on.
 			 */
 			power-domains = <&pck600 PD_DE>, <&pck600 PD_VO0>;
 		};
 	};
 
 	/*
-	 * El U-Boot BSP (v2018.05-t527) NO rellena /memory (asume que el DTB ya
-	 * lo trae, como el del BSP). El DTB mainline lo dejaba vacio -> el kernel
-	 * arranca sin saber donde esta la RAM -> cuelgue mudo instantaneo, sin
-	 * heartbeat. Definimos /memory estatico igual que el BSP: base 0x40000000.
-	 * (Si la placa es de 2GB usar size 0x80000000 en vez de 0x1 0x0.)
+	 * The vendor U-Boot (v2018.05-t527) does NOT fill in /memory (it assumes the DTB
+	 * already carries it, like the vendor one). The mainline DTB left it empty -> the kernel
+	 * boots without knowing where the RAM is -> instant silent hang, no
+	 * heartbeat. Define a static /memory like the vendor DTB: base 0x40000000.
+	 * (On a 2GB board use size 0x80000000 instead of 0x1 0x0.)
 	 */
 	memory@40000000 {
 		device_type = "memory";
@@ -73,16 +73,16 @@
 	};
 
 	/*
-	 * El BSP 5.15 reserva esta region para BL31 (ARM Trusted Firmware),
-	 * el monitor seguro EL3 que atiende TODAS las llamadas PSCI (arranque
-	 * de nucleos SMP, idle, reset). El DTB mainline NO reservaba nada y su
-	 * /memory (2GB desde 0x40000000) abarca 0x48000000 -> el kernel ve esos
-	 * 16 MB como RAM libre, asigna paginas ahi y MACHACA BL31. El SMP
-	 * arranca antes del heartbeat (BL31 aun intacto) -> 1 latido; justo
-	 * despues una llamada PSCI cae en codigo corrupto -> cuelgue con el LED
-	 * fijo. Reservar la region (igual que el BSP) lo evita. no-map = el
-	 * kernel ni siquiera la mapea. El U-Boot BSP v2018 no inyecta esta
-	 * reserva en un DTB ajeno, por eso hay que ponerla estatica aqui.
+	 * The 5.15 BSP reserves this region for BL31 (ARM Trusted Firmware),
+	 * the EL3 secure monitor that serves ALL PSCI calls (SMP core
+	 * bring-up, idle, reset). The mainline DTB reserved nothing and its
+	 * /memory (2GB from 0x40000000) covers 0x48000000 -> the kernel sees those
+	 * 16 MB as free RAM, allocates pages there and OVERWRITES BL31. SMP
+	 * starts before the heartbeat (BL31 still intact) -> 1 beat; right
+	 * after that a PSCI call lands in corrupted code -> hang with the LED
+	 * stuck. Reserving the region (like the BSP does) avoids it. no-map = the
+	 * kernel does not even map it. The vendor U-Boot v2018 does not inject this
+	 * reservation into a foreign DTB, so it has to be static here.
 	 */
 	reserved-memory {
 		#address-cells = <2>;
@@ -90,17 +90,17 @@
 		ranges;
 
 		/*
-		 * El firmware del BSP (BL31 + OP-TEE + shared memory) ocupa VARIAS
-		 * regiones que el U-Boot BSP reserva en el FDT del 5.15 pero NO en
-		 * nuestro DTB ajeno. Sacadas de /proc/iomem del 5.15 vivo. Reservar
-		 * SOLO bl31 dejaba que el kernel machacara OP-TEE/shm -> cuelgue tras
-		 * 2 latidos. Reservamos las 4 (igual que el BSP).
+		 * The vendor firmware (BL31 + OP-TEE + shared memory) uses SEVERAL
+		 * regions that the vendor U-Boot reserves in the 5.15 FDT but NOT in
+		 * our foreign DTB. Taken from /proc/iomem of the running 5.15. Reserving
+		 * ONLY bl31 let the kernel overwrite OP-TEE/shm -> hang after
+		 * 2 beats. Reserve all 4 (like the BSP).
 		 */
 		/*
-		 * no-map en las cuatro: sin el, quedan en el linear map y una
-		 * lectura ESPECULATIVA del CPU sobre RAM protegida por el
-		 * firewall seguro puede disparar SErrors esporadicos aunque el
-		 * kernel nunca las asigne.
+		 * no-map on all four: without it they stay in the linear map and a
+		 * SPECULATIVE CPU read of RAM protected by the
+		 * secure firewall can raise sporadic SErrors even though the
+		 * kernel never allocates them.
 		 */
 		sec-sram1@42350000 {
 			reg = <0x0 0x42350000 0x0 0x00230000>;
@@ -123,11 +123,11 @@
 		};
 
 		/*
-		 * FB de U-Boot para el nodo simple-framebuffer de /chosen (ver
-		 * comentario alli). U-Boot ya mete un memreserve plano de esta
-		 * region, pero eso la deja en el linear map y en arm64 tanto
-		 * memremap(WC) como ioremap_wc FALLAN sobre RAM mapeada ->
-		 * simpledrm no podria mapearla. no-map es OBLIGATORIO.
+		 * U-Boot FB for the simple-framebuffer node in /chosen (see the
+		 * comment there). U-Boot already adds a plain memreserve for this
+		 * region, but that leaves it in the linear map, and on arm64 both
+		 * memremap(WC) and ioremap_wc FAIL on mapped RAM ->
+		 * simpledrm could not map it. no-map is MANDATORY.
 		 */
 		uboot_fb: framebuffer@bbea2000 {
 			reg = <0x0 0xbbea2000 0x0 0x003fc000>;
@@ -136,12 +136,12 @@
 	};
 
 	/*
-	 * Stub nodes para el U-Boot BSP (v2018.05-t527): su bootm llama a
-	 * sunxi_drm_kernel_para_flush() que busca /soc/sunxi-drm y /soc/de en el
-	 * FDT para inyectar los parametros de su display. El DTB mainline no los
-	 * tiene -> el fixup falla a medias y corrompe el FDT -> el kernel cuelga.
-	 * Con estos nodos vacios el fixup completa sin error; el kernel mainline
-	 * los ignora (sin compatible). NO tocar el U-Boot: el 5.15 BSP necesita
+	 * Stub nodes for the vendor U-Boot (v2018.05-t527): its bootm calls
+	 * sunxi_drm_kernel_para_flush(), which looks up /soc/sunxi-drm and /soc/de in the
+	 * FDT to inject its display parameters. The mainline DTB does not have
+	 * them -> the fixup half-fails and corrupts the FDT -> the kernel hangs.
+	 * With these empty nodes the fixup completes without error; the mainline kernel
+	 * ignores them (no compatible). Do NOT touch U-Boot: the 5.15 BSP needs
 	 * esas inyecciones.
 	 */
 	soc {
@@ -194,11 +194,11 @@
 		gpio = <&r_pio 0 4 GPIO_ACTIVE_HIGH>;	/* PL4 */
 		enable-active-high;
 		/*
-		 * PL4 alimenta el VBUS del puerto usbc0 (los 2 USB-A traseros
-		 * izquierdos). Sin ID/CC pin, el driver OTG no llegaba a activar
-		 * el VBUS -> esos 2 puertos quedaban muertos (otg-vbus=disabled).
-		 * dr_mode=host: siempre-encendido es lo correcto para un puerto
-		 * solo-host. Confirmado en placa 2026-07-13: los 4 traseros van.
+		 * PL4 feeds the VBUS of port usbc0 (the 2 rear left
+		 * USB-A ports). With no ID/CC pin, the OTG driver never got to enable
+		 * VBUS -> those 2 ports stayed dead (otg-vbus=disabled).
+		 * dr_mode=host: always-on is right for a
+		 * host-only port. Confirmed on the board 2026-07-13: all 4 rear ports work.
 		 */
 		regulator-always-on;
 	};
@@ -249,33 +249,44 @@
 	 * 0.90 V sits within the vendor envelope (408 and 672 MHz both run
 	 * at 0.90 V on every speed bin).
 	 */
+	/*
+	 * DCDC1 (vdd-cpul) does not power this cluster alone: the DSU (the
+	 * DynamIQ Shared Unit, i.e. the coherent interconnect and the shared
+	 * L3) hangs off the very same rail. Each OPP therefore declares a
+	 * range instead of an exact voltage. opp_parse_supplies() turns a
+	 * single value into u_volt_min == u_volt_max, and with that
+	 * regulator_check_consumers() aggregates to min > max and fails the
+	 * transition with -EINVAL the moment the other consumer of the rail
+	 * asks for a different voltage. The upper bound is 1.15 V, the
+	 * highest voltage the vendor tables ever put on this rail.
+	 */
 	cluster0_opp: opp-table-cluster0 {
 		compatible = "operating-points-v2";
 		opp-shared;
 
 		opp-480000000 {
 			opp-hz = /bits/ 64 <480000000>;
-			opp-microvolt = <900000>;
+			opp-microvolt = <900000 900000 1150000>;
 		};
 
 		opp-792000000 {
 			opp-hz = /bits/ 64 <792000000>;
-			opp-microvolt = <900000>;
+			opp-microvolt = <900000 900000 1150000>;
 		};
 
 		opp-1008000000 {
 			opp-hz = /bits/ 64 <1008000000>;
-			opp-microvolt = <960000>;
+			opp-microvolt = <960000 960000 1150000>;
 		};
 
 		opp-1224000000 {
 			opp-hz = /bits/ 64 <1224000000>;
-			opp-microvolt = <1050000>;
+			opp-microvolt = <1050000 1050000 1150000>;
 		};
 
 		opp-1416000000 {
 			opp-hz = /bits/ 64 <1416000000>;
-			opp-microvolt = <1150000>;
+			opp-microvolt = <1150000 1150000 1150000>;
 		};
 	};
 
@@ -334,10 +345,13 @@
 
 	/*
 	 * GPU OPPs: the five speed-bin-independent points of the vendor
-	 * table (648 MHz and above are fused off on most bins, so they are
-	 * left out). All of them divide exactly from the fixed pll-periph0
-	 * outputs, so pll-gpu is never touched and powers down after the
-	 * first transition away from the U-Boot state (432 MHz on pll-gpu).
+	 * table, plus 696 MHz, which the vendor table gates by SID speed
+	 * bin: this board's chip reads dvfs efuse 0x19 (combi 0x01 -> GPU
+	 * bin 1), for which the vendor sanctions 696 MHz at 0.90 V.
+	 * The five common points divide exactly from the fixed pll-periph0
+	 * outputs; 696 MHz instead needs pll-gpu as a live parent, so
+	 * pll-gpu is pinned at 696 MHz via assigned-clock-rates below and
+	 * only gets enabled while the 696 MHz OPP is selected.
 	 *
 	 * The vendor table asks for 0.90 V on every point; this board's
 	 * vdd-gpu-sys rail (AXP717 DCDC2) is fixed at 0.92 V, so the OPPs
@@ -370,6 +384,11 @@
 
 		opp-600000000 {
 			opp-hz = /bits/ 64 <600000000>;
+			opp-microvolt = <920000>;
+		};
+
+		opp-696000000 {
+			opp-hz = /bits/ 64 <696000000>;
 			opp-microvolt = <920000>;
 		};
 	};
@@ -428,6 +447,8 @@
 &gpu {
 	mali-supply = <&reg_dcdc2>;
 	operating-points-v2 = <&gpu_opp_table>;
+	assigned-clocks = <&ccu CLK_PLL_GPU>;
+	assigned-clock-rates = <696000000>;
 	status = "okay";
 };
 
@@ -485,6 +506,12 @@
 	vcc-pi-supply = <&reg_cldo3>;
 	vcc-pj-supply = <&reg_cldo1>;
 	vcc-pk-supply = <&reg_cldo1>;
+};
+
+&r_ir {
+	pinctrl-names = "default";
+	pinctrl-0 = <&r_ir_rx_pin>;
+	status = "okay";
 };
 
 &r_i2c0 {
@@ -760,11 +787,11 @@
 };
 
 &gmac1 {
-	/* Config RGMII validada en vivo (2026-07-08) tras corregir el
-	 * withstand del banco PJ (rail 1.8V, receptor en modo 3.3V = RX
-	 * sordo; ver a523_pio_fix_withstand en pinctrl-sun55i-a523.c).
-	 * La PHY pone ~1.9ns de delay en RXC (rgmii-rxid + prop del nodo
-	 * PHY); el syscon del MAC solo aporta 100ps de TX (BSP: tx-delay=1).
+	/* RGMII config validated live (2026-07-08) after fixing the
+	 * withstand mode of bank PJ (1.8V rail, receiver in 3.3V mode = RX
+	 * deaf; see a523_pio_fix_withstand in pinctrl-sun55i-a523.c).
+	 * The PHY adds ~1.9ns of delay on RXC (rgmii-rxid + property in the
+	 * PHY node); the MAC syscon only adds 100ps of TX (BSP: tx-delay=1).
 	 * Resultado: 1Gbps/Full, ping 0% loss. */
 	phy-mode = "rgmii-rxid";
 	phy-handle = <&ext_rgmii_phy>;
@@ -778,11 +805,11 @@
 	ext_rgmii_phy: ethernet-phy@1 {
 		compatible = "ethernet-phy-ieee802.3-c22";
 		reg = <1>;
-		/* Delay de reloj de RX en la propia PHY YT8531 (RXC_DLY_EN,
-		 * ~1.9ns). El driver motorcomm lee esta propiedad DEL NODO DE
-		 * LA PHY y solo la aplica con phy-mode rgmii-rxid/id. */
+		/* RX clock delay in the YT8531 PHY itself (RXC_DLY_EN,
+		 * ~1.9ns). The motorcomm driver reads this property FROM THE
+		 * PHY NODE and only applies it with phy-mode rgmii-rxid/id. */
 		rx-internal-delay-ps = <1900>;
-		/* El BSP desactiva el auto-sleep incondicionalmente. */
+		/* The BSP disables auto-sleep unconditionally. */
 		motorcomm,auto-sleep-disabled;
 		interrupts-extended = <&pio 8 16 IRQ_TYPE_LEVEL_LOW>; /* PI16 */
 		reset-gpios = <&pio 8 15 GPIO_ACTIVE_LOW>; /* PI15 */
@@ -793,8 +820,8 @@
 
 /*
  * ETAPA C display: pipeline KMS real (DE3.5 RCQ -> TCON-TV -> DW-HDMI+PHY Inno).
- * Adaptacion del enable de minimyth2 2903 a este dts (que ya tiene
- * reserved-memory con bl31+uboot_fb y el framebuffer simpledrm de arranque).
+ * Adaptation of the minimyth2 2903 enable to this dts (which already has
+ * reserved-memory with bl31+uboot_fb and the simpledrm boot framebuffer).
  */
 / {
 	hdmi-connector {
@@ -810,13 +837,13 @@
 };
 
 /*
- * El DMA del DE (scanout y pool RCQ) solo alcanza DRAM MUY baja: el parche
- * original (X96Q, mismo die) observa que 0x43000000 es alcanzable pero
- * 0x4b100000 ya NO. Con la ventana anterior (hasta 0x70000000) la CMA cayo
- * en 0x60000000 -> fetch fuera de apertura -> cuelgue del interconnect a
- * mitad de boot (boot 2, placa medio muerta). Ventana estricta como el
- * layout probado: 0x43000000-0x48000000 (tras el kernel, antes del bl31),
- * 64MB (suficiente para dumb buffers/fbcon del bring-up).
+ * The DE's DMA (scanout and RCQ pool) only reaches VERY low DRAM: the original
+ * patch (X96Q, same die) notes that 0x43000000 is reachable but
+ * 0x4b100000 is NOT. With the previous window (up to 0x70000000) the CMA landed
+ * at 0x60000000 -> fetch outside the aperture -> interconnect hang
+ * half-way through boot (boot 2, half-dead board). Strict window, like the
+ * tested layout: 0x43000000-0x48000000 (after the kernel, before bl31),
+ * 64MB (enough for the bring-up's dumb buffers/fbcon).
  */
 &{/reserved-memory} {
 	cma_low: linux,cma {
@@ -829,24 +856,24 @@
 };
 
 /*
- * El pool RCQ del DE se aloja con dma_alloc_coherent sobre el device del
- * mixer; al ser pequeno no tira de la CMA global y caia en paginas altas
- * fuera de la apertura del DE (RCQ_HEAD 0x52100000 observado -> el DMA
- * del RCQ leia basura y el datapath nunca se configuraba: pantalla verde).
- * memory-region ata las reservas coherentes del mixer a la CMA baja
- * (sun55i_de hace of_reserved_mem_device_init si uses_rcq).
+ * The DE's RCQ pool is allocated with dma_alloc_coherent on the
+ * mixer device; being small it does not come from the global CMA and landed in high pages
+ * outside the DE aperture (RCQ_HEAD 0x52100000 observed -> the RCQ DMA
+ * read garbage and the datapath was never configured: green screen).
+ * memory-region ties the mixer's coherent reservations to the low CMA
+ * (sun55i_de calls of_reserved_mem_device_init if uses_rcq).
  */
 &mixer0 {
 	memory-region = <&cma_low>;
 };
 
 /*
- * SESION C4: el display-engine (drm->dev) hereda el master 5 del IOMMU
- * para que los GEM de scanout y los PRIME imports (kbase, no contiguos)
- * se alojen/mapeen como IOVAs traducidas. Es el equivalente en DT del
- * of_dma_configure(drm->dev, nodo_DE) del BSP (sunxi_de.c:1262): con el
- * bypass del master 5 quitado TODO el trafico del DE se traduce, asi que
- * el scanout fisico sin mapear dejaria de verse.
+ * DISPLAY BRING-UP: the display-engine (drm->dev) inherits IOMMU master 5
+ * so that scanout GEMs and PRIME imports (kbase, not contiguous)
+ * are allocated/mapped as translated IOVAs. It is the DT equivalent of
+ * the BSP's of_dma_configure(drm->dev, DE_node) (sunxi_de.c:1262): with the
+ * master 5 bypass removed ALL DE traffic is translated, so
+ * an unmapped physical scanout would no longer show.
  */
 &de {
 	status = "okay";
@@ -864,14 +891,14 @@
 };
 
 /*
- * Adaptaciones de la auditoria contra el BSP 5.15 (fuente de verdad):
- * - El BSP cuelga vo0/tcon de la isla VO0 (A523_PCK_VO0); el dtsi del
- *   parche solo la reclama desde el nodo hdmi. Reclamarla tambien en
- *   tcon-top y tcon-tv evita tocar registros con la isla apagada y
- *   protege del barrido de sync_state (ya mordio con simpledrm).
- * - El BSP fija CLK_DE a 600 MHz colgado de PLL_VIDEO3_4X
- *   (assigned-clocks del nodo de@5000000 del BSP); el dtsi del parche
- *   no fijaba rate y el mux podia quedarse en el padre de reset.
+ * Changes from the audit against the 5.15 BSP:
+ * - The BSP hangs vo0/tcon off the VO0 island (A523_PCK_VO0); the patch's
+ *   dtsi only claims it from the hdmi node. Claiming it also in
+ *   tcon-top and tcon-tv avoids touching registers with the island off and
+ *   protects against the sync_state sweep (it already bit with simpledrm).
+ * - The BSP sets CLK_DE to 600 MHz under PLL_VIDEO3_4X
+ *   (assigned-clocks of the BSP's de@5000000 node); the patch's dtsi
+ *   set no rate and the mux could stay on the reset parent.
  */
 &tcon_top {
 	power-domains = <&pck600 PD_VO0>;
@@ -888,24 +915,24 @@
 };
 
 /*
- * SESION C4: iommus del mixer reactivado (el dtsi ya trae
- * iommus = <&iommu 5>). El driver lleva ahora la receta v15 del BSP
- * (invalidacion por rango + prefetch vendor) y guardas de diagnostico
- * contra el DTE corrupto del Oops de boot 1.
+ * DISPLAY BRING-UP: mixer iommus re-enabled (the dtsi already has
+ * iommus = <&iommu 5>). The driver now carries the BSP's v15 recipe
+ * (range invalidation + vendor prefetch) and diagnostic guards
+ * against the corrupt DTE of the boot Oops.
  */
 
 /*
- * AUDIO HDMI (receta del BSP 5.15, fuente de verdad): el BSP saca el audio
- * HDMI por I2S2 (i2s2_plat@7114000, dma1 req 5, tarjeta "sndhdmi",
- * formato i2s, 2 slots de 32 bits, CPU master, sin MCLK) hacia la entrada
- * I2S del DW-HDMI (cableado interno del SoC, sin pinctrl). En mainline el
- * equivalente es sun4i-i2s (fallback r329, mismo layout de registros) +
- * dw-hdmi-i2s-audio (el core ya registra el codec: CONFIG3 trae GPAUD,
- * verificado en vivo) + simple-audio-card, patron rk3328. Los nodos i2s2 y
- * mcu_dma son los de upstream master (serie I2S A523 de Chen-Yu Tsai),
- * salvo dma-channels=8 que es lo que dice el dts del BSP (upstream pone 16).
- * mclk-fs=128: el DW-HDMI no consume MCLK pero sun4i-i2s deriva de el los
- * divisores de BCLK.
+ * HDMI AUDIO (the 5.15 BSP recipe): the BSP sends the audio
+ * HDMI through I2S2 (i2s2_plat@7114000, dma1 req 5, card "sndhdmi",
+ * i2s format, 2 slots of 32 bits, CPU master, no MCLK) to the
+ * I2S input of the DW-HDMI (internal SoC wiring, no pinctrl). In mainline the
+ * equivalent is sun4i-i2s (r329 fallback, same register layout) +
+ * dw-hdmi-i2s-audio (the core already registers the codec: CONFIG3 has GPAUD,
+ * verified live) + simple-audio-card, rk3328 pattern. The i2s2 and
+ * mcu_dma nodes are upstream master's (Chen-Yu Tsai's A523 I2S series),
+ * except dma-channels=8, which is what the BSP dts says (upstream has 16).
+ * mclk-fs=128: the DW-HDMI does not consume MCLK but sun4i-i2s derives from it the
+ * BCLK dividers.
  */
 &i2s2 {
 	status = "okay";
@@ -919,12 +946,12 @@
 		simple-audio-card,mclk-fs = <128>;
 
 		/*
-		 * Slots de 32 bits SIEMPRE (como el BSP: soundcard-mach,
+		 * ALWAYS 32-bit slots (like the BSP: soundcard-mach,
 		 * slot-width = <32>): dw-hdmi-i2s-audio hardcodea
-		 * AUD_INPUTCLKFS=64fs, y sin esto con S16 el sun4i-i2s
-		 * genera tramas de 32fs (slot de 16) -> el DW-HDMI muestrea
-		 * mal la trama y el sink recibe SILENCIO (verificado en la
-		 * placa: S32 sonaba, S16 no; TXCNT avanzaba en ambos).
+		 * AUD_INPUTCLKFS=64fs, and without this, with S16, sun4i-i2s
+		 * generates 32fs frames (16-bit slot) -> the DW-HDMI samples
+		 * the frame wrongly and the sink receives SILENCE (verified on the
+		 * board: S32 played, S16 did not; TXCNT advanced in both).
 		 */
 		simple-audio-card,cpu {
 			sound-dai = <&i2s2>;
@@ -939,14 +966,14 @@
 };
 
 /*
- * AUDIO ANALOGICO (codec interno del A523, receta del BSP 5.15): jack de
- * 3,5 mm (HPOUT + jack-detect por IRQ 190), line-out, 3 entradas de mic y
- * amplificador externo de altavoz en PH6 (activo alto, sin retardo, nodo
- * BSP pa-pin-0). Los reguladores son los del nodo &codec del dts BSP de la
- * placa: avcc=aldo4 1.8V, vdd=cldo3 3.3V, cpvin=cldo1 1.8V (bomba de carga
- * del HP). Ganancias/volumenes de la placa == defaults del driver BSP, van
- * cableados en el driver. jack-det-level=1 y threshold=8 son los defaults
- * del driver mainline, no hace falta declararlos.
+ * ANALOG AUDIO (A523 internal codec, the 5.15 BSP recipe): 3.5 mm
+ * jack (HPOUT + jack detect on IRQ 190), line-out, 3 mic inputs and an
+ * external speaker amplifier on PH6 (active high, no delay, BSP node
+ * pa-pin-0). The regulators are those of the &codec node in the board's BSP
+ * dts: avcc=aldo4 1.8V, vdd=cldo3 3.3V, cpvin=cldo1 1.8V (HP charge
+ * pump). The board's gains/volumes == the BSP driver defaults, so they are
+ * hard-wired in the driver. jack-det-level=1 and threshold=8 are the mainline
+ * driver defaults, no need to declare them.
  */
 &codec {
 	avcc-supply = <&reg_aldo4>;

@@ -1,0 +1,71 @@
+From a29a9e1d7eead3a90b9d9b73cadd7fcc4b9740b7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Thu, 9 Jul 2026 19:42:33 +0200
+Subject: [PATCH 040/143] drm/sun4i: do not program the legacy DE33 scaler with
+ the RCQ backend (fix vertical stripes)
+
+With sun55i_de active (A523 v35x), sun8i_ui/vi_layer_update_coord kept
+calling sun8i_vi_scaler_setup by AHB on every atomic_update: it wrote the
+VSU10 coefficient tables of DE3 (lan3 left/right, 8 taps in two halves) into
+the 4-tap SRAM of the VSU8 (uch0 + 0x3000 = 0x1C4000). The per-phase sum of
+half an 8-tap table != 64 -> vertical dark/transparent stripes in every
+scaled mode (the vertical filter got lan2 4-tap by chance, which is why only
+VERTICAL bands over a well-scaled image). The SRAM is not protected by the
+RCQ frame latch and the RCQ VSU blocks only re-arm on mode_set, so the legacy
+value won in steady state (fingerprint: live hstep 0xAAAA0 -mainline
+16.16<<4- instead of 0xAAAAA -BSP formula 19bit<<1-). At 720p (1:1) the
+legacy path does not program the scaler: that is why it was perfect.
+
+Fix: with mixer->de (RCQ backend) the scaler is EXCLUSIVE to
+sun55i_de_vsu_setup (BSP lan2 tables via RCQ), like the vendor. Validated on
+the board: live steps 0xAAAAA at 1080p, 5 cycles 720p/1360/1080 with 0 faults
+and 0 timeouts.
+---
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 13 ++++++++++++-
+ drivers/gpu/drm/sun4i/sun8i_vi_layer.c |  5 ++++-
+ 2 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index f97be0040..fe5f5e0f7 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -86,7 +86,18 @@ static int sun8i_ui_layer_update_coord(struct sun8i_mixer *mixer, int channel,
+ 		     SUN8I_MIXER_CHAN_UI_OVL_SIZE(ch_base),
+ 		     insize);
+ 
+-	if (insize != outsize || hphase || vphase) {
++	/*
++	 * With the RCQ backend (A523 v35x) the channel scaler is a VSU8
++	 * programmed by sun55i_de_vsu_setup through the RCQ shadow with the BSP's
++	 * 4-tap lan2 tables. This DE33 path writes over AHB, on top of the
++	 * same block, the VSU10 tables (lan3 left/right, 8 taps) whose
++	 * per-phase sum != 64: vertical stripes in every scaled mode.
++	 * The coefficient SRAM is not protected by the RCQ frame latch,
++	 * so these direct writes win. Do not touch the scaler.
++	 */
++	if (mixer->de) {
++		/* sun55i_de_vsu_setup has already programmed (or bypassed) the VSU8 */
++	} else if (insize != outsize || hphase || vphase) {
+ 		u32 hscale, vscale;
+ 
+ 		DRM_DEBUG_DRIVER("HW scaling is enabled\n");
+diff --git a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+index a09ee4097..4a5a8a3e1 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_vi_layer.c
+@@ -118,7 +118,10 @@ static int sun8i_vi_layer_update_coord(struct sun8i_mixer *mixer, int channel,
+ 	 */
+ 	subsampled = format->hsub > 1 || format->vsub > 1;
+ 
+-	if (insize != outsize || subsampled || hphase || vphase) {
++	/* with the RCQ backend the VSU belongs to sun55i_de: see sun8i_ui_layer.c */
++	if (mixer->de) {
++		/* nothing: sun55i_de programs the scaler through the RCQ */
++	} else if (insize != outsize || subsampled || hphase || vphase) {
+ 		unsigned int scanline, required;
+ 		struct drm_display_mode *mode;
+ 		u32 hscale, vscale, fps;
+-- 
+2.53.0
+

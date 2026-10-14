@@ -1,0 +1,56 @@
+From 22e09b7ccc9129544871ba2c610adf600e1421cf Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 19:11:59 +0200
+Subject: [PATCH 126/143] drm/sun4i: sun55i_de: drop the inert alpha property
+ from the RCQ primary
+
+The multi-plane hardening removed the plane-alpha property from the
+LAY1..3 overlay planes because the hardware ignores it there, but the
+RCQ primary kept it while being just as inert: the staging always
+programs the layer with global alpha 0xff (sun55i_de_layer_update) and
+blender pipe 0 has no per-pipe alpha/premul (vendor note quoted in the
+cursor commit), so a userspace-set alpha value changes nothing on
+screen.
+
+Advertising a property the hardware never applies is the same UAPI lie
+the overlay hardening fixed; stop creating it on the RCQ primary.  The
+non-RCQ (DE2/DE3) primaries keep the property - their backend really
+applies it.  No register programming changes.
+
+Co-Authored-By: AI Agent
+---
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 17 +++++++++++++----
+ 1 file changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index f5fd2b157..378c8e964 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -684,10 +684,19 @@ struct sun8i_layer *sun8i_ui_layer_init_one(struct drm_device *drm,
+ 
+ 	plane_cnt = mixer->cfg->ui_num + mixer->cfg->vi_num;
+ 
+-	ret = drm_plane_create_alpha_property(&layer->plane);
+-	if (ret) {
+-		dev_err(drm->dev, "Couldn't add alpha property\n");
+-		return ERR_PTR(ret);
++	/*
++	 * No plane-alpha property on the v35x RCQ primary: the staging always
++	 * programs the layer opaque (global alpha 0xff) and blender pipe 0 has
++	 * no per-pipe alpha/premul (vendor note), so the property would
++	 * advertise a translucency the hardware never applies - same reasoning
++	 * that keeps it off the LAY1..3 overlay planes.
++	 */
++	if (!mixer->cfg->uses_rcq) {
++		ret = drm_plane_create_alpha_property(&layer->plane);
++		if (ret) {
++			dev_err(drm->dev, "Couldn't add alpha property\n");
++			return ERR_PTR(ret);
++		}
+ 	}
+ 
+ 	/*
+-- 
+2.53.0
+

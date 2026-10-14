@@ -1,0 +1,74 @@
+From 36f53145e415bbc959cdf2ed8bb0cb4f7c4c1f13 Mon Sep 17 00:00:00 2001
+From: Olivier Fourdan <ofourdan@redhat.com>
+Date: Wed, 22 Apr 2026 19:04:13 +0200
+Subject: [PATCH] xwayland: Avoid NULL pointer dereference in damage_report()
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Commit 34934c37d6a restored calling register_damage() in
+xwl_realize_window() before ensure_surface_for_window().
+
+However if register_damage() succeeds and ensure_surface_for_window()
+returns NULL, it would exit without "unregistering" the damage hook.
+
+The X11 window, however, may still get damages reports, in which case
+xwl_window_from_window() would return NULL, causing a NULL pointer
+dereference in damage_report().
+
+To avoid the issue, make sure we unregister the damage report if
+ensure_surface_for_window() has failed, and add an early exit in
+damage_report() if xwl_window is NULL.
+
+v2: unregister_damage() unconditionally if ensure_surface_for_window()
+    failed (Michel Dänzer)
+
+Fixes: commit 34934c37d6a ("revert: register damage before ensure_surface_for_window")
+Closes: https://gitlab.freedesktop.org/xorg/xserver/-/work_items/1886
+Signed-off-by: Olivier Fourdan <ofourdan@redhat.com>
+Part-of: <https://gitlab.freedesktop.org/xorg/xserver/-/merge_requests/2190>
+---
+ hw/xwayland/xwayland-window.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/hw/xwayland/xwayland-window.c b/hw/xwayland/xwayland-window.c
+index 1610d0ea09..4b491e7fba 100644
+--- a/hw/xwayland/xwayland-window.c
++++ b/hw/xwayland/xwayland-window.c
+@@ -301,8 +301,10 @@ damage_report(DamagePtr pDamage, RegionPtr pRegion, void *data)
+     struct xwl_screen *xwl_screen = xwl_screen_get(screen);
+     PixmapPtr window_pixmap;
+ 
+-    if (xwl_window &&
+-        xwl_window->surface_window_damage &&
++    if (!xwl_window)
++        return;
++
++    if (xwl_window->surface_window_damage &&
+         RegionNotEmpty(pRegion)) {
+         if (!RegionNotEmpty(xwl_window->surface_window_damage))
+             need_source_validate_inc(xwl_screen);
+@@ -315,7 +317,7 @@ damage_report(DamagePtr pDamage, RegionPtr pRegion, void *data)
+     if (xwl_screen->ignore_damage)
+         return;
+ 
+-    if (xwl_window && xorg_list_is_empty(&xwl_window->link_damage))
++    if (xorg_list_is_empty(&xwl_window->link_damage))
+         xorg_list_add(&xwl_window->link_damage, &xwl_screen->damage_window_list);
+ 
+     window_pixmap = screen->GetWindowPixmap(xwl_window->surface_window);
+@@ -1638,8 +1640,10 @@ xwl_realize_window(WindowPtr window)
+     }
+ 
+     xwl_window = ensure_surface_for_window(window);
+-    if (!xwl_window)
++    if (!xwl_window) {
++        unregister_damage(window);
+         return FALSE;
++    }
+ 
+     return TRUE;
+ }
+-- 
+GitLab
+

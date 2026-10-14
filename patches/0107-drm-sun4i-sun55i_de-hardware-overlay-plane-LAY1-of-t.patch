@@ -1,0 +1,613 @@
+From a0d521d70370a9f69c85b230c56c6c81f6332f69 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 15:55:38 +0200
+Subject: [PATCH 107/143] drm/sun4i: sun55i_de: hardware overlay plane (LAY1 of
+ the UI channel)
+
+Each DE33/v35x channel has four fetch layers ("four overlay layers in
+each channel", T527 user manual v0.92, section 5.1), but only LAY0 of
+phys 6 was used, so cursor and video always went through the GPU.
+
+Register a DRM overlay plane backed by LAY1 of the same channel:
+
+- per-layer fetch: its own LAY_n block (attctl/mbsize/mbcoor/pitch/laddr)
+  with the position relative to the channel window (mbcoor).
+- shared registers are composed in sun55i_de_commit() under arm_lock:
+  PARA.top_haddr packs one high-address byte per layer (the primary used
+  to overwrite the whole register), and the premultiplied bits of every
+  attctl follow the visible layers, so a premultiplied layer turns the
+  rest to NON_TO_EXC and the mix happens in premultiplied space.
+- AFBD/OVL guard: the AFBD replaces the OVL of the whole channel, so
+  without a LINEAR LAY0 (AFBC primary or channel off) the compose turns
+  any LAY1..3 off.
+- overlay atomic_check: LINEAR only, unscaled, and inside the rectangle
+  of an unscaled LINEAR primary (the VSU scales the whole channel
+  window). The primary check pulls the visible overlays into the commit
+  when it switches to AFBC or scaling, so the rejection is atomic.
+- immutable zpos: the stacking inside a channel is fixed by the layer
+  index.
+
+Disabling or quiescing the channel now turns off all four layers, not
+just layer 0.
+
+Co-Authored-By: AI Agent
+---
+ drivers/gpu/drm/sun4i/sun55i_de.c      | 146 +++++++++++++++--
+ drivers/gpu/drm/sun4i/sun55i_de.h      |  26 +++
+ drivers/gpu/drm/sun4i/sun8i_mixer.c    |  24 ++-
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 210 ++++++++++++++++++++++++-
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.h |   5 +
+ 5 files changed, 389 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.c b/drivers/gpu/drm/sun4i/sun55i_de.c
+index e421492d5..21197b0ab 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.c
++++ b/drivers/gpu/drm/sun4i/sun55i_de.c
+@@ -95,7 +95,6 @@
+  * 0x20000*phy, CHN_OVL_OFFSET = 0x1000. So phys6 overlay base = 0x1c1000.
+  */
+ #define SUN55I_DE_OVL_UI_PHYS_CHN	6
+-#define SUN55I_DE_OVL_UI_LOGIC_CHN	1	/* map[1]=6: blender route + port */
+ #define SUN55I_DE_OVL_BASE		0x1c1000
+ 
+ /*
+@@ -214,7 +213,12 @@
+ #define SUN55I_OVL_ATTCTL_EN		BIT(0)
+ #define SUN55I_OVL_ATTCTL_ALPHA_MODE(m)	(((m) & 0x3) << 1)
+ #define SUN55I_OVL_ATTCTL_GLOBAL_ALPHA	1
++#define SUN55I_OVL_ATTCTL_COMBINED_ALPHA 2	/* pixel * global */
+ #define SUN55I_OVL_ATTCTL_FMT(f)	(((f) & 0x1f) << 8)
++/* premul_ctl (the BSP's enum de_ovl_premul): 1 = convert to premul, 2 = already premul */
++#define SUN55I_OVL_ATTCTL_PREMUL(p)	(((p) & 0x3) << 16)
++#define SUN55I_OVL_PREMUL_NON_TO_EXC	1
++#define SUN55I_OVL_PREMUL_HAS_PREMUL	2
+ #define SUN55I_OVL_ATTCTL_ALPHA(a)	(((a) & 0xff) << 24)
+ 
+ /* blender pipe fields (de_bld.c / struct bld_reg) for showing the channel */
+@@ -1200,13 +1204,83 @@ static void sun55i_de_afbd_disable(struct sun8i_mixer *mixer)
+ 
+ static void sun55i_de_layer_disable(struct sun8i_mixer *mixer)
+ {
++	struct sun55i_de *de = mixer->de;
++	unsigned int i;
++
+ 	sun55i_de_afbd_disable(mixer);
+-	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_OVL_LAY0),
+-		     SUN55I_OVL_LAY_ATTCTL, 0);
++	/* whole channel off: all 4 layers, not just layer 0 (quiesce/DPMS) */
++	for (i = 0; i < ARRAY_SIZE(de->ovl_lay); i++) {
++		de->ovl_lay[i].en = false;
++		de_blk_write(de_blk(mixer, SUN55I_DE_BLK_OVL_LAY0 + i),
++			     SUN55I_OVL_LAY_ATTCTL, 0);
++	}
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_OVL_PARA),
++		     SUN55I_OVL_PARA_TOP_HADDR, 0);
+ 	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR),
+ 		     SUN55I_BLD_ATTR_PIPE_EN, 0);
+ }
+ 
++/*
++ * Stage an overlay layer (LAY1..3) of UI channel phys 6: only its own
++ * LAY_n block and its share of the composed state (attctl/haddr, see
++ * sun55i_de_commit). The geometry is relative to the channel window, which
++ * set by the primary (mbcoor = dst - primary_dst, de_rtmx_chn_calc_size);
++ * atomic_check guarantees comes from an unscaled LINEAR primary, with the overlay inside it.
++ */
++static void sun55i_de_ovl_stage(struct sun8i_mixer *mixer, unsigned int n,
++				struct drm_plane_state *state)
++{
++	struct sun55i_de *de = mixer->de;
++	struct sun55i_de_block *lay = de_blk(mixer, SUN55I_DE_BLK_OVL_LAY0 + n);
++	struct drm_framebuffer *fb = state->fb;
++	u32 src_w, src_h, x, y;
++	dma_addr_t addr;
++	u32 fmt;
++
++	de->ovl_lay[n].en = false;
++
++	if (!state->crtc || !state->visible || !fb)
++		return;
++
++	if (fb->modifier != DRM_FORMAT_MOD_LINEAR ||
++	    sun55i_de_fmt(fb->format->format, &fmt)) {
++		DRM_DEBUG_DRIVER("sun55i_de: ovl%u fmt/mod no soportado\n", n);
++		return;
++	}
++
++	src_w = drm_rect_width(&state->src) >> 16;
++	src_h = drm_rect_height(&state->src) >> 16;
++	/* coordinate relative to the window; the check keeps it non-negative */
++	x = state->dst.x1 > (int)de->chn_win_x ?
++	    state->dst.x1 - de->chn_win_x : 0;
++	y = state->dst.y1 > (int)de->chn_win_y ?
++	    state->dst.y1 - de->chn_win_y : 0;
++
++	addr = drm_fb_dma_get_gem_addr(fb, state, 0);
++
++	de_blk_write(lay, SUN55I_OVL_LAY_MBSIZE,
++		     SUN55I_DE_OUT_SIZE(src_w, src_h));
++	de_blk_write(lay, SUN55I_OVL_LAY_MBCOOR,
++		     (x & 0xffff) | ((y & 0xffff) << 16));
++	de_blk_write(lay, SUN55I_OVL_LAY_PITCH, fb->pitches[0]);
++	de_blk_write(lay, SUN55I_OVL_LAY_TOP_LADDR, lower_32_bits(addr));
++	de_blk_write(lay, SUN55I_OVL_LAY_BOT_LADDR, 0);
++
++	/*
++	 * Combined alpha (pixel * the DRM plane's global alpha); the X-formats already
++	 * force pixel alpha = 1 in the fetch (the vendor's fmt table).
++	 * DRM without a blend-mode property = premultiplied sources: it only matters
++	 * if the format carries alpha.
++	 */
++	de->ovl_lay[n].attctl = SUN55I_OVL_ATTCTL_EN |
++		SUN55I_OVL_ATTCTL_ALPHA_MODE(SUN55I_OVL_ATTCTL_COMBINED_ALPHA) |
++		SUN55I_OVL_ATTCTL_FMT(fmt) |
++		SUN55I_OVL_ATTCTL_ALPHA(state->alpha >> 8);
++	de->ovl_lay[n].premul = fb->format->has_alpha;
++	de->ovl_lay[n].haddr = upper_32_bits(addr) & 0xff;
++	de->ovl_lay[n].en = true;
++}
++
+ /*
+  * Stage one RGB UI layer (phys channel 6, pipe 0) into the RCQ shadow from a
+  * DRM plane state: the de_ovl layer registers (de_ovl_u_apply_lay) plus the
+@@ -1237,6 +1311,12 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 	    layer->channel != SUN55I_DE_OVL_UI_LOGIC_CHN)
+ 		return;
+ 
++	/* overlay layers of the same channel: only their LAY_n block + compose */
++	if (layer->overlay > 0 && layer->overlay < ARRAY_SIZE(mixer->de->ovl_lay)) {
++		sun55i_de_ovl_stage(mixer, layer->overlay, state);
++		return;
++	}
++
+ 	if (!state->crtc || !state->visible || !fb) {
+ 		sun55i_de_layer_disable(mixer);
+ 		return;
+@@ -1279,6 +1359,10 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 	attr = de_blk(mixer, SUN55I_DE_BLK_BLD_ATTR);
+ 	ctl  = de_blk(mixer, SUN55I_DE_BLK_BLD_CTL);
+ 
++	/* the channel window is anchored by the primary (mbcoor of LAY1..3) */
++	mixer->de->chn_win_x = dst_x;
++	mixer->de->chn_win_y = dst_y;
++
+ 	if (fb->modifier == DRM_FORMAT_MOD_LINEAR) {
+ 		sun55i_de_afbd_disable(mixer);
+ 
+@@ -1286,7 +1370,11 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 		attctl = SUN55I_OVL_ATTCTL_EN |
+ 			 SUN55I_OVL_ATTCTL_ALPHA_MODE(SUN55I_OVL_ATTCTL_GLOBAL_ALPHA) |
+ 			 SUN55I_OVL_ATTCTL_FMT(fmt) | SUN55I_OVL_ATTCTL_ALPHA(0xff);
+-		de_blk_write(lay, SUN55I_OVL_LAY_ATTCTL, attctl);
++		/* attctl and top_haddr are written by the compose in commit() */
++		mixer->de->ovl_lay[0].attctl = attctl;
++		mixer->de->ovl_lay[0].premul = false;
++		mixer->de->ovl_lay[0].haddr = upper_32_bits(addr) & 0xff;
++		mixer->de->ovl_lay[0].en = true;
+ 		de_blk_write(lay, SUN55I_OVL_LAY_MBSIZE,
+ 			     SUN55I_DE_OUT_SIZE(src_w, src_h));
+ 		de_blk_write(lay, SUN55I_OVL_LAY_MBCOOR, 0);
+@@ -1294,18 +1382,17 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ 		de_blk_write(lay, SUN55I_OVL_LAY_TOP_LADDR, lower_32_bits(addr));
+ 		de_blk_write(lay, SUN55I_OVL_LAY_BOT_LADDR, 0);
+ 
+-		/* top_haddr: high byte packed per layer; layer 0 -> bits[7:0] */
+-		de_blk_write(para, SUN55I_OVL_PARA_TOP_HADDR,
+-			     upper_32_bits(addr) & 0xff);
+ 		de_blk_write(para, SUN55I_OVL_PARA_WIN_SIZE,
+ 			     SUN55I_DE_OUT_SIZE(src_w, src_h));
+ 	} else {
+ 		/*
+-		 * AFBC: the AFBD replaces the OVL fetch (BSP:
+-		 * layer_en_cnt=0) and produces the same src window towards the
+-		 * VSU; the rest of the datapath (VSU/BLD) is unchanged.
++		 * AFBC: the AFBD replaces the WHOLE channel's OVL fetch
++		 * (BSP: de_ovl_disable in de_rtmx_chn_layer_apply) and produces
++		 * the same src window towards the VSU; the rest of the datapath
++		 * (VSU/BLD) is unchanged. With lay[0].en=false the compose in
++		 * commit() apaga tambien cualquier LAY1..3 residual.
+ 		 */
+-		de_blk_write(lay, SUN55I_OVL_LAY_ATTCTL, 0);
++		mixer->de->ovl_lay[0].en = false;
+ 		sun55i_de_afbd_stage(mixer, fb, src_w, src_h);
+ 	}
+ 
+@@ -1346,10 +1433,47 @@ void sun55i_de_layer_update(struct sun8i_mixer *mixer, struct sun8i_layer *layer
+ void sun55i_de_commit(struct sun8i_mixer *mixer)
+ {
+ 	struct sun55i_de *de = mixer->de;
++	bool any_premul = false;
++	u32 haddr = 0;
+ 	unsigned int i;
+ 
+ 	lockdep_assert_held(&de->arm_lock);
+ 
++	/*
++	 * Compose the SHARED per-layer registers of the OVL (phys 6),
++	 * from the state each layer_update left in ovl_lay[]:
++	 *  - attctl: the premul bits depend on the SET of layers
++	 *    (de_rtmx_chn_blend_attr: un layer premultiplicado visible
++	 *    turns the others to NON_TO_EXC so the mix happens in premul);
++	 *  - PARA.top_haddr: one address byte [39:32] PER layer in the
++	 *    mismo registro (union ovl_u_haddr_reg);
++	 *  - AFBD/OVL guard: without layer 0's fetch (AFBC or channel off)
++	 *    no LAY1..3 may stay active (the BSP turns the whole OVL off).
++	 */
++	for (i = 1; i < ARRAY_SIZE(de->ovl_lay); i++) {
++		if (!de->ovl_lay[0].en)
++			de->ovl_lay[i].en = false;
++		if (de->ovl_lay[i].en && de->ovl_lay[i].premul)
++			any_premul = true;
++	}
++	for (i = 0; i < ARRAY_SIZE(de->ovl_lay); i++) {
++		u32 attctl = 0;
++
++		if (de->ovl_lay[i].en) {
++			attctl = de->ovl_lay[i].attctl;
++			if (any_premul)
++				attctl |= SUN55I_OVL_ATTCTL_PREMUL(
++					de->ovl_lay[i].premul ?
++					SUN55I_OVL_PREMUL_HAS_PREMUL :
++					SUN55I_OVL_PREMUL_NON_TO_EXC);
++			haddr |= (u32)de->ovl_lay[i].haddr << (i * 8);
++		}
++		de_blk_write(de_blk(mixer, SUN55I_DE_BLK_OVL_LAY0 + i),
++			     SUN55I_OVL_LAY_ATTCTL, attctl);
++	}
++	de_blk_write(de_blk(mixer, SUN55I_DE_BLK_OVL_PARA),
++		     SUN55I_OVL_PARA_TOP_HADDR, haddr);
++
+ 	/*
+ 	 * Turn the ACCUMULATED dirty state of each block (real changes only,
+ 	 * see de_blk_write) into a budget of 2 arms (arms_left). The dirty
+diff --git a/drivers/gpu/drm/sun4i/sun55i_de.h b/drivers/gpu/drm/sun4i/sun55i_de.h
+index da267426f..1cf7a60b9 100644
+--- a/drivers/gpu/drm/sun4i/sun55i_de.h
++++ b/drivers/gpu/drm/sun4i/sun55i_de.h
+@@ -31,6 +31,9 @@ struct drm_crtc;
+ struct drm_display_mode;
+ struct drm_plane_state;
+ 
++/* LOGICAL channel of the primary UI (map[1]=phys 6): blender route + port */
++#define SUN55I_DE_OVL_UI_LOGIC_CHN	1
++
+ /* one RCQ head: if dirty, DMA @len bytes from phys -> DE_base + reg_offset */
+ struct sun55i_de_rcq_head {
+ 	__le32 low_addr;	/* data block phys [31:0] */
+@@ -205,6 +208,29 @@ struct sun55i_de {
+ 	u32				arm_target;	/* safe arm line (vendor calc) */
+ 	u32				ns_per_line;	/* counter-tick period (ns) */
+ 
++	/*
++	 * Per-layer staged state of the UI OVL (phys 6, LAY0..3). Each
++	 * layer_update leaves its share here and sun55i_de_commit() COMPOSES the
++	 * channel's shared registers, which no layer can write
++	 * exclusively: PARA.top_haddr (one high address byte PER layer in the
++	 * same register, the BSP's union ovl_u_haddr_reg) and the premul bits of
++	 * each attctl (de_rtmx_chn_blend_attr: if a premultiplied layer is
++	 * visible, the channel's non-premul ones are converted with NON_TO_EXC so
++	 * that the intra-OVL mix runs entirely in premul space). attctl is
++	 * written ONLY in the compose: en=false there = layer off, and no
++	 * LAY1..3 can stay active without layer 0's OVL fetch (the AFBD
++	 * replaces it for the whole channel: the BSP's de_rtmx_chn_layer_apply).
++	 */
++	struct {
++		bool			en;
++		bool			premul;		/* fuente premultiplicada */
++		u32			attctl;		/* without the premul bits */
++		u8			haddr;		/* fb addr [39:32] */
++	} ovl_lay[4];
++	/* on-screen origin of the channel window (the primary's dst) */
++	u32				chn_win_x;
++	u32				chn_win_y;
++
+ 	/* TEMP instrumentation — revert with the dev_info diagnostics */
+ 	u32				commit_seq;	/* commits staged */
+ 	u32				arm_seq;	/* RCQ arms issued */
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index da06f54ec..6f83a119a 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -428,13 +428,13 @@ static struct drm_plane **sun8i_layers_init(struct drm_device *drm,
+ }
+ 
+ /*
+- * v35x RCQ: the sun55i_de backend only stages (for now) the primary UI
+- * channel. Registering the VI/overlay planes without staging them was worse than
+- * not having them: the compositor uses them (kwin puts the cursor there), their
+- * legacy atomic_update overwrote live blender registers and the plane did not
+- * even show. With only the primary, compositors compose the
+- * cursor in software (visible). The other channels will come with the
+- * multi-plano real.
++ * v35x RCQ: primary (logical UI channel 1 = phys 6, layer 0, AFBD) + one
++ * overlay plane = layer LAY1 of the SAME channel (per-layer OVL fetch,
++ * intra-channel mixing). The overlay is only valid with an unscaled LINEAR primary
++ * (the AFBD replaces the whole OVL and the VSU scales the whole window):
++ * sun55i_overlay_atomic_check enforces it and the compose in
++ * sun55i_de_commit guarantees it. The VI/cursor planes of other channels will come with their
++ * own blender pipes.
+  */
+ static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
+ 					     struct sunxi_engine *engine)
+@@ -443,7 +443,7 @@ static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
+ 	struct drm_plane **planes;
+ 	struct sun8i_layer *layer;
+ 
+-	planes = devm_kcalloc(drm->dev, 2, sizeof(*planes), GFP_KERNEL);
++	planes = devm_kcalloc(drm->dev, 3, sizeof(*planes), GFP_KERNEL);
+ 	if (!planes)
+ 		return ERR_PTR(-ENOMEM);
+ 
+@@ -454,6 +454,14 @@ static struct drm_plane **sun55i_layers_init(struct drm_device *drm,
+ 	}
+ 	planes[0] = &layer->plane;
+ 
++	layer = sun55i_ui_overlay_init(drm, mixer, DRM_PLANE_TYPE_OVERLAY,
++				       SUN55I_DE_OVL_UI_LOGIC_CHN, 1, 1);
++	if (IS_ERR(layer)) {
++		dev_err(drm->dev, "Couldn't initialize overlay plane\n");
++		return ERR_CAST(layer);
++	}
++	planes[1] = &layer->plane;
++
+ 	return planes;
+ }
+ 
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index 92569030f..619979fa5 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -275,6 +275,125 @@ static const struct drm_plane_helper_funcs sun8i_ui_layer_helper_funcs = {
+ 	.atomic_update	= sun8i_ui_layer_atomic_update,
+ };
+ 
++/*
++ * atomic_check of a v35x overlay plane = layer LAY1..3 of the primary's
++ * UI channel. The layer rides the channel window, which the primary sets
++ * (BSP de_rtmx_chn_calc_size: mbcoor relative to the union; the VSU scales the
++ * WHOLE window; the AFBD replaces the whole channel's OVL). Hence the
++ * three conditions: LINEAR primary, unscaled primary, and overlay
++ * contained in the primary's rect. No scaling of its own: there is no per-layer
++ * scaler in the hardware.
++ */
++static int sun55i_overlay_atomic_check(struct drm_plane *plane,
++				       struct drm_atomic_state *state)
++{
++	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
++									   plane);
++	struct drm_crtc *crtc = new_state->crtc;
++	struct drm_crtc_state *crtc_state;
++	struct drm_plane_state *pri;
++	int ret;
++
++	if (!crtc)
++		return 0;
++
++	crtc_state = drm_atomic_get_existing_crtc_state(state, crtc);
++	if (WARN_ON(!crtc_state))
++		return -EINVAL;
++
++	ret = drm_atomic_helper_check_plane_state(new_state, crtc_state,
++						  DRM_PLANE_NO_SCALING,
++						  DRM_PLANE_NO_SCALING,
++						  true, true);
++	if (ret)
++		return ret;
++
++	if (!new_state->visible)
++		return 0;
++
++	pri = drm_atomic_get_plane_state(state, crtc->primary);
++	if (IS_ERR(pri))
++		return PTR_ERR(pri);
++
++	/* without a primary there is no channel window to ride */
++	if (!pri->crtc || !pri->fb)
++		return -EINVAL;
++	/* AFBC on the primary = AFBD active = the whole channel's OVL off */
++	if (pri->fb->modifier != DRM_FORMAT_MOD_LINEAR)
++		return -EINVAL;
++	/* scaled primary: the VSU would also scale the overlays */
++	if ((pri->src_w >> 16) != pri->crtc_w ||
++	    (pri->src_h >> 16) != pri->crtc_h)
++		return -EINVAL;
++	/* inside the channel window (mbcoor does not accept negative values) */
++	if (new_state->dst.x1 < pri->crtc_x || new_state->dst.y1 < pri->crtc_y ||
++	    new_state->dst.x2 > pri->crtc_x + (int)pri->crtc_w ||
++	    new_state->dst.y2 > pri->crtc_y + (int)pri->crtc_h)
++		return -EINVAL;
++
++	return 0;
++}
++
++/*
++ * atomic_check of the v35x primary: the common one (VSU scaling allowed) plus
++ * the coupling with its overlay layers: if the primary switches to AFBC or to
++ * scaling, a visible overlay stops being valid. Pulling its state
++ * into the commit forces the overlay re-check (above), which rejects atomically and
++ * the compositor falls back to GPU composition. Reading other->state is safe: the
++ * overlays can only change under the shared CRTC lock, which this check
++ * already holds.
++ */
++static int sun55i_primary_atomic_check(struct drm_plane *plane,
++				       struct drm_atomic_state *state)
++{
++	struct drm_plane_state *new_state = drm_atomic_get_new_plane_state(state,
++									   plane);
++	struct sun8i_layer *layer = plane_to_sun8i_layer(plane);
++	struct drm_framebuffer *fb = new_state->fb;
++	struct drm_plane *other;
++	bool scaled;
++	int ret;
++
++	ret = sun8i_ui_layer_atomic_check(plane, state);
++	if (ret)
++		return ret;
++
++	if (!new_state->crtc || !fb)
++		return 0;
++
++	scaled = (new_state->src_w >> 16) != new_state->crtc_w ||
++		 (new_state->src_h >> 16) != new_state->crtc_h;
++	if (!scaled && fb->modifier == DRM_FORMAT_MOD_LINEAR)
++		return 0;
++
++	drm_for_each_plane(other, plane->dev) {
++		struct sun8i_layer *l = plane_to_sun8i_layer(other);
++		struct drm_plane_state *s;
++
++		if (l->mixer != layer->mixer ||
++		    l->type != SUN8I_LAYER_TYPE_UI ||
++		    l->channel != layer->channel || l->overlay == 0)
++			continue;
++		if (!other->state->crtc || !other->state->fb)
++			continue;
++		s = drm_atomic_get_plane_state(state, other);
++		if (IS_ERR(s))
++			return PTR_ERR(s);
++	}
++
++	return 0;
++}
++
++static const struct drm_plane_helper_funcs sun55i_primary_helper_funcs = {
++	.atomic_check	= sun55i_primary_atomic_check,
++	.atomic_update	= sun8i_ui_layer_atomic_update,
++};
++
++static const struct drm_plane_helper_funcs sun55i_overlay_helper_funcs = {
++	.atomic_check	= sun55i_overlay_atomic_check,
++	.atomic_update	= sun8i_ui_layer_atomic_update,
++};
++
+ /*
+  * v35x: the primary UI channel has an AFBC decoder (AFBD). LINEAR works
+  * for everything; AFBC only in the combinations sun55i_de decodes.
+@@ -344,6 +463,79 @@ static const uint64_t sun55i_layer_modifiers[] = {
+ 	DRM_FORMAT_MOD_INVALID
+ };
+ 
++/*
++ * Formats of the v35x overlay planes: exactly the ones sun55i_de_fmt
++ * programs in the OVL fetch (the primary inherits the generic DE2 table
++ * for compatibility, but an overlay advertising 4444/1555 would end up as a
++ * disabled layer + a screen silently missing the overlay).
++ */
++static const u32 sun55i_ovl_formats[] = {
++	DRM_FORMAT_ARGB8888,
++	DRM_FORMAT_ABGR8888,
++	DRM_FORMAT_RGBA8888,
++	DRM_FORMAT_BGRA8888,
++	DRM_FORMAT_XRGB8888,
++	DRM_FORMAT_XBGR8888,
++	DRM_FORMAT_RGBX8888,
++	DRM_FORMAT_BGRX8888,
++	DRM_FORMAT_RGB888,
++	DRM_FORMAT_BGR888,
++	DRM_FORMAT_RGB565,
++	DRM_FORMAT_BGR565,
++};
++
++/*
++ * v35x overlay/cursor plane: a layer LAY1..3 of the primary's UI channel
++ * (phys 6), LINEAR only and unscaled (see sun55i_overlay_atomic_check).
++ * Immutable zpos: the intra-channel stacking order is fixed by the hardware layer
++ * index, it cannot be reordered on the fly.
++ */
++struct sun8i_layer *sun55i_ui_overlay_init(struct drm_device *drm,
++					   struct sun8i_mixer *mixer,
++					   enum drm_plane_type type,
++					   int channel, int overlay,
++					   unsigned int zpos)
++{
++	struct sun8i_layer *layer;
++	int ret;
++
++	layer = devm_kzalloc(drm->dev, sizeof(*layer), GFP_KERNEL);
++	if (!layer)
++		return ERR_PTR(-ENOMEM);
++
++	/* format_mod_supported needs the mixer during plane_init */
++	layer->mixer = mixer;
++
++	ret = drm_universal_plane_init(drm, &layer->plane, 0,
++				       &sun8i_ui_layer_funcs,
++				       sun55i_ovl_formats,
++				       ARRAY_SIZE(sun55i_ovl_formats),
++				       sun8i_layer_modifiers, type, NULL);
++	if (ret) {
++		dev_err(drm->dev, "Couldn't initialize overlay plane\n");
++		return ERR_PTR(ret);
++	}
++
++	ret = drm_plane_create_alpha_property(&layer->plane);
++	if (ret) {
++		dev_err(drm->dev, "Couldn't add alpha property\n");
++		return ERR_PTR(ret);
++	}
++
++	ret = drm_plane_create_zpos_immutable_property(&layer->plane, zpos);
++	if (ret) {
++		dev_err(drm->dev, "Couldn't add zpos property\n");
++		return ERR_PTR(ret);
++	}
++
++	drm_plane_helper_add(&layer->plane, &sun55i_overlay_helper_funcs);
++	layer->type = SUN8I_LAYER_TYPE_UI;
++	layer->channel = channel;
++	layer->overlay = overlay;
++
++	return layer;
++}
++
+ struct sun8i_layer *sun8i_ui_layer_init_one(struct drm_device *drm,
+ 					    struct sun8i_mixer *mixer,
+ 					    int index)
+@@ -387,14 +579,26 @@ struct sun8i_layer *sun8i_ui_layer_init_one(struct drm_device *drm,
+ 		return ERR_PTR(ret);
+ 	}
+ 
+-	ret = drm_plane_create_zpos_property(&layer->plane, channel,
+-					     0, plane_cnt - 1);
++	/*
++	 * v35x: immutable zpos (layer/pipe stacking is fixed in hardware) and
++	 * its own atomic_check that couples the channel's primary<->overlays.
++	 */
++	if (mixer->cfg->uses_rcq)
++		ret = drm_plane_create_zpos_immutable_property(&layer->plane, 0);
++	else
++		ret = drm_plane_create_zpos_property(&layer->plane, channel,
++						     0, plane_cnt - 1);
+ 	if (ret) {
+ 		dev_err(drm->dev, "Couldn't add zpos property\n");
+ 		return ERR_PTR(ret);
+ 	}
+ 
+-	drm_plane_helper_add(&layer->plane, &sun8i_ui_layer_helper_funcs);
++	if (mixer->cfg->uses_rcq)
++		drm_plane_helper_add(&layer->plane,
++				     &sun55i_primary_helper_funcs);
++	else
++		drm_plane_helper_add(&layer->plane,
++				     &sun8i_ui_layer_helper_funcs);
+ 	layer->mixer = mixer;
+ 	layer->type = SUN8I_LAYER_TYPE_UI;
+ 	layer->channel = channel;
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.h b/drivers/gpu/drm/sun4i/sun8i_ui_layer.h
+index 83892f6ff..228108188 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.h
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.h
+@@ -52,4 +52,9 @@ struct sun8i_layer;
+ struct sun8i_layer *sun8i_ui_layer_init_one(struct drm_device *drm,
+ 					    struct sun8i_mixer *mixer,
+ 					    int index);
++struct sun8i_layer *sun55i_ui_overlay_init(struct drm_device *drm,
++					   struct sun8i_mixer *mixer,
++					   enum drm_plane_type type,
++					   int channel, int overlay,
++					   unsigned int zpos);
+ #endif /* _SUN8I_UI_LAYER_H_ */
+-- 
+2.53.0
+

@@ -1,0 +1,62 @@
+From c094328d9bd9660c3e39580795cd6d75ec61de3d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 18:51:49 +0200
+Subject: [PATCH 120/143] pci: sunxi: mask the INTx sources when the intx
+ domain is freed
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+sunxi_allocate_intx_domains() unmasks all four INTx sources in
+SII_INT_MASK0 at probe, but nothing ever masked them again: after a
+remove the enable bits survived in hardware, and on a re-bind the SII
+IRQ handler is requested (and the line unmasked at the GIC) before
+sunxi_pcie_host_init() creates the new intx_domain.  An endpoint
+asserting INTx in that window made the handler call
+generic_handle_domain_irq(pp->intx_domain == NULL, ...) and crash --
+the same class of NULL dispatch that commit bb9fec690e67 ("pci:
+sunxi: propagate sunxi_allocate_intx_domains() error") closed for the
+first probe.
+
+Mask the INTx sources in sunxi_free_intx_domains(), before the domain
+is removed.  This runs with clocks up on every call site: the probe
+error unwind, and remove(), where the port teardown now precedes
+clock gating.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+Co-Authored-By: AI Agent
+---
+ drivers/pci/pcie-sunxi/pcie-sunxi-rc.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c b/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
+index b49c7101c..ae22d24a3 100644
+--- a/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
++++ b/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
+@@ -330,6 +330,22 @@ static int sunxi_allocate_intx_domains(struct sunxi_pcie_port *pp)
+ 
+ static void sunxi_free_intx_domains(struct sunxi_pcie_port *pp)
+ {
++	struct sunxi_pcie *pci = to_sunxi_pcie_from_pp(pp);
++	u32 val;
++
++	/*
++	 * Mask the INTx sources again, mirroring the enable in
++	 * sunxi_allocate_intx_domains().  The SII IRQ handler stays
++	 * requested until devm teardown and dispatches into
++	 * pp->intx_domain, so the sources must be quiet before the
++	 * domain goes away -- and a later re-probe must not receive
++	 * INTx (from the mask left enabled by a previous bind) before
++	 * its own domain exists.
++	 */
++	val = sunxi_pcie_readl(pci, SII_INT_MASK0);
++	val &= ~INTX_RX_ASSERT_MASK;
++	sunxi_pcie_writel(val, pci, SII_INT_MASK0);
++
+ 	if (pp->intx_domain)
+ 		irq_domain_remove(pp->intx_domain);
+ }
+-- 
+2.53.0
+

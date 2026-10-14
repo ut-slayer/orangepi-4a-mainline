@@ -1,0 +1,46 @@
+From 8ac2687e37bd242bdcd75a7c09108e5ac58096a1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Sun, 21 Jun 2026 19:35:07 +0200
+Subject: [PATCH 003/143] dts: opi4a: add a static 2GB /memory node (U-Boot BSP
+ does not fill it in)
+
+The vendor U-Boot (v2018.05-t527) shipped on the board does not fill in
+/memory in the FDT: it expects a DTB that already carries a static
+memory node, like the vendor one. The mainline DTB left it empty, so the
+kernel booted with no RAM and hung silently before the first heartbeat.
+
+Describe the 2GB of DRAM fitted to this board at 0x40000000.
+
+Co-Authored-By: AI Agent
+---
+ .../boot/dts/allwinner/sun55i-t527-orangepi-4a.dts  | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index f7e460947..0d6318564 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -22,6 +22,19 @@ chosen {
+ 		stdout-path = "serial0:115200n8";
+ 	};
+ 
++	/*
++	 * The vendor U-Boot (v2018.05-t527) does NOT fill in /memory (it assumes the DTB
++	 * already carries it, like the vendor one). The mainline DTB left it empty -> the kernel
++	 * boots without knowing where the RAM is -> instant silent hang, no
++	 * heartbeat. Define a static /memory like the vendor DTB: base 0x40000000.
++	 * (On a 2GB board use size 0x80000000 instead of 0x1 0x0.)
++	 */
++	memory@40000000 {
++		device_type = "memory";
++		/* OPi4A 2GB: base 0x40000000, size 0x80000000 (2 GiB) */
++		reg = <0x0 0x40000000 0x0 0x80000000>;
++	};
++
+ 	/*
+ 	 * Stub nodes for the vendor U-Boot (v2018.05-t527): its bootm calls
+ 	 * sunxi_drm_kernel_para_flush(), which looks up /soc/sunxi-drm and /soc/de in the
+-- 
+2.53.0
+

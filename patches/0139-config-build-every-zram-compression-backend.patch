@@ -1,0 +1,46 @@
+From ff47d4f5310f87c25726b14078ca3d6e41d5a94d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 21 Aug 2026 18:06:45 +0200
+Subject: [PATCH 139/143] config: build every zram compression backend
+
+zram was built with only zstd (the default) and lzo, so the algorithm
+could not actually be compared on the board: lz4, the usual candidate
+when CPU time is the scarce resource, was not even available to select.
+
+Build them all -- lz4, lz4hc, deflate and 842 join zstd and lzo -- so
+the algorithm can be switched at runtime through
+/sys/block/zram0/comp_algorithm and measured on this silicon instead of
+guessed from x86 benchmarks. The default stays zstd.
+
+Which one wins here is not obvious. lz4 costs less CPU but compresses
+around 2:1 where zstd reaches roughly 3:1, and on a 2 GB board backed by
+a microSD the ratio is what decides whether a page stays in RAM or goes
+out to storage that is orders of magnitude slower than decompressing it.
+lzo-rle (already available through the LZO backend, and what Android
+uses for zram) sits in between.
+
+Each backend is a few KB of kernel text and none of them run unless
+selected.
+
+Co-Authored-By: AI Agent
+---
+ arch/arm64/configs/opi4a_blindboot_defconfig | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm64/configs/opi4a_blindboot_defconfig b/arch/arm64/configs/opi4a_blindboot_defconfig
+index 07c8b2460..69b930790 100644
+--- a/arch/arm64/configs/opi4a_blindboot_defconfig
++++ b/arch/arm64/configs/opi4a_blindboot_defconfig
+@@ -230,6 +230,8 @@ CONFIG_ZRAM=m
+ CONFIG_ZRAM_BACKEND_LZ4=y
+ CONFIG_ZRAM_BACKEND_LZ4HC=y
+ CONFIG_ZRAM_BACKEND_ZSTD=y
++CONFIG_ZRAM_BACKEND_DEFLATE=y
++CONFIG_ZRAM_BACKEND_842=y
+ CONFIG_ZRAM_BACKEND_LZO=y
+ CONFIG_ZRAM_DEF_COMP_ZSTD=y
+ CONFIG_BLK_DEV_LOOP=y
+-- 
+2.53.0
+

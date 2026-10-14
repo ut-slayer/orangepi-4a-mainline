@@ -118,24 +118,23 @@ almacenamiento externo rápido en esta placa, el camino es la ranura M.2 NVMe.
   pero **aún sin probar en banco** (la placa no tiene altavoz/micro integrados
   donde probarlos). La salida de **auriculares** de 3,5 mm y la detección de
   jack sí funcionan.
-- **Suspensión / hibernación: desactivadas por defecto.** La ruta de *resume* de
-  mainline en este SoC aún necesita trabajo — el sistema no vuelve de forma fiable
-  después de apagarse la pantalla — así que la suspensión automática *y* el
-  apagado de pantalla por inactividad van apagados en la imagen, y la pantalla se
-  mantiene encendida. Reactiva cualquiera de los dos en *Configuración → Energía*
-  si quieres probarlo.
+- **Suspensión / hibernación: desactivadas en todas las imágenes.** En mainline
+  el A523 todavía no despierta de la suspensión: la placa se cuelga del todo (ni
+  el LED de latido) hasta quitarle la corriente. KDE Plasma y Cinnamon suspenden
+  solos tras un rato sin uso, así que desde la v0.5 la suspensión y la
+  hibernación están desactivadas en todo el sistema (targets de reposo
+  enmascarados, logind responde `CanSuspend=no`). Apagar solo la pantalla por
+  inactividad no da problemas.
 - eMMC: el módulo se **detecta y funciona a HS200** (lectura/escritura) —
   confirmado en hardware real por un tester (una eMMC de 58 GB apareció como
   `mmcblk2` y se usó como almacenamiento — ¡gracias a **JamesCL** por probar la eMMC y la placa de 4 GB! 🙏). **Arrancar desde eMMC** es un paso
   aparte que aún no está cableado — la imagen está preparada para arrancar
-  desde microSD. **SSD NVMe / M.2: sin probar con un disco real.** La serie de
-  parches ya levanta el controlador PCIe y la combo PHY, y el root port
-  enumera — pero eso está verificado solo con el slot **vacío**. Si un SSD
-  NVMe real enumera, funciona y es estable es justo la parte que aún no puedo
-  confirmar. Las imágenes v0.2 publicadas son anteriores a esto, así que ahí
-  no aparece nada en `lspci` (¡gracias al tester que diagnosticó exactamente
-  esto y lo reportó!). Todavía no tengo un SSD NVMe con el que probar — si
-  tienes uno en el slot M.2, un informe de prueba vale oro.
+  desde microSD. **SSD NVMe / M.2: validado por dos
+  testers** con discos reales (KIOXIA e Intel), con pruebas de integridad `f3`
+  sobre el disco entero y cero corrupción. Desde la v0.5 el driver `nvme` va
+  integrado en el kernel, así que se puede arrancar desde la SD con el **sistema
+  raíz en el NVMe** (`root=` apuntando a la partición del NVMe, sin initramfs).
+  Eso último aún no se ha probado con un disco real: un informe vale oro.
 - Cabecera GPIO / I2C / SPI: sin probar.
 - NPU: el driver etnaviv la reconoce, pero está en la blacklist por defecto
   (al cargarla se anunciaba como el dispositivo de render principal y rompía la
@@ -147,7 +146,8 @@ almacenamiento externo rápido en esta placa, el camino es la ranura M.2 NVMe.
 
 **¿Cómo va de rápida?**
 Es un octa-core Cortex-A55 con una Mali-G57 — un escritorio modesto pero
-honrado. glmark2-es2 (Wayland) ronda los ~500 con Panfrost. El escritorio
+honrado. glmark2-es2 (Wayland, 800×600) da ~840 en GNOME y ~850 en Kubuntu
+con Panfrost (GPU a 696 MHz). El escritorio
 GNOME Wayland va fluido a 1080p; el navegador corre con aceleración GPU incluido
 WebGL.
 
@@ -157,7 +157,7 @@ hasta 1.416 GHz en el cluster pequeño (cpu0-3) y hasta 1.8 GHz en el cluster
 grande (cpu4-7), governor schedutil, con los sensores térmicos del A523 (THS) y
 los cooling-maps de CPU cableados — bajo carga sostenida el chip hace throttling
 solo, con elegancia, en vez de achicharrarse. La GPU también escala (Panfrost
-devfreq, 150–600 MHz, simple_ondemand): reposa a 150 MHz y tiene su propio
+devfreq, 150–696 MHz, simple_ondemand): reposa a 150 MHz y tiene su propio
 cooling-map en la zona térmica de la GPU. En uso de escritorio normal va fresca,
 y el desarrollo se hizo sin disipador y sin ventilador.
 Medido (placa desnuda, sin refrigeración): ~47 °C en reposo, ~60 °C con los 8
@@ -167,12 +167,14 @@ cores durante ratos largos.
 
 **¿Hay swap / zram?**
 **zram: sí, activado de serie. Swapfile en SD: opcional.** La imagen activa un
-**intercambio comprimido en RAM de 1 GB (zram, zstd)**: en la placa de 2 GB
+**intercambio comprimido en RAM de 1 GB (zram, lzo-rle — el compresor más
+rápido del kernel medido en esta placa)**: en la placa de 2 GB
 un navegador reproduciendo vídeo puede agotar la RAM, y tirar de la microSD
 (lentísima) dejaba el escritorio pillado — el zram absorbe eso en RAM,
 comprimido, sin tocar la tarjeta. Su coste es casi cero mientras no se usa
 (solo ocupa memoria por las páginas que de verdad se intercambian), y puedes
 apagarlo cuando quieras con `sudo systemctl disable --now zram-swap.service`.
+Para ver qué está haciendo: `sudo zramctl`.
 
 Sigue **sin haber swapfile en la SD de serie**. Si quieres colchón extra
 (merece la pena en la variante de 2 GB con uso de escritorio intenso), el
@@ -202,9 +204,22 @@ puedes desactivar el comportamiento con
 `systemctl --user disable --now aureal-audio-autoswitch`.
 
 **¿Wayland o X11?**
-Solo Wayland. La imagen trae una sesión **GNOME Wayland** y todo está probado
-sobre ella. No se incluye sesión **X11** — Panfrost da su mejor aceleración bajo
-Wayland, y el vídeo por hardware en el navegador lo necesita.
+Wayland. **GNOME** y **Kubuntu** traen solo su sesión Wayland — Panfrost da su
+mejor aceleración bajo Wayland, y el vídeo por hardware en el navegador lo
+necesita. **Cinnamon** arranca en su sesión Wayland, que el propio proyecto
+Cinnamon aún considera experimental; también trae instalada la sesión X11 como
+respaldo (elige **Cinnamon** en vez de **Cinnamon (Wayland)** en la pantalla de
+inicio de sesión).
+
+**¿Por qué hay paquetes de Ubuntu fijados?**
+Las imágenes Kubuntu y Cinnamon llevan dos paquetes de Ubuntu parcheados:
+**Xwayland** (el 24.1.10 de Ubuntu 26.04 se cae al arrancar la sesión) y, en
+Cinnamon, **Muffin** (sin los parches, todas las aplicaciones Wayland van por
+software). Un pin de apt (`/etc/apt/preferences.d/aurealnix-patched-packages`)
+impide que una actualización normal de Ubuntu los sustituya por versiones sin el
+arreglo. Xwayland 24.1.11 o posterior sí pasa, así que ese pin se levanta solo
+cuando Ubuntu publique el arreglo. Fuentes y detalles:
+[userspace-patches/](userspace-patches/).
 
 **¿Por qué está desactivado el indexado de ficheros (Tracker)? ¿Por qué no hay
 tienda de software?**
@@ -225,16 +240,18 @@ Sí — el espacio de usuario es **Debian 13 puro** (construido con debootstrap,
 repos estándar + trixie-backports para Mesa) y se actualiza con normalidad por
 apt. Solo el kernel vive fuera de dpkg: un pin de apt impide que se
 instale el `linux-image-*` de Debian, porque un kernel estándar de Debian no
-arrancaría esta placa (le faltan los 130 parches que necesita este port, y la
+arrancaría esta placa (le faltan los 143 parches que necesita este port, y la
 cadena de arranque espera un uImage concreto).
 
 **¿Cómo llegan las actualizaciones del kernel?**
-Con nuevas *releases* de la imagen (las notas de versión dirán qué cambió), o a
-mano: sustituir `uImage` + módulos desde los artefactos compilados del repo.
-Instrucciones en el README.
+Con nuevas *releases* de la imagen, que además adjuntan el kernel como paquetes
+`.deb`: instálalos con `sudo apt install ./aurealnix-kernel-common_*.deb
+./linux-image-*.deb ./linux-headers-*.deb` y reinicia. El kernel anterior se
+queda instalado, y `sudo aurealnix-kernel-switch <versión>` vuelve a él. Las
+notas de la versión dicen qué cambió.
 
 **¿Puedo compilar el kernel yo mismo?**
-Sí — el repo tiene la serie completa de parches (130 sobre 6.18.38 vanilla), el
+Sí — el repo tiene la serie completa de parches (143 sobre 6.18.55 vanilla), el
 defconfig y el `.dts` de la placa. Instrucciones de compilación incluidas.
 
 **¿Qué U-Boot usa?**

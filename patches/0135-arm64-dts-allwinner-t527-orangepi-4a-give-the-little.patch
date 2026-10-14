@@ -1,0 +1,96 @@
+From 891124f51d0ad778715025308a1d544857297b71 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 31 Jul 2026 23:10:33 +0200
+Subject: [PATCH 135/143] arm64: dts: allwinner: t527-orangepi-4a: give the
+ little cluster OPPs a voltage range
+
+DCDC1 (vdd-cpul) does not power the little cluster alone.  The DSU --
+the DynamIQ Shared Unit, i.e. the coherent interconnect and the 1 MB
+shared L3 -- hangs off the very same rail, and the vendor board file
+wires it there explicitly (dsu-supply = <&reg_dcdc1>).  Nothing in
+mainline drives the DSU today, so it sits at whatever the firmware
+left it at, but a driver that scales it has to raise this rail.
+
+That is impossible while every OPP names an exact voltage.
+opp_parse_supplies() turns a single opp-microvolt value into
+u_volt_min == u_volt_max, so each cpufreq transition pins the rail to
+one point.  regulator_check_consumers() then aggregates the rail as
+max-of-mins and min-of-maxes across consumers, so a second consumer
+asking for anything higher makes min exceed max and the transition
+fails with -EINVAL ("Restricting voltage").
+
+Declare a range instead.  The target and lower bound stay exactly as
+before, so this is a no-op with a single consumer: the core still
+picks the lowest voltage satisfying the request.  The upper bound is
+1.15 V, the highest voltage the vendor tables ever put on this rail
+(the cluster's own 1.416 GHz point), so the aggregate can never
+exceed a voltage the vendor already sanctions here.
+
+Measured on the board, the DSU is worth coordinating: raising it from
+696 to 936 MHz cuts dependent-load latency in the 256-512 KB working
+set by 20-22% and makes JIT-style cache maintenance 20% cheaper,
+while L1 latency is unchanged as expected.
+
+Co-Authored-By: AI Agent
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 21 ++++++++++++++-----
+ 1 file changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 5a1c38c0d..f6732935b 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -249,33 +249,44 @@ / {
+ 	 * 0.90 V sits within the vendor envelope (408 and 672 MHz both run
+ 	 * at 0.90 V on every speed bin).
+ 	 */
++	/*
++	 * DCDC1 (vdd-cpul) does not power this cluster alone: the DSU (the
++	 * DynamIQ Shared Unit, i.e. the coherent interconnect and the shared
++	 * L3) hangs off the very same rail. Each OPP therefore declares a
++	 * range instead of an exact voltage. opp_parse_supplies() turns a
++	 * single value into u_volt_min == u_volt_max, and with that
++	 * regulator_check_consumers() aggregates to min > max and fails the
++	 * transition with -EINVAL the moment the other consumer of the rail
++	 * asks for a different voltage. The upper bound is 1.15 V, the
++	 * highest voltage the vendor tables ever put on this rail.
++	 */
+ 	cluster0_opp: opp-table-cluster0 {
+ 		compatible = "operating-points-v2";
+ 		opp-shared;
+ 
+ 		opp-480000000 {
+ 			opp-hz = /bits/ 64 <480000000>;
+-			opp-microvolt = <900000>;
++			opp-microvolt = <900000 900000 1150000>;
+ 		};
+ 
+ 		opp-792000000 {
+ 			opp-hz = /bits/ 64 <792000000>;
+-			opp-microvolt = <900000>;
++			opp-microvolt = <900000 900000 1150000>;
+ 		};
+ 
+ 		opp-1008000000 {
+ 			opp-hz = /bits/ 64 <1008000000>;
+-			opp-microvolt = <960000>;
++			opp-microvolt = <960000 960000 1150000>;
+ 		};
+ 
+ 		opp-1224000000 {
+ 			opp-hz = /bits/ 64 <1224000000>;
+-			opp-microvolt = <1050000>;
++			opp-microvolt = <1050000 1050000 1150000>;
+ 		};
+ 
+ 		opp-1416000000 {
+ 			opp-hz = /bits/ 64 <1416000000>;
+-			opp-microvolt = <1150000>;
++			opp-microvolt = <1150000 1150000 1150000>;
+ 		};
+ 	};
+ 
+-- 
+2.53.0
+

@@ -1,0 +1,56 @@
+From 6f1b3d6602ecbccd10f6342ffcfe3db2a38c5ad9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 12:16:49 +0200
+Subject: [PATCH 103/143] clk: sunxi-ng: a523-cpu: bound pll-cpu0's N factor
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+pll_cpu0_clk was declared with _SUNXI_CCU_MULT_MIN(8, 8, 12), which
+leaves the upper end at the field width (256).  A clk_set_rate() asking
+for a high rate would compute N up to 256 -- 24 MHz * 256 = 6.144 GHz --
+far above what the CPU PLL family is specified to deliver.  The manual
+documents the CPU PLL InputFreq*N range as 480 MHz .. 2.05 GHz (T527 UM
+v0.92 §2.2.9.1, CPU_L_PLL_CTRL_REG), and the active cluster PLLs in
+this same driver (pll_cpul/pll_cpub) already cap N at 108 for headroom.
+
+pll_cpu0 is the backup/alternate CPU PLL (CLK_IGNORE_UNUSED, not on the
+active cluster path), so nobody trips the bug today, but the unbounded
+range is a latent footgun: cap N at 108 to match the active cluster
+PLLs.  No behavior change for current callers -- nobody sets pll_cpu0's
+rate.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+index d5dd25e02..80dc43746 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+@@ -46,12 +46,18 @@ static const struct clk_parent_data osc24M[] = {
+ /*
+  * pll-cpu0 is a backup/alternate CPU PLL. Model it like the H616 pll-cpux
+  * (24 MHz * N, offset 1). It is not on the active cluster path but is one of
+- * the mux inputs, so it needs to exist.
++ * the mux inputs, so it needs to exist.  Cap N at 108 to match the active
++ * cluster PLLs (pll_cpul/pll_cpub) below: the manual documents the CPU PLL
++ * family's InputFreq*N range as 480 MHz .. 2.05 GHz (T527 UM v0.92
++ * §2.2.9.1), and the cluster PLLs already cap N at 108 (= 2.592 GHz) for
++ * headroom.  The unbounded _SUNXI_CCU_MULT_MIN(8,8,12) would otherwise let a
++ * clk_set_rate() program N up to 256 (24 MHz * 256 = 6.144 GHz), far above
++ * what the hardware is specified to deliver.
+  */
+ static struct ccu_mult pll_cpu0_clk = {
+ 	.enable		= BIT(27) | BIT(29) | BIT(30) | BIT(31),
+ 	.lock		= BIT(28),
+-	.mult		= _SUNXI_CCU_MULT_MIN(8, 8, 12),
++	.mult		= _SUNXI_CCU_MULT_OFFSET_MIN_MAX(8, 8, 1, 12, 108),
+ 	.common		= {
+ 		.reg		= SUN55I_A523_PLL_CPU0_REG,
+ 		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpu0", osc24M,
+-- 
+2.53.0
+

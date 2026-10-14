@@ -1,0 +1,42 @@
+From 4d9b25360210e99fc6e92de34d5bc30e37ba336c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 12:06:59 +0200
+Subject: [PATCH 100/143] pci: sunxi: propagate sunxi_allocate_intx_domains()
+ error
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+sunxi_allocate_intx_domains() returns -ENODEV if the DT is missing the
+"legacy-interrupt-controller" child node and leaves pp->intx_domain
+NULL.  sunxi_pcie_host_init() discarded that return value and continued
+to register the SII IRQ; the first INTx assertion from an endpoint then
+called generic_handle_domain_irq(NULL, ...) and crashed.
+
+Propagate the error so probe fails cleanly when the binding is not
+satisfied, instead of oopsing later on the first legacy interrupt.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+---
+ drivers/pci/pcie-sunxi/pcie-sunxi-rc.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c b/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
+index 97aac4438..c3bfe2605 100644
+--- a/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
++++ b/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
+@@ -508,7 +508,9 @@ static int sunxi_pcie_host_init(struct sunxi_pcie_port *pp)
+ 		pp->io_base   -= PCIE_CPU_BASE;
+ 	}
+ 
+-	sunxi_allocate_intx_domains(pp);
++	ret = sunxi_allocate_intx_domains(pp);
++	if (ret)
++		return ret;
+ 
+ 	if (pci_msi_enabled() && !pp->has_its) {
+ 		ret = sunxi_allocate_msi_domains(pp);
+-- 
+2.53.0
+

@@ -1,0 +1,37 @@
+From 9d49cf9449b25b5c40e611fe99de3e2ac22d9b9d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:13:44 +0200
+Subject: [PATCH 027/143] drm/sun4i: flatten sun55i_a523_mixer0_cfg for the
+ 6.18 struct
+
+The patch initializer used the .lay_cfg sub-struct of the 7.1 DE33 refactor;
+on 6.18 sun8i_mixer_cfg has the fields flat.
+---
+ drivers/gpu/drm/sun4i/sun8i_mixer.c | 8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_mixer.c b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+index 5655b7c12..148bc5d75 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_mixer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_mixer.c
+@@ -913,13 +913,11 @@ static const struct sun8i_mixer_cfg sun50i_h616_mixer0_cfg = {
+  * pipeline through the RCQ DMA rather than plain MMIO.
+  */
+ static const struct sun8i_mixer_cfg sun55i_a523_mixer0_cfg = {
+-	.lay_cfg = {
+-		.de_type	= SUN8I_MIXER_DE33,
+-		.scaler_mask	= 0xf,
+-		.scanline_yuv	= 4096,
+-	},
++	.ccsc		= CCSC_MIXER0_LAYOUT,
+ 	.de_type	= SUN8I_MIXER_DE33,
+ 	.mod_rate	= 600000000,
++	.scaler_mask	= 0xf,
++	.scanline_yuv	= 4096,
+ 	.ui_num		= 3,
+ 	.vi_num		= 1,
+ 	.map		= {0, 6, 7, 8},
+-- 
+2.53.0
+

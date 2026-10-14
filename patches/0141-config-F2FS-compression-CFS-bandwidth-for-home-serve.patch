@@ -1,0 +1,49 @@
+From 4100a8fa438149c6035596fffeb3522f6b3b4839 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 24 Aug 2026 23:47:17 +0200
+Subject: [PATCH 141/143] config: F2FS (+compression), CFS bandwidth for
+ home-server use (v0.4.1)
+
+Enable the options a small self-hosted box wants that were still missing;
+USER_NS, SECCOMP_FILTER, CGROUP_PIDS, BLK_CGROUP and ZRAM were already on.
+
+  - F2FS_FS=m (+XATTR +POSIX_ACL +COMPRESSION with LZ4/ZSTD/LZO) for a data
+    partition. Module, not builtin: it is not the rootfs, so it loads on mount.
+    Transparent compression saves space and cuts writes to SD/eMMC/NVMe.
+  - CFS_BANDWIDTH=y so systemd CPUQuota= can share the CPU across services
+    (CGROUP_SCHED / FAIR_GROUP_SCHED were already enabled).
+
+Together with CGROUP_PIDS (TasksMax=), BLK_CGROUP (IOWeight=) and seccomp
+already present, this lets a home server cap forks, CPU and I/O per service
+and confine them.
+
+Co-Authored-By: AI Agent
+---
+ arch/arm64/configs/opi4a_blindboot_defconfig | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/arch/arm64/configs/opi4a_blindboot_defconfig b/arch/arm64/configs/opi4a_blindboot_defconfig
+index c8583dc62..cad6e1b90 100644
+--- a/arch/arm64/configs/opi4a_blindboot_defconfig
++++ b/arch/arm64/configs/opi4a_blindboot_defconfig
+@@ -17,6 +17,7 @@ CONFIG_IKCONFIG_PROC=y
+ CONFIG_NUMA_BALANCING=y
+ CONFIG_MEMCG=y
+ CONFIG_BLK_CGROUP=y
++CONFIG_CFS_BANDWIDTH=y
+ CONFIG_CGROUP_PIDS=y
+ CONFIG_CGROUP_FREEZER=y
+ CONFIG_CGROUP_HUGETLB=y
+@@ -1014,6 +1015,8 @@ CONFIG_EXT4_FS_POSIX_ACL=y
+ CONFIG_EXT4_FS_SECURITY=y
+ CONFIG_BTRFS_FS=m
+ CONFIG_BTRFS_FS_POSIX_ACL=y
++CONFIG_F2FS_FS=m
++CONFIG_F2FS_FS_COMPRESSION=y
+ CONFIG_FANOTIFY=y
+ CONFIG_FANOTIFY_ACCESS_PERMISSIONS=y
+ CONFIG_QUOTA=y
+-- 
+2.53.0
+

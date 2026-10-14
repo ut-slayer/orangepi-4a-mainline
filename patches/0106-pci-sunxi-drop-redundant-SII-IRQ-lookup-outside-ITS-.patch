@@ -1,0 +1,45 @@
+From 86dc7d20627117cab18d52dbd6b93e5f4d1294e6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 12:20:15 +0200
+Subject: [PATCH 106/143] pci: sunxi: drop redundant SII IRQ lookup outside
+ ITS-mode guard
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+sunxi_pcie_plat_request_irq() called platform_get_irq_byname(pdev,
+"sii") unconditionally and aborted probe with -EINVAL if it was
+missing.  The SII IRQ is only consumed by the non-ITS path inside the
+"if (!pp->has_its)" block right below, which fetches it again -- the
+outer fetch was both redundant and harmful: a board wired in ITS mode
+(the msi-map DT property is present, so pp->has_its is true) can
+legitimately omit the "sii" interrupt, and the unconditional lookup
+would have failed probe before ever reaching the has_its check.
+
+Drop the outer fetch.  The inner one inside the !has_its branch already
+handles the error.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+---
+ drivers/pci/pcie-sunxi/pcie-sunxi-plat.c | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/drivers/pci/pcie-sunxi/pcie-sunxi-plat.c b/drivers/pci/pcie-sunxi/pcie-sunxi-plat.c
+index a99399fbf..e12393cfc 100644
+--- a/drivers/pci/pcie-sunxi/pcie-sunxi-plat.c
++++ b/drivers/pci/pcie-sunxi/pcie-sunxi-plat.c
+@@ -801,10 +801,6 @@ static int sunxi_pcie_plat_request_irq(struct sunxi_pcie *sunxi_pcie, struct pla
+ 	struct sunxi_pcie *pci = platform_get_drvdata(pdev);
+ 	struct sunxi_pcie_port *pp = &pci->pp;
+ 
+-	irq = platform_get_irq_byname(pdev, "sii");
+-	if (irq < 0)
+-		return -EINVAL;
+-
+     if (!pp->has_its) {
+         irq = platform_get_irq_byname(pdev, "sii");
+         if (irq < 0)
+-- 
+2.53.0
+

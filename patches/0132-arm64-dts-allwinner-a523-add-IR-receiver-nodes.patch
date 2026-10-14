@@ -1,0 +1,97 @@
+From 7e01d6257e00a549d17ec9daa1128a0c7c7dd36c Mon Sep 17 00:00:00 2001
+From: Justin Suess <utilityemal77@gmail.com>
+Date: Wed, 29 Jul 2026 12:28:49 +0200
+Subject: [PATCH 132/143] arm64: dts: allwinner: a523: add IR receiver nodes
+
+The A523 has two CIR receivers, both compatible with the A31 CIR: one
+in the CPUX domain, clocked from the main CCU, and one in the RTC
+power domain, clocked from the R-CCU.
+
+The RTC domain instance's RX signal is typically muxed to PL11, as on
+the X96Q Pro+. The CPUX instance's can be muxed to PI8, which is what
+the Avaota A1 uses.
+
+Add nodes for both instances, disabled by default. Since the RX signal
+of each instance can be routed to more than one pin, boards with an IR
+receiver are expected to add the pinctrl properties next to where they
+enable the node.
+
+Add pinmux nodes for both pins: PL11 for the RTC domain instance, and
+PI8 for the CPUX one.
+
+[backport to 6.18.40: re-placed the nodes against the 6.18 dtsi
+(no ledc/i2s2-pi context); node content unchanged. Applied upstream
+to sunxi/dt-for-7.3 as commit 2b24f5386528.]
+
+Co-developed-by: Andre Przywara <andre.przywara@arm.com>
+Signed-off-by: Andre Przywara <andre.przywara@arm.com>
+Signed-off-by: Justin Suess <utilityemal77@gmail.com>
+Link: https://lore.kernel.org/linux-sunxi/20260728024916.993224-3-utilityemal77@gmail.com/
+---
+ .../arm64/boot/dts/allwinner/sun55i-a523.dtsi | 36 +++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+index ef36b70e7..c2886eb52 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun55i-a523.dtsi
+@@ -569,6 +569,13 @@ pio: pinctrl@2000000 {
+ 			interrupt-controller;
+ 			#interrupt-cells = <3>;
+ 
++			/omit-if-no-ref/
++			ir_rx_pin: ir-rx-pi-pin {
++				pins = "PI8";
++				allwinner,pinmux = <3>;
++				function = "cir_rx";
++			};
++
+ 			mmc0_pins: mmc0-pins {
+ 				pins = "PF0" ,"PF1", "PF2", "PF3", "PF4", "PF5";
+ 				allwinner,pinmux = <2>;
+@@ -648,6 +655,17 @@ ccu: clock-controller@2001000 {
+ 			#reset-cells = <1>;
+ 		};
+ 
++		ir: ir@2005000 {
++			compatible = "allwinner,sun55i-a523-ir",
++				     "allwinner,sun6i-a31-ir";
++			reg = <0x02005000 0x400>;
++			interrupts = <GIC_SPI 27 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&ccu CLK_BUS_IR_RX>, <&ccu CLK_IR_RX>;
++			clock-names = "apb", "ir";
++			resets = <&ccu RST_BUS_IR_RX>;
++			status = "disabled";
++		};
++
+ 		ths: thermal-sensor@2009400 {
+ 			compatible = "allwinner,sun55i-a523-ths";
+ 			reg = <0x02009400 0x400>;
+@@ -1249,6 +1267,24 @@ r_i2c_pins: r-i2c-pins {
+ 				allwinner,pinmux = <2>;
+ 				function = "r_i2c0";
+ 			};
++
++			/omit-if-no-ref/
++			r_ir_rx_pin: r-ir-rx-pl-pin {
++				pins = "PL11";
++				allwinner,pinmux = <2>;
++				function = "s_cir_rx";
++			};
++		};
++
++		r_ir: ir@7040000 {
++			compatible = "allwinner,sun55i-a523-ir",
++				     "allwinner,sun6i-a31-ir";
++			reg = <0x07040000 0x400>;
++			interrupts = <GIC_SPI 167 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&r_ccu CLK_BUS_R_IR_RX>, <&r_ccu CLK_R_IR_RX>;
++			clock-names = "apb", "ir";
++			resets = <&r_ccu RST_BUS_R_IR_RX>;
++			status = "disabled";
+ 		};
+ 
+ 		pck600: power-controller@7060000 {
+-- 
+2.53.0
+

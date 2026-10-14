@@ -1,0 +1,90 @@
+From 3f67628a8bffbb9d41b1875eefce72c30ba0be9b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 14 Oct 2026 00:20:29 +0200
+Subject: [PATCH 143/143] config: sync opi4a_blindboot_defconfig with the
+ shipped configuration
+
+The kernel options added for v0.5 (built-in NVMe, the nftables bridge
+family, all squashfs decompressors and xattrs, exFAT, NTFS3, UTF-8 NLS,
+built-in F2FS) went into the .config the images are built from, but not
+into the versioned defconfig. Regenerate it with 'make savedefconfig'
+from that .config, so that building from this series gives exactly the
+configuration of the released images.
+
+Co-Authored-By: AI Agent
+---
+ arch/arm64/configs/opi4a_blindboot_defconfig | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/configs/opi4a_blindboot_defconfig b/arch/arm64/configs/opi4a_blindboot_defconfig
+index cad6e1b90..e873fbf15 100644
+--- a/arch/arm64/configs/opi4a_blindboot_defconfig
++++ b/arch/arm64/configs/opi4a_blindboot_defconfig
+@@ -101,6 +101,7 @@ CONFIG_NFT_LIMIT=m
+ CONFIG_NFT_MASQ=m
+ CONFIG_NFT_REDIR=m
+ CONFIG_NFT_NAT=m
++CONFIG_NFT_REJECT=m
+ CONFIG_NFT_COMPAT=m
+ CONFIG_NETFILTER_XTABLES_LEGACY=y
+ CONFIG_NETFILTER_XT_MARK=m
+@@ -118,6 +119,10 @@ CONFIG_NFT_FIB_IPV6=m
+ CONFIG_IP6_NF_IPTABLES=m
+ CONFIG_IP6_NF_NAT=m
+ CONFIG_IP6_NF_TARGET_MASQUERADE=m
++CONFIG_NF_TABLES_BRIDGE=m
++CONFIG_NFT_BRIDGE_META=m
++CONFIG_NFT_BRIDGE_REJECT=m
++CONFIG_NF_CONNTRACK_BRIDGE=m
+ CONFIG_BRIDGE=m
+ CONFIG_BRIDGE_VLAN_FILTERING=y
+ CONFIG_NET_DSA=m
+@@ -239,7 +244,7 @@ CONFIG_ZRAM_BACKEND_LZO=y
+ CONFIG_ZRAM_DEF_COMP_ZSTD=y
+ CONFIG_BLK_DEV_LOOP=y
+ CONFIG_BLK_DEV_NBD=m
+-CONFIG_BLK_DEV_NVME=m
++CONFIG_BLK_DEV_NVME=y
+ CONFIG_SRAM=y
+ CONFIG_PCI_ENDPOINT_TEST=m
+ CONFIG_EEPROM_AT24=m
+@@ -1015,7 +1020,7 @@ CONFIG_EXT4_FS_POSIX_ACL=y
+ CONFIG_EXT4_FS_SECURITY=y
+ CONFIG_BTRFS_FS=m
+ CONFIG_BTRFS_FS_POSIX_ACL=y
+-CONFIG_F2FS_FS=m
++CONFIG_F2FS_FS=y
+ CONFIG_F2FS_FS_COMPRESSION=y
+ CONFIG_FANOTIFY=y
+ CONFIG_FANOTIFY_ACCESS_PERMISSIONS=y
+@@ -1025,11 +1030,18 @@ CONFIG_FUSE_FS=m
+ CONFIG_CUSE=m
+ CONFIG_OVERLAY_FS=m
+ CONFIG_VFAT_FS=y
++CONFIG_EXFAT_FS=m
++CONFIG_NTFS3_FS=m
+ CONFIG_TMPFS_POSIX_ACL=y
+ CONFIG_HUGETLBFS=y
+ CONFIG_EFIVAR_FS=y
+ CONFIG_UBIFS_FS=m
+ CONFIG_SQUASHFS=y
++CONFIG_SQUASHFS_XATTR=y
++CONFIG_SQUASHFS_LZ4=y
++CONFIG_SQUASHFS_LZO=y
++CONFIG_SQUASHFS_XZ=y
++CONFIG_SQUASHFS_ZSTD=y
+ CONFIG_PSTORE_RAM=m
+ CONFIG_NFS_FS=y
+ CONFIG_NFS_V4=y
+@@ -1039,6 +1051,7 @@ CONFIG_ROOT_NFS=y
+ CONFIG_9P_FS=y
+ CONFIG_NLS_CODEPAGE_437=y
+ CONFIG_NLS_ISO8859_1=y
++CONFIG_NLS_UTF8=m
+ CONFIG_SECURITY=y
+ CONFIG_CRYPTO_USER=y
+ CONFIG_CRYPTO_BENCHMARK=m
+-- 
+2.53.0
+

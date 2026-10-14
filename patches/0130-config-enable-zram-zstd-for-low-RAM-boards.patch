@@ -1,0 +1,38 @@
+From 1662676870b571e3eb82eec3e24e79ce06e65907 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 21:58:01 +0200
+Subject: [PATCH 130/143] config: enable zram (zstd) for low-RAM boards
+
+The 2 GB Orange Pi 4A thrashes to an unresponsive state under a
+memory-heavy desktop workload (e.g. a browser playing video): the WebKit
+process alone reaches ~700 MB, which drives the board into the on-SD
+swapfile whose latency stalls the whole system. Add zram as a module with
+a zstd backend so a fast compressed in-RAM swap can be brought up at boot
+ahead of the slow SD swapfile. zsmalloc is pulled in automatically.
+
+Modules only; the boot-time zram setup is done in userspace.
+
+Co-Authored-By: AI Agent
+---
+ arch/arm64/configs/opi4a_blindboot_defconfig | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm64/configs/opi4a_blindboot_defconfig b/arch/arm64/configs/opi4a_blindboot_defconfig
+index fe0bcb74e..e71c2202b 100644
+--- a/arch/arm64/configs/opi4a_blindboot_defconfig
++++ b/arch/arm64/configs/opi4a_blindboot_defconfig
+@@ -209,6 +209,10 @@ CONFIG_MTD_SPI_NOR=y
+ CONFIG_MTD_UBI=m
+ CONFIG_MTD_HYPERBUS=m
+ CONFIG_OF_OVERLAY=y
++CONFIG_ZRAM=m
++CONFIG_ZRAM_BACKEND_ZSTD=y
++CONFIG_ZRAM_BACKEND_LZO=y
++CONFIG_ZRAM_DEF_COMP_ZSTD=y
+ CONFIG_BLK_DEV_LOOP=y
+ CONFIG_BLK_DEV_NBD=m
+ CONFIG_BLK_DEV_NVME=m
+-- 
+2.53.0
+

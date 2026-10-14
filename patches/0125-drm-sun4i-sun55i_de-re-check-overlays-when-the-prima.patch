@@ -1,0 +1,70 @@
+From 0095fb9c9afd0da15152dab3e0974fa9f57b48d3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 19:11:36 +0200
+Subject: [PATCH 125/143] drm/sun4i: sun55i_de: re-check overlays when the
+ primary moves or resizes
+
+The overlay atomic_check validates that the overlay rect is contained
+in the primary's rect, because the channel window the LAY1..3 layers
+ride is anchored to the primary's dst (mbcoor is window-relative).  The
+primary's atomic_check pulled the visible overlays into the commit only
+when the primary stopped being a valid anchor (AFBC, scaled, or
+disabled) - but a commit that merely MOVES or RESIZES a still-valid
+primary changes the channel window just the same, and the overlays'
+containment check was never re-run against the new geometry.
+
+The staging then clamps the overlay's window-relative coordinate to 0
+(sun55i_de_ovl_stage), so after a primary-only move a visible overlay
+scanned out at the wrong screen position: the committed DRM state no
+longer matched the picture.  No out-of-bounds access is possible (the
+fetch is bounded by the overlay's own mbsize/pitch); the bug is purely
+a wrong composition.
+
+Pull the visible overlays into the commit whenever the primary's
+crtc_x/y/w/h change, forcing their re-check (and an atomic reject if
+they no longer fit, so the compositor falls back to GPU composition).
+Pure page flips (same geometry) keep the early return and stage no
+extra plane state.
+
+Co-Authored-By: AI Agent
+---
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index 9af04eecf..f5fd2b157 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -376,9 +376,27 @@ static int sun55i_primary_atomic_check(struct drm_plane *plane,
+ 	 * overlay is invisible too and its check passes.)
+ 	 */
+ 	if (new_state->crtc && fb) {
++		struct drm_plane_state *old_state =
++			drm_atomic_get_old_plane_state(state, plane);
++
+ 		scaled = (new_state->src_w >> 16) != new_state->crtc_w ||
+ 			 (new_state->src_h >> 16) != new_state->crtc_h;
+-		if (!scaled && fb->modifier == DRM_FORMAT_MOD_LINEAR)
++		/*
++		 * Still a valid overlay anchor, but the channel window IS the
++		 * primary's dst rect: if this commit moves or resizes it, the
++		 * containment every visible overlay was checked against no
++		 * longer holds, so those overlays must be pulled in and
++		 * re-checked too.  Without this, a primary-only move left the
++		 * overlay's mbcoor clamped against the new window and the
++		 * overlay scanned out at the wrong screen position.  A pure
++		 * page flip (same geometry) still returns early.
++		 */
++		if (!scaled && fb->modifier == DRM_FORMAT_MOD_LINEAR &&
++		    old_state &&
++		    old_state->crtc_x == new_state->crtc_x &&
++		    old_state->crtc_y == new_state->crtc_y &&
++		    old_state->crtc_w == new_state->crtc_w &&
++		    old_state->crtc_h == new_state->crtc_h)
+ 			return 0;
+ 	}
+ 
+-- 
+2.53.0
+

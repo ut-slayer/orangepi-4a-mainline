@@ -5,25 +5,25 @@
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee%20%E2%98%95-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/aurealnix)
 
 **Mainline** support for the Orange Pi 4A (Allwinner **T527** SoC, A523 family /
-`sun55iw3`), on a **vanilla 6.18.38** kernel. A 130-patch series + `defconfig` +
-the board device-tree. The ports from the community minimyth2 series keep their
-original authorship (Justin Suess, Jernej Škrabec) in the patch headers.
+`sun55iw3`), on a **vanilla 6.18.55** kernel. A 143-patch series + `defconfig` +
+the board device-tree. Patches ported from other people's work keep their
+original authorship in the patch headers (Justin Suess and Jernej Škrabec for the
+display series from minimyth2, Marvin Wewer for PCIe).
 
-> Working-tree base: `linux-6.18.38` vanilla. These patches apply on top.
+> Working-tree base: `linux-6.18.55` vanilla. These patches apply on top.
 > `git format-patch --base` embeds the base hash in every `.patch`.
 
-**Latest images: v0.4.1** — kernel **6.18.44**, WireGuard + nftables/iptables
-NAT, a new **Kubuntu 26.04 (KDE Plasma)** image alongside GNOME and CLI,
-hardware video decode (VPU), and USB printer support. See
-[CHANGELOG.md](CHANGELOG.md) for release history.
+**Latest images: v0.5**: kernel **6.18.55** (`6.18.55-g3f67628a8bff`, exactly
+this patch series), four images: **CLI / headless**, **GNOME**, **Kubuntu 26.04
+(KDE Plasma)** and, new and experimental, **Ubuntu 26.04 Cinnamon on Wayland**.
+Download them from the [Releases](../../releases) page; see
+[CHANGELOG.md](CHANGELOG.md) for what changed.
 
-> **Heads-up:** the patch series in this repo is the kernel behind the **v0.3
-> images** (GPU clock fix, PCIe bring-up, hardware video decode). The **v0.4.x
-> images** run a newer kernel (**6.18.44**); the refreshed patch set for it
-> hasn't landed here yet — it's coming. The ready-to-flash images — **CLI /
-> headless**, **GNOME** and **Kubuntu 26.04** — are on the
-> [Releases](../../releases) page. You can also build the v0.3-era kernel
-> yourself from the patches here.
+> **The patch series is now in sync with the images.** In v0.5 it was also
+> cleaned up: experiments that a later patch reverted were dropped, and each
+> feature that took several attempts is now a single patch with the final
+> result (175 → 143 patches, same logic). Code comments and log messages are now in
+> English too, and the series' defconfig is the one the images are built with.
 
 ## What works (confirmed on hardware)
 
@@ -43,9 +43,9 @@ hardware video decode (VPU), and USB printer support. See
 | **THS thermal sensors** (5 zones: cpu_l / cpu_b / gpu / npu / ddr) | ✅ sysfs/hwmon readout + 110 °C critical trip |
 | **CPU cpufreq/DVFS** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + thermal throttling at 90 °C | ✅ |
 | **Asymmetric CPU topology** (cpu-map + capacity-dmips-mhz 922/1024 + EAS energy model) | ✅ big cluster preferred for heavy tasks |
-| **GPU devfreq/DVFS** (Panfrost, 150–600 MHz) + thermal throttling | ✅ and now **at the right frequencies** — the A523 GPU divider turned out to be a *cycle-masking* (fractional) one, `rate = source × (16−M)/16`, not a linear divider; measured with the Mali cycle counter |
+| **GPU devfreq/DVFS** (Panfrost, 150–696 MHz; 696 MHz is the vendor's operating point for this SoC, validated under game load on this board) + thermal throttling | ✅ and now **at the right frequencies** — the A523 GPU divider turned out to be a *cycle-masking* (fractional) one, `rate = source × (16−M)/16`, not a linear divider; measured with the Mali cycle counter |
 | **eMMC** (MMC storage) | ✅ detected + HS200 read/write, and **booting from eMMC works**: a tester runs the CLI image entirely from the eMMC module (no SD card), with the first-boot auto-resize filling its 58 GiB. A step-by-step *install to eMMC* guide is still to be written |
-| **PCIe / M.2 NVMe** (DesignWare RC + Innosilicon combo PHY) | ✅ **validated with real drives by two testers**: a KIOXIA KBG40ZNV256G and an Intel 760p-series SSD, both bound by the `nvme` driver, with `f3` integrity runs over the **full 256 GB (several passes)** and 50 GB — **0 corrupted sectors, clean dmesg**, ~130 MB/s write / ~275 MB/s read. Works as storage out of the box. **Root filesystem on NVMe is not set up yet** (`nvme` is a module and the images ship no initramfs — on the list) |
+| **PCIe / M.2 NVMe** (DesignWare RC + Innosilicon combo PHY) | ✅ **validated with real drives by two testers**: a KIOXIA KBG40ZNV256G and an Intel 760p-series SSD, both bound by the `nvme` driver, with `f3` integrity runs over the **full 256 GB (several passes)** and 50 GB — **0 corrupted sectors, clean dmesg**, ~130 MB/s write / ~275 MB/s read. Works as storage out of the box. Since v0.5 the `nvme` driver is **built into the kernel**, so you can boot from the SD card with the **root filesystem on the NVMe** (`root=` pointing at the NVMe partition, no initramfs needed). That setup has not been tested on a real drive yet: reports welcome |
 
 **Hardware video decode (VPU) — partly working, kernel side included.** This tree
 ships the `cedar-ve` shim with its device-tree node and the IOMMU mappings for the
@@ -61,42 +61,57 @@ userspace yourself.
 The **4 GB variant is confirmed working** (tested by **JamesCL** — thanks! — who
 also confirmed the eMMC; the bootloader auto-detects the RAM size).
 
-## Image notes (Debian 13)
+## Image notes
 
-Decisions made in the distributed image (these are not kernel patches):
+Decisions made in the distributed images (these are not kernel patches). Most
+apply to all four images; the GNOME-specific ones are marked.
 
 - **First boot auto-resizes the rootfs** to fill the microSD and regenerates the
   SSH host keys — so the first boot takes a bit longer. Don't pull the power.
 - **SSH is enabled from first boot**; user/password are `user` / `user`.
   **Change the password immediately** (`passwd`) — a default password on a
   network-facing device is how boards end up in botnets.
-- **1 GB zram swap on by default; SD swap file optional.** zram (zstd) is a
-  compressed in-RAM swap: it keeps the desktop responsive when a browser fills
-  the 2 GB board's RAM, never touches the SD, and costs almost nothing while
-  unused. Disable with `systemctl disable --now zram-swap.service`. For extra
-  headroom, the `add-swapfile.sh` script in the home folder adds an optional
-  1 GB swap file on the SD, used only as overflow.
-- **Wayland session** — the desktop is **GNOME on Wayland**. No **X11 session**
-  is shipped: Panfrost gives its best accelerated experience under Wayland, and
-  hardware video in the browser in particular needs it.
-- **Newcomer-friendly desktop** — GNOME ships with a **taskbar** (Dash to Panel),
+- **1 GB zram swap on by default; SD swap file optional.** zram is a compressed
+  in-RAM swap: it keeps the desktop responsive when a browser fills the 2 GB
+  board's RAM, never touches the SD, and costs almost nothing while unused. It
+  uses **lzo-rle**, the fastest of the kernel's compressors when benchmarked on
+  this board. See it working with `sudo zramctl`; disable with
+  `systemctl disable --now zram-swap.service`. For extra headroom, the
+  `add-swapfile.sh` script in the home folder adds an optional 1 GB swap file on
+  the SD, used only as overflow.
+- **`/tmp` lives on the SD card, not in RAM**, so it doesn't compete with your
+  apps for the 2 GB.
+- **Wayland sessions.** GNOME and Kubuntu run on **Wayland** only: Panfrost
+  gives its best accelerated experience there, and hardware video in the browser
+  in particular needs it. Cinnamon boots into its (experimental) Wayland session
+  and also ships the X11 session as a fallback.
+- **Patched and pinned packages on the Ubuntu images.** Kubuntu and Cinnamon
+  ship a patched Xwayland (Ubuntu's 24.1.10 crashes) and Cinnamon a patched
+  Muffin (without it, Wayland apps render in software). Both are pinned so an
+  Ubuntu update without the fix can't bring the bug back. Details and sources in
+  [userspace-patches/](userspace-patches/).
+- **Newcomer-friendly desktop** (GNOME) — GNOME ships with a **taskbar** (Dash to Panel),
   system-tray / app-indicator support and minimise/maximise window buttons, all
   on by default so the desktop behaves the way most people expect. These are
   standard GNOME extensions — turn any of them off in the *Extensions* app if you
   prefer stock GNOME.
-- **File indexer (Tracker) disabled** — GNOME's `$HOME` indexer is off: it uses
+- **File indexer (Tracker) disabled** (GNOME) — GNOME's `$HOME` indexer is off: it uses
   RAM that the 2 GB board needs. Re-enable it if you have the 4 GB variant and
   want faster in-file search.
-- **Software store removed** — GNOME Software is not installed; just polling for
+- **Software store removed** (GNOME) — GNOME Software is not installed; just polling for
   updates costs it >150 MB of RAM. Updates go through `apt` (see the kernel-pin
   note below).
-- **Power saving / suspend disabled (on purpose, for now)** — automatic suspend
-  *and* the screen blanking after idle are both off by default. On this SoC the
-  mainline resume path still needs polishing: the system doesn't always come back
-  once the screen has powered off. So the board stays awake and the display stays
-  on, rather than risk a session you can't wake. This will be re-enabled once
-  resume is solid; meanwhile you can turn suspend back on, or set a screen-blank
-  timeout, in *Settings → Power*.
+- **Suspend disabled on every image (on purpose, for now).** On mainline the
+  A523 does not wake up from suspend yet: the board hangs completely (not even
+  the heartbeat LED) until it is power-cycled. KDE Plasma and Cinnamon suspend on
+  their own after a while idle, so suspend and hibernation are turned off
+  system-wide (the sleep targets are masked and logind reports
+  `CanSuspend=no`), and the desktops no longer offer them. Turning just the
+  **screen** off when idle is fine: on Kubuntu it blanks and comes back without
+  problems. GNOME keeps the screen on by default. This will be re-enabled once resume
+  works.
+- **Wi-Fi power saving off.** With it on, the on-board Wi-Fi (AP6256) could drop
+  its connection for a few seconds now and then, enough to break an SSH session.
 - **Audio output follows what's connected** — a tiny user service
   (`aureal-audio-autoswitch`) moves the default sink to the 3.5 mm headphone
   jack when you plug in, and back to HDMI when you unplug. Bluetooth headsets
@@ -109,25 +124,30 @@ Decisions made in the distributed image (these are not kernel patches):
 
 Spare-time work, so no dates promised — but on the horizon:
 
-- ~~Kernel refresh~~ **done**: the images moved to **6.18.44** in v0.4
-  (security and stability fixes across the tree, plus A523-specific
-  improvements such as better GPIO-interrupt handling). Next repo task is
-  publishing the **refreshed patch series** matching that kernel — the series
-  here still reflects v0.3 (6.18.38).
-- The open hardware items above still stand: **root filesystem on NVMe** (needs
-  `nvme` built in or an initramfs), an **install-to-eMMC guide**, and line-out /
+- ~~Refreshed patch series~~ **done** in v0.5: the series here is exactly the
+  kernel the images run.
+- **Suspend / resume**: find out why the A523 doesn't come back from suspend
+  (it enters the `deep` state through the firmware and never returns).
+- Retire local patches that upstream has superseded (the PIO withstand fix now
+  exists in mainline in a different form) once re-validated on the board.
+- The open hardware items above still stand: a tested **root-on-NVMe** setup
+  (the driver is built in now), an **install-to-eMMC guide**, and line-out /
   microphone capture.
 
 ## Contents
 
-- `patches/` — `git format-patch` series (0001–0130).
-- `opi4a_blindboot_defconfig` — for `arch/arm64/configs/`.
+- `patches/` — `git format-patch` series (0001–0143).
+- `opi4a_blindboot_defconfig` — for `arch/arm64/configs/`: the exact
+  configuration the v0.5 images were built with (the last patch of the series
+  installs the same file).
 - `sun55i-t527-orangepi-4a.dts` — board device-tree.
+- `userspace-patches/` — the Xwayland and Muffin patches shipped in the Ubuntu
+  images (not kernel patches).
 
 ## Applying
 
 ```sh
-cd linux-6.18.38            # 6.18.38 vanilla
+cd linux-6.18.55            # 6.18.55 vanilla
 git am /path/to/share-orangepi-4a/patches/0*.patch
 cp /path/to/opi4a_blindboot_defconfig arch/arm64/configs/
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- opi4a_blindboot_defconfig
@@ -140,13 +160,16 @@ The patches aren't homogeneous. If you're going to integrate/forward them, this
 is the classification by where each group belongs:
 
 ### 1. Generic SoC fixes → **linux-sunxi / mainline** (not board-specific)
-- `pinctrl: sun55i-a523: withstand PIO banks from hw detection`
-- `pinctrl: sunxi: inverted POW_MOD_SEL polarity on A523/T527`
-- `watchdog: sunxi_wdt: restart priority 200 (beats PSCI)`
-- `mfd: axp20x: AXP717 poweroff (OFF_CTRL range not writeable)`
+- `pinctrl: sun55i-a523: program the PIO bank withstand mode from the hardware
+  detection` (mainline now has its own fix for the inverted polarity, by Andre
+  Przywara; this one is due to be retired)
+- `watchdog: sunxi_wdt: per-variant restart priority, 200 on the A523`
+- `mfd: axp20x: power off the AXP717 through SOFT_PWROFF (0x27)`
 - **Bug**: `RESET_GPIO` breaks `mmc-pwrseq-simple` with `#gpio-cells=3` — affects
-  **any** sunxi board with SDIO WiFi. Here it's shipped as `config=n`; the real
-  fix belongs in the driver, upstream.
+  **any** sunxi board with SDIO WiFi. Here it's shipped as `config=n`. Already
+  reported upstream by others
+  ([fix proposal](https://lkml.iu.edu/2602.2/06168.html),
+  [RFC](https://ratatoskr.run/lkml/2026/04/3526967/t)); still open.
 
 ### 2. A523/H616 KMS display (drm/sun4i, iommu/sun50i, clk sunxi-ng)
 HDMI pipeline bring-up series. Much of it comes from the **minimyth2** community
@@ -158,7 +181,7 @@ PHYS_OFFSET/PTE, DE v35x RCQ, VSU8, MBUS wedge, AFBC). Natural destination:
 A523 CPU CCU (clk sunxi-ng, ported from the BSP `ccu-sun55iw3-displl.c`), A523
 THS (thermal sun8i, custom variant with 4-sensor calibration), CPU/GPU OPP
 tables and cooling-maps. cpufreq (little up to 1.416 GHz, big up to 1.8 GHz) +
-GPU devfreq 150–600 MHz, both as cooling devices. Asymmetric CPU topology
+GPU devfreq 150–696 MHz, both as cooling devices. Asymmetric CPU topology
 (cpu-map + capacity-dmips-mhz 922/1024 + dynamic-power-coefficient) so the
 scheduler/EAS knows the big cluster is the more capable one — verbatim from the
 BSP; without it the two clusters looked identical to the scheduler.
@@ -193,6 +216,10 @@ embedded-Linux work (board bring-up, drivers, mainlining) —
 - PCIe controller + Innosilicon combo PHY: from the **Armbian** series by
   **Marvin Wewer** (forward-ported to 6.18 here, with a 1-lane fix from the
   BSP and this board's device-tree wiring) — his authorship kept in the patches.
+- Userspace fixes in the Ubuntu images: the Xwayland fix is **Olivier
+  Fourdan**'s (upstream xserver); the Muffin `wl_drm` and dma-buf v4 work is
+  upstream Muffin's (**Clement Lefebvre**, **Michael Webster**), backported here
+  to the 6.4 release that Ubuntu ships.
 - The **cycle-masking GPU divider** was found thanks to **Chen-Yu Tsai**, who
   pointed out the fractional semantics while reviewing an upstream patch.
 - **Allwinner 5.15 BSP** (vendor kernel, `sun55iw3`) used throughout as the hardware

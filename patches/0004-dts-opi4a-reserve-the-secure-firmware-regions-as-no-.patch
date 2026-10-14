@@ -1,0 +1,89 @@
+From 21a9dd31b109fda028492e16ed42c5956f642416 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 23 Jun 2026 12:57:24 +0200
+Subject: [PATCH 004/143] dts: opi4a: reserve the secure firmware regions as
+ no-map
+
+The vendor U-Boot reserves BL31, OP-TEE and the shared-memory regions in
+the FDT it hands to its own kernel, but not in the mainline DTB. Without
+those reservations the kernel used the memory as ordinary RAM and
+overwrote BL31, so the first PSCI call landed in corrupted code and the
+board hung with the LED stuck.
+
+Reserve the four regions (bl31, optee and two secure SRAM windows; the
+addresses come from /proc/iomem of the vendor kernel on this board) and
+mark them no-map: the kernel never talks to OP-TEE here, and keeping
+firewall-protected RAM in the linear map lets speculative CPU reads raise
+sporadic SErrors even though the memory is never allocated.
+
+Co-Authored-By: AI Agent
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 51 +++++++++++++++++++
+ 1 file changed, 51 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 0d6318564..10dbd56ed 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -35,6 +35,57 @@ memory@40000000 {
+ 		reg = <0x0 0x40000000 0x0 0x80000000>;
+ 	};
+ 
++	/*
++	 * The 5.15 BSP reserves this region for BL31 (ARM Trusted Firmware),
++	 * the EL3 secure monitor that serves ALL PSCI calls (SMP core
++	 * bring-up, idle, reset). The mainline DTB reserved nothing and its
++	 * /memory (2GB from 0x40000000) covers 0x48000000 -> the kernel sees those
++	 * 16 MB as free RAM, allocates pages there and OVERWRITES BL31. SMP
++	 * starts before the heartbeat (BL31 still intact) -> 1 beat; right
++	 * after that a PSCI call lands in corrupted code -> hang with the LED
++	 * stuck. Reserving the region (like the BSP does) avoids it. no-map = the
++	 * kernel does not even map it. The vendor U-Boot v2018 does not inject this
++	 * reservation into a foreign DTB, so it has to be static here.
++	 */
++	reserved-memory {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
++		/*
++		 * The vendor firmware (BL31 + OP-TEE + shared memory) uses SEVERAL
++		 * regions that the vendor U-Boot reserves in the 5.15 FDT but NOT in
++		 * our foreign DTB. Taken from /proc/iomem of the running 5.15. Reserving
++		 * ONLY bl31 let the kernel overwrite OP-TEE/shm -> hang after
++		 * 2 beats. Reserve all 4 (like the BSP).
++		 */
++		/*
++		 * no-map on all four: without it they stay in the linear map and a
++		 * SPECULATIVE CPU read of RAM protected by the
++		 * secure firewall can raise sporadic SErrors even though the
++		 * kernel never allocates them.
++		 */
++		sec-sram1@42350000 {
++			reg = <0x0 0x42350000 0x0 0x00230000>;
++			no-map;
++		};
++
++		sec-sram2@43000000 {
++			reg = <0x0 0x43000000 0x0 0x00094000>;
++			no-map;
++		};
++
++		bl31@48000000 {
++			reg = <0x0 0x48000000 0x0 0x01000000>;
++			no-map;
++		};
++
++		optee@4941d000 {
++			reg = <0x0 0x4941d000 0x0 0x00be3000>;
++			no-map;
++		};
++	};
++
+ 	/*
+ 	 * Stub nodes for the vendor U-Boot (v2018.05-t527): its bootm calls
+ 	 * sunxi_drm_kernel_para_flush(), which looks up /soc/sunxi-drm and /soc/de in the
+-- 
+2.53.0
+

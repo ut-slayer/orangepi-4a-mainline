@@ -1,0 +1,58 @@
+From 9168f1c908f30ca930980a7060813f5feb5efc7a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 23:29:17 +0200
+Subject: [PATCH 034/143] dts: opi4a: translate the DE through the IOMMU
+ (mixer0 and display-engine)
+
+The SoC dtsi already gives the mixer iommus = <&iommu 5>. Also attach the
+display-engine node (drm->dev) to the same master, so that everything the
+DE fetches goes through the IOMMU: the RCQ pool of the mixer and the GEM
+scanout buffers alike.
+
+PRIME imports from the GPU (pages that are not physically contiguous) are
+then collapsed into one contiguous IOVA by dma_map_sgtable(), which the
+compositor swapchain needs: without it gbm_bo_create() failed with
+EINVAL.
+
+Co-Authored-By: AI Agent
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts    | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index baf9a9ae8..c458d7c68 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -632,8 +632,17 @@ &mixer0 {
+ 	memory-region = <&cma_low>;
+ };
+ 
++/*
++ * DISPLAY BRING-UP: the display-engine (drm->dev) inherits IOMMU master 5
++ * so that scanout GEMs and PRIME imports (kbase, not contiguous)
++ * are allocated/mapped as translated IOVAs. It is the DT equivalent of
++ * the BSP's of_dma_configure(drm->dev, DE_node) (sunxi_de.c:1262): with the
++ * master 5 bypass removed ALL DE traffic is translated, so
++ * an unmapped physical scanout would no longer show.
++ */
+ &de {
+ 	status = "okay";
++	iommus = <&iommu 5>;
+ };
+ 
+ &hdmi {
+@@ -669,3 +678,10 @@ &display_clocks {
+ 	assigned-clock-parents = <&ccu CLK_PLL_VIDEO3_4X>;
+ 	assigned-clock-rates = <600000000>;
+ };
++
++/*
++ * DISPLAY BRING-UP: mixer iommus re-enabled (the dtsi already has
++ * iommus = <&iommu 5>). The driver now carries the BSP's v15 recipe
++ * (range invalidation + vendor prefetch) and diagnostic guards
++ * against the corrupt DTE of the boot Oops.
++ */
+-- 
+2.53.0
+

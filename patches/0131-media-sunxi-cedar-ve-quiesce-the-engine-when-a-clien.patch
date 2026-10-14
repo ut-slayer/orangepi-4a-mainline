@@ -1,0 +1,248 @@
+From c2957e221888bbc5217d7c6a35feae804ec2a340 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Sat, 25 Jul 2026 01:59:07 +0200
+Subject: [PATCH 131/143] media: sunxi: cedar-ve: quiesce the engine when a
+ client dies mid-job
+
+A userspace client that dies in the middle of a decode job (e.g. a
+browser WebProcess killed by a segfault) goes through cedardev_release()
+without any of the teardown a well-behaved client performs via ioctls.
+The release handler only force-unlocked the engine mutexes the dead
+client held ("release lost-lock") and left everything else in place:
+
+ - the engine itself kept running the half-programmed job: nothing
+   stopped or reset it;
+ - the IOCTL_ENGINE_REQ references taken by the client were never
+   dropped, so ref_count leaked and the VE was left clocked, powered
+   (leaked pm_runtime reference) and out of reset forever;
+ - the dma-buf/IOMMU mappings created through the file were kept: the
+   unmap_dma_buf_addr(1, 0, filp) call is shipped commented out in the
+   vendor BSP and was inherited that way.
+
+Handing the force-unlocked engine mutexes to the next client while the
+zombie job still owns the engine lets that client program a new job (or
+pulse the reset, which libcedarc's error recovery does on decoder
+creation) over an engine with outstanding MBUS transactions.  On this
+SoC that wedges the master's MBUS port and hangs the interconnect - the
+same failure pattern as the Display Engine wedge fixed earlier - which
+matches the observed behaviour: killing the decoding process can take
+the whole board down.  A dying process must never be able to do that.
+
+Make cedardev_release() perform the quiescence the dead client skipped,
+mirroring what the normal ioctl-based teardown does:
+
+ - if the client died holding an engine lock (VDEC/VENC/JDEC or the top
+   register locks), pulse the VE reset line before the lost locks are
+   force-unlocked.  This is the same reset_control_reset() already
+   exposed to userspace as IOCTL_RESET_VE for error recovery, issued
+   while the locks still fence other clients off the engine and while
+   the dead client's engine references still keep the clocks on.  The
+   reset line is RST_BUS_VE (VE_BGR_REG 0x069c bit 16, T527 manual
+   section 2.7.6.63);
+ - track per-file IOCTL_ENGINE_REQ references and balance them on
+   release, gating the clocks and asserting reset exactly like the last
+   IOCTL_ENGINE_REL would have done when the count reaches zero;
+ - re-enable the BSP's commented-out unmap of the file's dma-buf
+   mappings.  Unmapping was only unsafe while a dead client's job could
+   still be running - it would turn the pinned-memory leak into an
+   instant IOMMU fault from in-flight DMA; it is safe once the engine
+   has been reset.  Match mappings by file alone in the unmap-all case:
+   the task doing the final close is not necessarily the mapper, and no
+   user of the file can remain once ->release() runs;
+ - use down() instead of down_interruptible(): a client dying on a
+   fatal signal reaches release with that signal pending, which made
+   the wait bail out and skip the teardown (the VFS ignores ->release()
+   return values, so it was never retried, and the early return also
+   leaked the per-file info allocation).
+
+A clean close is not affected: a well-behaved client releases its locks
+and engine references through the existing ioctls, so every new path is
+a no-op for it.  If another client is mid-job on the other sub-engine
+when a dead client is cleaned up, the reset pulse aborts that job too;
+it recovers through its normal timeout/error path, which is preferable
+to wedging the interconnect.
+
+Co-Authored-By: AI Agent
+---
+ .../media/platform/sunxi/cedar-ve/cedar_ve.c  | 97 +++++++++++++++++--
+ 1 file changed, 89 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+index 36296606e..320fa8685 100644
+--- a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
++++ b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+@@ -295,8 +295,23 @@ struct ve_info { /* each object will bind a new file handler */
+ 	struct mutex lock_flag_io;
+ 	u32 lock_flags; /* if flags is 0, means unlock status */
+ 	u32 process_channel_id;
++	/*
++	 * IOCTL_ENGINE_REQ minus IOCTL_ENGINE_REL issued through this file,
++	 * protected by cedar_devp->sem.  Balanced in cedardev_release() so a
++	 * client that dies without IOCTL_ENGINE_REL cannot leak the global
++	 * ref_count and leave the engine clocked and out of reset forever.
++	 */
++	int engine_refs;
+ };
+ 
++/*
++ * Lock bits whose holder owns the engine (or its top registers): a file
++ * released while one of these is still set belongs to a client that died
++ * in the middle of programming or running a VE job.
++ */
++#define VE_LOCK_ENGINE_MASK (VE_LOCK_VDEC | VE_LOCK_VENC | VE_LOCK_JDEC | \
++			     VE_LOCK_00_REG | VE_LOCK_04_REG)
++
+ struct user_iommu_param {
+ 	int				fd;
+ 	unsigned int	iommu_addr;
+@@ -1350,12 +1365,20 @@ static void unmap_dma_buf_addr(int unmap_all, int fd, struct file *filp)
+ 		aw_mem_list_for_each_safe(pos, next, &cedar_devp->list) {
+ 			buf_info = (struct dma_buf_info *)pos;
+ 			if (unmap_all) {
++				/*
++				 * Called from ->release(): free every mapping
++				 * made through this file, whichever thread
++				 * group made it.  The task doing the final
++				 * close (e.g. a parent reaping an fd shared
++				 * across fork) need not be the mapper.
++				 */
+ 				tmp_fd = buf_info->fd;
+ 			} else {
+ 				tmp_fd = fd;
+ 			}
+ 
+-			if (buf_info->fd == tmp_fd && buf_info->p_id == current->tgid && filp == buf_info->filp) {
++			if (buf_info->fd == tmp_fd && filp == buf_info->filp &&
++			    (unmap_all || buf_info->p_id == current->tgid)) {
+ 				#if PRINTK_IOMMU_ADDR
+ 				VE_LOGI("free: fd:%d, buf_info:%p " \
+ 					"iommu_addr:%lx, dma_buf:%p, dma_buf_attach:%p, " \
+@@ -1628,6 +1651,7 @@ static long compat_cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned
+ 					return -EFAULT;
+ 				}
+ 			}
++			info->engine_refs++;
+ 			up(&cedar_devp->sem);
+ 			break;
+ #endif
+@@ -1647,6 +1671,9 @@ static long compat_cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned
+ 				return -EFAULT;
+ 			}
+ 
++			if (info->engine_refs > 0)
++				info->engine_refs--;
++
+ 			if (cedar_devp->ref_count == 0) {
+ 				ret = disable_cedar_hw_clk();
+ 				if (ret < 0) {
+@@ -2192,6 +2219,7 @@ static int cedardev_open(struct inode *inode, struct file *filp)
+ 		return -ENOMEM;
+ 
+ 	info->set_vol_flag = 0;
++	info->engine_refs = 0;
+ 
+ 	spin_lock_irqsave(&cedar_devp->lock, flags);
+ 
+@@ -2231,14 +2259,29 @@ static int cedardev_release(struct inode *inode, struct file *filp)
+ 
+ 	info = filp->private_data;
+ 	mutex_lock(&info->lock_flag_io);
+-	/*
+-	 * if the process abort, this will free iommu_buffer
+-	 * unmap_dma_buf_addr(1, 0, filp);
+-	 */
+ 
+ 	/* lock status */
+ 	if (info->lock_flags) {
+ 		VE_LOGW("release lost-lock...\n");
++
++		/*
++		 * The client died while holding an engine lock, i.e. in the
++		 * middle of programming or running a VE job.  Pulse the VE
++		 * reset line to quiesce the engine before the lost locks are
++		 * handed to the next client below: a fresh job (or the reset
++		 * userspace error recovery performs on decoder creation)
++		 * issued over an engine with outstanding MBUS transactions
++		 * wedges the VE MBUS port and hangs the interconnect.  This
++		 * is safe here: the engine locks are still held so no other
++		 * client can touch the engine concurrently, and the same
++		 * reset pulse is already exposed to userspace for error
++		 * recovery as IOCTL_RESET_VE.
++		 */
++		if (info->lock_flags & VE_LOCK_ENGINE_MASK) {
++			VE_LOGW("client died mid-job, resetting VE\n");
++			reset_control_reset(cedar_devp->reset);
++		}
++
+ 		if (info->lock_flags & VE_LOCK_VDEC)
+ 			mutex_unlock(&cedar_devp->lock_vdec);
+ 
+@@ -2263,9 +2306,15 @@ static int cedardev_release(struct inode *inode, struct file *filp)
+ 	mutex_unlock(&info->lock_flag_io);
+ 	mutex_destroy(&info->lock_flag_io);
+ 
+-	if (down_interruptible(&cedar_devp->sem)) {
+-		return -ERESTARTSYS;
+-	}
++	/*
++	 * Not down_interruptible(): a client dying on a fatal signal reaches
++	 * here with that signal still pending, which would abort the wait
++	 * and skip the teardown below - and the VFS ignores ->release()
++	 * return values, so nothing would ever retry it (the old early
++	 * return also leaked info).  The semaphore is only ever held for
++	 * short clock/reset sequences, so the wait is bounded.
++	 */
++	down(&cedar_devp->sem);
+ 
+ #if IS_ENABLED(CONFIG_ARCH_SUN9IW1P1)
+ 
+@@ -2278,6 +2327,26 @@ static int cedardev_release(struct inode *inode, struct file *filp)
+ 	}
+ #endif
+ 
++	/*
++	 * Balance the IOCTL_ENGINE_REQ references this client never
++	 * released.  Without this a dying client leaks ref_count, which
++	 * keeps the engine clocked, powered and out of reset forever and
++	 * prevents any later last-user teardown from running.  When the
++	 * balance brings the count to zero, gate the clocks and assert the
++	 * reset exactly like the last IOCTL_ENGINE_REL would have done.
++	 */
++	if (info->engine_refs > 0) {
++		VE_LOGW("release: balancing %d leaked engine ref(s)\n",
++			info->engine_refs);
++		if (cedar_devp->ref_count >= info->engine_refs)
++			cedar_devp->ref_count -= info->engine_refs;
++		else
++			cedar_devp->ref_count = 0;
++
++		if (cedar_devp->ref_count == 0)
++			disable_cedar_hw_clk();
++	}
++
+ 	/* release other resource here */
+ 	if (cedar_devp->ref_count == 0) {
+ 		cedar_devp->de_irq_flag = 1;
+@@ -2286,6 +2355,18 @@ static int cedardev_release(struct inode *inode, struct file *filp)
+ 	}
+ 	up(&cedar_devp->sem);
+ 
++	/*
++	 * Drop every dma-buf mapping created through this file.  The BSP
++	 * ships this call commented out: with the engine left running by a
++	 * dead client, tearing down its IOMMU mappings would turn the leak
++	 * into an instant page fault from in-flight DMA.  It is safe now:
++	 * a client that died mid-job had the engine reset above, and jobs
++	 * of other clients only reference mappings created through their
++	 * own file.  ->release() runs on the last reference to the file,
++	 * so no user of these mappings can remain.
++	 */
++	unmap_dma_buf_addr(1, 0, filp);
++
+ #if VE_SUPPORT_DVFS
+ 	/* if the process abort, this will remove case load by process id */
+ 	remove_case_load_param_by_process_id_sun55iw3(info->process_channel_id);
+-- 
+2.53.0
+

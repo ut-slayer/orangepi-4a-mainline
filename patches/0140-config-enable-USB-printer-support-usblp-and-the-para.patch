@@ -1,0 +1,82 @@
+From bf39290c3c6ac66bf2448ae76f28c92af301c23e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Mon, 24 Aug 2026 14:40:46 +0200
+Subject: [PATCH 140/143] config: enable USB printer support (usblp) and the
+ parallel port stack
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A user with a legacy USB laser printer (an HP LaserJet GDI model)
+reported that the kernel has no way to talk to it (github issue #5):
+USB_PRINTER was never enabled, so /dev/usb/lp0 is not created and CUPS
+and the foo2zjs firmware downloader have nothing to open.
+
+Enable USB_PRINTER=m, the USB printer class driver, which covers USB
+printers and USB-to-Centronics printer cables.
+
+The reporter also asked for PPDEV "for parallel port emulation over USB
+just in case", without saying which adapter. Cover that path too: enable
+the parport subsystem (PARPORT=m, with IEEE-1284 status readback) plus
+the three drivers that sit on it — lp (PRINTER=m, /dev/lp0 for classic
+Centronics printers), ppdev (PPDEV=m, userspace /dev/parportN access)
+and parport_uss720 (USB_USS720=m, the USS720-style USB-to-parallel
+adapters that expose a raw parallel port instead of a printer-class
+device). The board has no native parallel port, so all of this only
+comes alive through a USB adapter.
+
+Everything is a module, so the Image is unchanged and nothing loads
+unless matching hardware is plugged in.
+
+Verified with a defconfig -> .config roundtrip: only the six symbols
+above change.
+
+Link: https://github.com/ut-slayer/orangepi-4a-mainline/issues/5
+Reported-by: ascold113 <https://github.com/ascold113>
+Co-Authored-By: AI Agent
+---
+ arch/arm64/configs/opi4a_blindboot_defconfig | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/arm64/configs/opi4a_blindboot_defconfig b/arch/arm64/configs/opi4a_blindboot_defconfig
+index 69b930790..c8583dc62 100644
+--- a/arch/arm64/configs/opi4a_blindboot_defconfig
++++ b/arch/arm64/configs/opi4a_blindboot_defconfig
+@@ -226,6 +226,8 @@ CONFIG_MTD_SPI_NOR=y
+ CONFIG_MTD_UBI=m
+ CONFIG_MTD_HYPERBUS=m
+ CONFIG_OF_OVERLAY=y
++CONFIG_PARPORT=m
++CONFIG_PARPORT_1284=y
+ CONFIG_ZRAM=m
+ CONFIG_ZRAM_BACKEND_LZ4=y
+ CONFIG_ZRAM_BACKEND_LZ4HC=y
+@@ -406,6 +408,8 @@ CONFIG_SERIAL_FSL_LPUART_CONSOLE=y
+ CONFIG_SERIAL_FSL_LINFLEXUART=y
+ CONFIG_SERIAL_FSL_LINFLEXUART_CONSOLE=y
+ CONFIG_SERIAL_DEV_BUS=y
++CONFIG_PRINTER=m
++CONFIG_PPDEV=m
+ CONFIG_IPMI_HANDLER=m
+ CONFIG_IPMI_DEVICE_INTERFACE=m
+ CONFIG_IPMI_SI=m
+@@ -759,6 +763,7 @@ CONFIG_USB_EHCI_HCD_PLATFORM=y
+ CONFIG_USB_OHCI_HCD=y
+ CONFIG_USB_OHCI_HCD_PLATFORM=y
+ CONFIG_USB_ACM=m
++CONFIG_USB_PRINTER=m
+ CONFIG_USB_STORAGE=y
+ CONFIG_USB_CDNS_SUPPORT=m
+ CONFIG_USB_CDNS3=m
+@@ -776,6 +781,7 @@ CONFIG_USB_SERIAL=m
+ CONFIG_USB_SERIAL_CP210X=m
+ CONFIG_USB_SERIAL_FTDI_SIO=m
+ CONFIG_USB_SERIAL_OPTION=m
++CONFIG_USB_USS720=m
+ CONFIG_USB_HSIC_USB3503=y
+ CONFIG_USB_ONBOARD_DEV=m
+ CONFIG_NOP_USB_XCEIV=y
+-- 
+2.53.0
+

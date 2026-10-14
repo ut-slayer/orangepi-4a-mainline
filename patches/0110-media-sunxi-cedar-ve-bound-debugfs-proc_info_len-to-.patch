@@ -1,0 +1,52 @@
+From 73f62a7ea5a29107b477943b949ddc31c63f198b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 22 Jul 2026 21:06:01 +0200
+Subject: [PATCH 110/143] media: sunxi: cedar-ve: bound debugfs proc_info_len
+ to prevent a heap overflow
+
+IOCTL_SET_PROC_INFO stored the user-supplied proc_info_len without bounding
+it, and IOCTL_COPY_PROC_INFO then copy_from_user()'d that many bytes into a
+fixed VE_DEBUGFS_BUF_SIZE (1024) per-channel slot, so any task that opens
+/dev/cedar_dev could overflow the ve_debug_proc_info.data heap buffer when
+CONFIG_DEBUG_FS is enabled (local privilege escalation vector). Clamp the
+length to the slot size and validate the cached channel id before indexing.
+
+Found by code audit of the T527/A523 VE shim.
+---
+ drivers/media/platform/sunxi/cedar-ve/cedar_ve.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+index c6e04b1fb..1f7ad6616 100644
+--- a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
++++ b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+@@ -1891,6 +1891,14 @@ static long compat_cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned
+ 				mutex_unlock(&vi->lock_flag_io);
+ 
+ 				ve_debug_proc_info.cur_channel_id = ve_info.channel_id;
++				/*
++				 * Bound the user-supplied length to the per-channel
++				 * slot size (VE_DEBUGFS_BUF_SIZE) to prevent a heap
++				 * overflow in the IOCTL_COPY_PROC_INFO copy_from_user()
++				 * below, which copies proc_len bytes into this slot.
++				 */
++				if (ve_info.proc_info_len > VE_DEBUGFS_BUF_SIZE)
++					ve_info.proc_info_len = VE_DEBUGFS_BUF_SIZE;
+ 				ve_debug_proc_info.proc_len[channel_id] = ve_info.proc_info_len;
+ 				ve_debug_proc_info.proc_buf[channel_id] = ve_debug_proc_info.data +
+ 									  channel_id *
+@@ -1911,6 +1919,10 @@ static long compat_cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned
+ 				mutex_unlock(&vi->lock_flag_io);
+ 
+ 				channel_id = ve_debug_proc_info.cur_channel_id;
++				if (channel_id >= VE_DEBUGFS_MAX_CHANNEL) {
++					mutex_unlock(&ve_debug_proc_info.lock_proc);
++					return -EINVAL;
++				}
+ 				if (copy_from_user(ve_debug_proc_info.proc_buf[channel_id],
+ 						   (void __user *)arg,
+ 						   ve_debug_proc_info.proc_len[channel_id])) {
+-- 
+2.53.0
+

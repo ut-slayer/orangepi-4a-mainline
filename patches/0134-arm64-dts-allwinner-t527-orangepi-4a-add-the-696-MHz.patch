@@ -1,0 +1,71 @@
+From 7c28486196d25ebbe097f31a347f47aa8c6d8a18 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Thu, 30 Jul 2026 00:53:39 +0200
+Subject: [PATCH 134/143] arm64: dts: allwinner: t527-orangepi-4a: add the 696
+ MHz GPU OPP
+
+The vendor GPU table gates everything above 600 MHz by SID speed bin.
+This board's chip reads dvfs efuse word 0x19 (combi 0x01 -> GPU bin 1
+per the vendor gpu_vf_mapping_table), for which the vendor sanctions
+696 MHz at 0.90 V; the board's fixed 0.92 V vdd-gpu-sys rail covers it.
+
+696 MHz does not divide from the fixed pll-periph0 outputs, so pin
+pll-gpu at 696 MHz (24 MHz x 29, exact) via assigned-clock-rates; the
+PLL is programmed once at probe while gated (CLK_SET_RATE_GATE holds)
+and only powers up while the 696 MHz OPP is selected.
+
+Validated on the board: pll-gpu locks at exactly 696000000, devfreq
+scales 150-696 under real game load, zero job faults, GPU at ~52 C.
+
+Co-Authored-By: AI Agent
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts  | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index c8146f45c..5a1c38c0d 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -334,10 +334,13 @@ opp-1800000000 {
+ 
+ 	/*
+ 	 * GPU OPPs: the five speed-bin-independent points of the vendor
+-	 * table (648 MHz and above are fused off on most bins, so they are
+-	 * left out). All of them divide exactly from the fixed pll-periph0
+-	 * outputs, so pll-gpu is never touched and powers down after the
+-	 * first transition away from the U-Boot state (432 MHz on pll-gpu).
++	 * table, plus 696 MHz, which the vendor table gates by SID speed
++	 * bin: this board's chip reads dvfs efuse 0x19 (combi 0x01 -> GPU
++	 * bin 1), for which the vendor sanctions 696 MHz at 0.90 V.
++	 * The five common points divide exactly from the fixed pll-periph0
++	 * outputs; 696 MHz instead needs pll-gpu as a live parent, so
++	 * pll-gpu is pinned at 696 MHz via assigned-clock-rates below and
++	 * only gets enabled while the 696 MHz OPP is selected.
+ 	 *
+ 	 * The vendor table asks for 0.90 V on every point; this board's
+ 	 * vdd-gpu-sys rail (AXP717 DCDC2) is fixed at 0.92 V, so the OPPs
+@@ -372,6 +375,11 @@ opp-600000000 {
+ 			opp-hz = /bits/ 64 <600000000>;
+ 			opp-microvolt = <920000>;
+ 		};
++
++		opp-696000000 {
++			opp-hz = /bits/ 64 <696000000>;
++			opp-microvolt = <920000>;
++		};
+ 	};
+ };
+ 
+@@ -428,6 +436,8 @@ &ehci1 {
+ &gpu {
+ 	mali-supply = <&reg_dcdc2>;
+ 	operating-points-v2 = <&gpu_opp_table>;
++	assigned-clocks = <&ccu CLK_PLL_GPU>;
++	assigned-clock-rates = <696000000>;
+ 	status = "okay";
+ };
+ 
+-- 
+2.53.0
+

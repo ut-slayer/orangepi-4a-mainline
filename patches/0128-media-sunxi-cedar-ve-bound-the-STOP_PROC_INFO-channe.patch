@@ -1,0 +1,55 @@
+From 3f1d9634b8cae05331c69d80e4ab6eccec36e88b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 19:25:10 +0200
+Subject: [PATCH 128/143] media: sunxi: cedar-ve: bound the STOP_PROC_INFO
+ channel id
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+IOCTL_STOP_PROC_INFO takes its channel id straight from the ioctl arg and
+uses it to index ve_debug_proc_info.proc_buf[VE_DEBUGFS_MAX_CHANNEL] (16
+entries) without any range check:
+
+	channel_id = arg;
+	ve_debug_proc_info.proc_buf[channel_id] = NULL;
+
+channel_id is an unsigned char, so any value in 16..255 stores a NULL
+pointer past the end of the array, corrupting the adjacent fields of the
+global ve_debugfs_buffer (the data pointer, the lock_proc mutex) and the
+BSS beyond it.  Any task that can open /dev/cedar_dev can trigger this
+whenever CONFIG_DEBUG_FS is enabled (it is, in the shipped defconfig).
+
+This is the same unvalidated-channel-id class fixed for IOCTL_COPY_PROC_INFO;
+reject out-of-range ids here too.  Valid users (libcedarc only ever passes
+ids 0..15) are unaffected.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+Co-Authored-By: AI Agent
+---
+ drivers/media/platform/sunxi/cedar-ve/cedar_ve.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+index 1f7ad6616..37609820a 100644
+--- a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
++++ b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+@@ -1942,6 +1942,14 @@ static long compat_cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned
+ 					return 0;
+ 
+ 				channel_id = arg;
++				/*
++				 * channel_id comes straight from the ioctl arg and
++				 * indexes proc_buf[VE_DEBUGFS_MAX_CHANNEL]; reject
++				 * out-of-range ids to avoid an out-of-bounds store
++				 * past the array.
++				 */
++				if (channel_id >= VE_DEBUGFS_MAX_CHANNEL)
++					return -EINVAL;
+ 				ve_debug_proc_info.proc_buf[channel_id] = NULL;
+ 
+ 				break;
+-- 
+2.53.0
+

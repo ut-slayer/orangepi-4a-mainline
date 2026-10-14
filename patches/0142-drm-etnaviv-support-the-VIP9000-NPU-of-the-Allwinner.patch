@@ -1,0 +1,276 @@
+From 6eaffcc1029b4a4439de83349a029f0cf1807d33 Mon Sep 17 00:00:00 2001
+From: defencedog <831749+defencedog@users.noreply.github.com>
+Date: Mon, 21 Sep 2026 19:26:30 +0200
+Subject: [PATCH 142/143] drm/etnaviv: support the VIP9000 NPU of the Allwinner
+ T527/A523
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The T527/A523 carries a Vivante VIP9000 NPU (model 0x9000, revision
+0x9003) at 0x7122000, which the existing "vivante,gc" node binds to
+etnaviv. To run jobs it needs a hardware database entry and a few
+command stream adjustments.
+
+Changes, all limited to model 0x9000:
+
+ - HWDB entry for 0x9000/0x9003, with identity and feature registers
+   read from an Orange Pi 4A.
+ - Idle mask: ignore the SH, TP and FE idle bits, which this core does
+   not report as idle between jobs.
+ - Pipe switch and MMU flush: no PE cache flush or FE->PE semaphore
+   stall (the NPU has no pixel engine); a WAIT follows the MMUv2 flush
+   instead, and the reserved dword counts are adjusted to match.
+ - Job end and sync points: flush the shader L1 cache and signal the
+   event from the FE instead of the PE.
+
+Tested by the author with Mesa Teflon (TFLite delegate) running int8
+models on an Orange Pi 4A with the 6.18.44 kernel.
+
+[Adapted from https://github.com/defencedog/orangepi4A
+ (NPU_modules_opi4a_6.18.44/kernel/src) by Juan Manuel López Carrillo,
+ keeping only the parts scoped to model 0x9000:
+ - dropped the nn_core_count change 8 -> 6 in the 0x8000/0x7120 entry,
+   a different chip;
+ - kept the original end-of-job sequence for every other core: the
+   version reordered the BLT semaphore stall and dropped it for the
+   2D pipe on all GPUs;
+ - dropped the debug output (a pr_info on every interrupt and hex
+   dumps in the hang recovery path);
+ - dropped two additions to the MMUv1 sensitive-state table, not used
+   on this MMUv2 core.]
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+Co-Authored-By: AI Agent
+---
+ drivers/gpu/drm/etnaviv/etnaviv_buffer.c | 103 ++++++++++++++---------
+ drivers/gpu/drm/etnaviv/etnaviv_gpu.c    |   4 +
+ drivers/gpu/drm/etnaviv/etnaviv_hwdb.c   |  32 +++++++
+ 3 files changed, 97 insertions(+), 42 deletions(-)
+
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_buffer.c b/drivers/gpu/drm/etnaviv/etnaviv_buffer.c
+index 88385dc3b..4d42faec5 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_buffer.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_buffer.c
+@@ -100,14 +100,18 @@ static void etnaviv_cmd_select_pipe(struct etnaviv_gpu *gpu,
+ 	 * the 2D core, we need to flush the 3D depth and color caches,
+ 	 * otherwise we need to flush the 2D pixel engine cache.
+ 	 */
+-	if (gpu->exec_state == ETNA_PIPE_2D)
++	if (gpu->identity.model == 0x9000)
++		flush = 0;
++	else if (gpu->exec_state == ETNA_PIPE_2D)
+ 		flush = VIVS_GL_FLUSH_CACHE_PE2D;
+ 	else if (gpu->exec_state == ETNA_PIPE_3D)
+ 		flush = VIVS_GL_FLUSH_CACHE_DEPTH | VIVS_GL_FLUSH_CACHE_COLOR;
+ 
+ 	CMD_LOAD_STATE(buffer, VIVS_GL_FLUSH_CACHE, flush);
+-	CMD_SEM(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
+-	CMD_STALL(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
++	if (gpu->identity.model != 0x9000) {
++		CMD_SEM(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
++		CMD_STALL(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
++	}
+ 
+ 	CMD_LOAD_STATE(buffer, VIVS_GL_PIPE_SELECT,
+ 		       VIVS_GL_PIPE_SELECT_PIPE(pipe));
+@@ -315,7 +319,8 @@ void etnaviv_sync_point_queue(struct etnaviv_gpu *gpu, unsigned int event)
+ 
+ 	/* Signal sync point event */
+ 	CMD_LOAD_STATE(buffer, VIVS_GL_EVENT, VIVS_GL_EVENT_EVENT_ID(event) |
+-		       VIVS_GL_EVENT_FROM_PE);
++		       (gpu->identity.model == 0x9000 ? VIVS_GL_EVENT_FROM_FE :
++							VIVS_GL_EVENT_FROM_PE));
+ 
+ 	/* Stop the FE to 'pause' the GPU */
+ 	CMD_END(buffer);
+@@ -376,13 +381,19 @@ void etnaviv_buffer_queue(struct etnaviv_gpu *gpu, u32 exec_state,
+ 		if (need_flush) {
+ 			if (gpu->mmu_context->global->version == ETNAVIV_IOMMU_V1)
+ 				extra_dwords += 1;
++			else if (gpu->identity.model == 0x9000)
++				extra_dwords += 2;
+ 			else
+ 				extra_dwords += 3;
+ 		}
+ 
+ 		/* pipe switch commands */
+-		if (switch_context)
+-			extra_dwords += 4;
++		if (switch_context) {
++			if (gpu->identity.model == 0x9000)
++				extra_dwords += 2;
++			else
++				extra_dwords += 4;
++		}
+ 
+ 		/* PTA load command */
+ 		if (switch_mmu_context && gpu->sec_mode == ETNA_SEC_KERNEL)
+@@ -429,10 +440,14 @@ void etnaviv_buffer_queue(struct etnaviv_gpu *gpu, u32 exec_state,
+ 
+ 				CMD_LOAD_STATE(buffer, VIVS_MMUv2_CONFIGURATION,
+ 					       flush);
+-				CMD_SEM(buffer, SYNC_RECIPIENT_FE,
+-					SYNC_RECIPIENT_PE);
+-				CMD_STALL(buffer, SYNC_RECIPIENT_FE,
+-					SYNC_RECIPIENT_PE);
++				if (gpu->identity.model != 0x9000) {
++					CMD_SEM(buffer, SYNC_RECIPIENT_FE,
++						SYNC_RECIPIENT_PE);
++					CMD_STALL(buffer, SYNC_RECIPIENT_FE,
++						SYNC_RECIPIENT_PE);
++				} else {
++					CMD_WAIT(buffer, 64);
++				}
+ 			}
+ 
+ 			gpu->flush_seq = new_flush_seq;
+@@ -459,15 +474,13 @@ void etnaviv_buffer_queue(struct etnaviv_gpu *gpu, u32 exec_state,
+ 	 * We need at most 7 dwords in the return target: 2 cache flush +
+ 	 * 2 semaphore stall + 1 event + 1 wait + 1 link.
+ 	 */
+-	return_dwords = 7;
+-
+-	/*
+-	 * When the BLT engine is present we need 6 more dwords in the return
+-	 * target: 3 enable/flush/disable + 4 enable/semaphore stall/disable,
+-	 * but we don't need the normal TS flush state.
+-	 */
+-	if (has_blt)
+-		return_dwords += 6;
++	if (gpu->identity.model == 0x9000) {
++		return_dwords = 4;
++	} else {
++		return_dwords = 7;
++		if (has_blt)
++			return_dwords += 6;
++	}
+ 
+ 	return_target = etnaviv_buffer_reserve(gpu, buffer, return_dwords);
+ 	CMD_LINK(cmdbuf, return_dwords, return_target);
+@@ -476,35 +489,41 @@ void etnaviv_buffer_queue(struct etnaviv_gpu *gpu, u32 exec_state,
+ 	 * Append a cache flush, stall, event, wait and link pointing back to
+ 	 * the wait command to the ring buffer.
+ 	 */
+-	if (gpu->exec_state == ETNA_PIPE_2D) {
+-		CMD_LOAD_STATE(buffer, VIVS_GL_FLUSH_CACHE,
+-				       VIVS_GL_FLUSH_CACHE_PE2D);
++	if (gpu->identity.model == 0x9000) {
++		CMD_LOAD_STATE(buffer, VIVS_GL_FLUSH_CACHE, VIVS_GL_FLUSH_CACHE_SHADER_L1);
++		CMD_LOAD_STATE(buffer, VIVS_GL_EVENT, VIVS_GL_EVENT_EVENT_ID(event) |
++			       VIVS_GL_EVENT_FROM_FE);
+ 	} else {
+-		CMD_LOAD_STATE(buffer, VIVS_GL_FLUSH_CACHE,
+-				       VIVS_GL_FLUSH_CACHE_DEPTH |
+-				       VIVS_GL_FLUSH_CACHE_COLOR |
+-				       VIVS_GL_FLUSH_CACHE_SHADER_L1);
++		if (gpu->exec_state == ETNA_PIPE_2D) {
++			CMD_LOAD_STATE(buffer, VIVS_GL_FLUSH_CACHE,
++					       VIVS_GL_FLUSH_CACHE_PE2D);
++		} else {
++			CMD_LOAD_STATE(buffer, VIVS_GL_FLUSH_CACHE,
++					       VIVS_GL_FLUSH_CACHE_DEPTH |
++					       VIVS_GL_FLUSH_CACHE_COLOR |
++					       VIVS_GL_FLUSH_CACHE_SHADER_L1);
++			if (has_blt) {
++				CMD_LOAD_STATE(buffer, VIVS_BLT_ENABLE, 0x1);
++				CMD_LOAD_STATE(buffer, VIVS_BLT_SET_COMMAND, 0x1);
++				CMD_LOAD_STATE(buffer, VIVS_BLT_ENABLE, 0x0);
++			} else {
++				CMD_LOAD_STATE(buffer, VIVS_TS_FLUSH_CACHE,
++						       VIVS_TS_FLUSH_CACHE_FLUSH);
++			}
++		}
++		CMD_SEM(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
++		CMD_STALL(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
++
+ 		if (has_blt) {
+ 			CMD_LOAD_STATE(buffer, VIVS_BLT_ENABLE, 0x1);
+-			CMD_LOAD_STATE(buffer, VIVS_BLT_SET_COMMAND, 0x1);
++			CMD_SEM(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_BLT);
++			CMD_STALL(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_BLT);
+ 			CMD_LOAD_STATE(buffer, VIVS_BLT_ENABLE, 0x0);
+-		} else {
+-			CMD_LOAD_STATE(buffer, VIVS_TS_FLUSH_CACHE,
+-					       VIVS_TS_FLUSH_CACHE_FLUSH);
+ 		}
+-	}
+-	CMD_SEM(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
+-	CMD_STALL(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_PE);
+-
+-	if (has_blt) {
+-		CMD_LOAD_STATE(buffer, VIVS_BLT_ENABLE, 0x1);
+-		CMD_SEM(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_BLT);
+-		CMD_STALL(buffer, SYNC_RECIPIENT_FE, SYNC_RECIPIENT_BLT);
+-		CMD_LOAD_STATE(buffer, VIVS_BLT_ENABLE, 0x0);
+-	}
+ 
+-	CMD_LOAD_STATE(buffer, VIVS_GL_EVENT, VIVS_GL_EVENT_EVENT_ID(event) |
+-		       VIVS_GL_EVENT_FROM_PE);
++		CMD_LOAD_STATE(buffer, VIVS_GL_EVENT, VIVS_GL_EVENT_EVENT_ID(event) |
++			       VIVS_GL_EVENT_FROM_PE);
++	}
+ 	CMD_WAIT(buffer, gpu->fe_waitcycles);
+ 	CMD_LINK(buffer, 2,
+ 		 etnaviv_cmdbuf_get_va(buffer, &gpu->mmu_context->cmdbuf_mapping)
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_gpu.c b/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
+index cf0d9049b..d33e13d57 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
+@@ -429,6 +429,10 @@ static void etnaviv_hw_identify(struct etnaviv_gpu *gpu)
+ 		 gpu->identity.model, gpu->identity.revision);
+ 
+ 	gpu->idle_mask = ~VIVS_HI_IDLE_STATE_AXI_LP;
++	if (gpu->identity.model == 0x9000)
++		gpu->idle_mask &= ~(VIVS_HI_IDLE_STATE_SH |
++				    VIVS_HI_IDLE_STATE_TP |
++				    VIVS_HI_IDLE_STATE_FE);
+ 	/*
+ 	 * If there is a match in the HWDB, we aren't interested in the
+ 	 * remaining register values, as they might be wrong.
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_hwdb.c b/drivers/gpu/drm/etnaviv/etnaviv_hwdb.c
+index 8665f2658..8a1a0634a 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_hwdb.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_hwdb.c
+@@ -196,6 +196,38 @@ static const struct etnaviv_chip_identity etnaviv_chip_identities[] = {
+ 		.minor_features10 = 0x90044250,
+ 		.minor_features11 = 0x00000024,
+ 	},
++	{
++		.model = 0x9000,
++		.revision = 0x9003,
++		.product_id = 0x5090009,
++		.customer_id = 0x10000016,
++		.eco_id = 0x6000000,
++		.stream_count = 8,
++		.register_max = 64,
++		.thread_count = 256,
++		.shader_core_count = 1,
++		.nn_core_count = 6,
++		.vertex_cache_size = 16,
++		.vertex_output_buffer_size = 1024,
++		.pixel_pipes = 1,
++		.instruction_count = 512,
++		.num_constants = 320,
++		.buffer_size = 0,
++		.varyings_count = 16,
++		.features = 0xe0287cac,
++		.minor_features0 = 0xc1799eff,
++		.minor_features1 = 0xfefbfadb,
++		.minor_features2 = 0xeb9d6fbf,
++		.minor_features3 = 0xedfffced,
++		.minor_features4 = 0xd30dafc7,
++		.minor_features5 = 0x7b5ac333,
++		.minor_features6 = 0xfc8ee200,
++		.minor_features7 = 0x03fffa6f,
++		.minor_features8 = 0x00fe0ef0,
++		.minor_features9 = 0x0088003c,
++		.minor_features10 = 0x108048c0,
++		.minor_features11 = 0x00000010,
++	},
+ 	{
+ 		.model = 0x8000,
+ 		.revision = 0x7120,
+-- 
+2.53.0
+

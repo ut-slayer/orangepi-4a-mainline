@@ -1,0 +1,32 @@
+From 24e2d93a83bdac83ac2f963b79ba55eaebf7669e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 14 Jul 2026 02:29:47 +0200
+Subject: [PATCH 068/143] clk: sunxi-ng: a523 cpu: do not touch the unused
+ pll-cpu0 (CLK_IGNORE_UNUSED)
+
+pll-cpu0 is a spare PLL we do not govern (it is only an input of the cluster
+muxes, never selected). Without the flag, clk_disable_unused would turn it off
+at boot, writing to the sensitive CPU-PLL block needlessly. With
+CLK_IGNORE_UNUSED it is left as the firmware left it.
+
+Finding from the audit before the live cpufreq step.
+---
+ drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+index 9091548dd..73d29edd6 100644
+--- a/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
++++ b/drivers/clk/sunxi-ng/ccu-sun55i-a523-cpu.c
+@@ -47,6 +47,7 @@ static struct ccu_mult pll_cpu0_clk = {
+ 		.reg		= SUN55I_A523_PLL_CPU0_REG,
+ 		.hw.init	= CLK_HW_INIT_PARENTS_DATA("pll-cpu0", osc24M,
+ 							   &ccu_mult_ops,
++							   CLK_IGNORE_UNUSED |
+ 							   CLK_SET_RATE_UNGATE),
+ 	},
+ };
+-- 
+2.53.0
+

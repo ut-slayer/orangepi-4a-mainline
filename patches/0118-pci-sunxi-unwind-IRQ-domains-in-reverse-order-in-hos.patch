@@ -1,0 +1,85 @@
+From b9de65dd17f2fde94004f492c552171e277886ae Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 18:50:36 +0200
+Subject: [PATCH 118/143] pci: sunxi: unwind IRQ domains in reverse order in
+ host_init
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+sunxi_pcie_host_init() freed the INTx and MSI IRQ domains only on the
+pci_host_probe() failure path.  The two earlier failure points leaked:
+
+ - if sunxi_allocate_msi_domains() failed, the already-created INTx
+   domain was left behind;
+ - if sunxi_pcie_msi_init() failed, both the INTx domain and the two
+   MSI domains were left behind.
+
+IRQ domains are not devm-managed, so a failed or deferred probe leaked
+them and a re-probe would create duplicate domains on the same fwnode.
+Restructure the exit path with labels in reverse acquisition order
+(msi mapping -> msi domains -> intx domain); sunxi_pcie_free_msi()
+checks msi_data, so jumping to err_free_msi after an msi_init failure
+is safe (msi_init zeroes msi_data before returning an error).
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+Co-Authored-By: AI Agent
+---
+ drivers/pci/pcie-sunxi/pcie-sunxi-rc.c | 25 ++++++++++++++-----------
+ 1 file changed, 14 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c b/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
+index 575802e44..b49c7101c 100644
+--- a/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
++++ b/drivers/pci/pcie-sunxi/pcie-sunxi-rc.c
+@@ -515,11 +515,11 @@ static int sunxi_pcie_host_init(struct sunxi_pcie_port *pp)
+ 	if (pci_msi_enabled() && !pp->has_its) {
+ 		ret = sunxi_allocate_msi_domains(pp);
+ 		if (ret)
+-			return ret;
++			goto err_free_intx;
+ 
+ 		ret = sunxi_pcie_msi_init(pp);
+ 		if (ret)
+-			return ret;
++			goto err_free_msi_domains;
+ 	}
+ 
+ 	if (pp->ops->host_init)
+@@ -529,20 +529,23 @@ static int sunxi_pcie_host_init(struct sunxi_pcie_port *pp)
+ 	bridge->ops = &sunxi_pcie_ops;
+ 
+ 	ret = pci_host_probe(bridge);
+-
+ 	if (ret) {
+-		if (pci_msi_enabled() && !pp->has_its) {
+-			sunxi_pcie_free_msi(pp);
+-			sunxi_free_msi_domains(pp);
+-		}
+-		sunxi_free_intx_domains(pp);
+-
+ 		dev_err(pp->dev, "Failed to probe host bridge\n");
+-
+-		return ret;
++		goto err_free_msi;
+ 	}
+ 
+ 	return 0;
++
++err_free_msi:
++	if (pci_msi_enabled() && !pp->has_its)
++		sunxi_pcie_free_msi(pp);
++err_free_msi_domains:
++	if (pci_msi_enabled() && !pp->has_its)
++		sunxi_free_msi_domains(pp);
++err_free_intx:
++	sunxi_free_intx_domains(pp);
++
++	return ret;
+ }
+ 
+ void sunxi_pcie_host_setup_rc(struct sunxi_pcie_port *pp)
+-- 
+2.53.0
+

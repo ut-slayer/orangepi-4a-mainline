@@ -1,0 +1,50 @@
+From 06662a3d06324037785d9db7368fbad2e7b920d0 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 21:51:01 +0200
+Subject: [PATCH 030/143] dts: opi4a: CMA 64MB pinned at 0x43000000-0x48000000
+ (real DE aperture)
+
+Boot 2 left the board half-dead: with alloc-ranges up to 0x70000000 the CMA
+landed at 0x60000000, outside the DE aperture (the X96Q patch documents
+0x43000000 reachable and 0x4b100000 NOT). Fetch outside aperture =
+interconnect hang. Strict window per the tested layout, 64MB is enough for
+bring-up without IOMMU.
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts     | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index c874851cb..f2a74183b 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -602,17 +602,20 @@ hdmi_con_in: endpoint {
+ };
+ 
+ /*
+- * The DE's DMA (scanout and RCQ pool) only reaches low DRAM; by default the
+- * CMA lands high (~0xb9e00000 here) and scanout would read zeros (black).
+- * Explicit alloc-ranges to force it low (the original patch relied
+- * on its own board's default placement).
++ * The DE's DMA (scanout and RCQ pool) only reaches VERY low DRAM: the original
++ * patch (X96Q, same die) notes that 0x43000000 is reachable but
++ * 0x4b100000 is NOT. With the previous window (up to 0x70000000) the CMA landed
++ * at 0x60000000 -> fetch outside the aperture -> interconnect hang
++ * half-way through boot (boot 2, half-dead board). Strict window, like the
++ * tested layout: 0x43000000-0x48000000 (after the kernel, before bl31),
++ * 64MB (enough for the bring-up's dumb buffers/fbcon).
+  */
+ &{/reserved-memory} {
+ 	linux,cma {
+ 		compatible = "shared-dma-pool";
+ 		reusable;
+-		size = <0x0 0x10000000>;
+-		alloc-ranges = <0x0 0x40000000 0x0 0x30000000>;
++		size = <0x0 0x04000000>;
++		alloc-ranges = <0x0 0x43000000 0x0 0x05000000>;
+ 		linux,cma-default;
+ 	};
+ };
+-- 
+2.53.0
+

@@ -1,0 +1,64 @@
+From 48e3a4f6995ec00224429a008c67f29e2412aec8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 19:12:47 +0200
+Subject: [PATCH 127/143] drm/sun4i: sun55i_de: don't container_of() foreign
+ planes in the primary check
+
+The primary's atomic_check walks EVERY plane of the DRM device with
+drm_for_each_plane() and immediately container_of()s each one to
+struct sun8i_layer to find the LAY overlay planes of its channel.  On a
+hybrid sun4i device where another engine registers planes that are not
+struct sun8i_layer (e.g. the sun4i backend's struct sun4i_layer, which
+is smaller), reading l->mixer/type/channel/overlay through the wrong
+container is an out-of-bounds read of neighbouring heap memory.
+
+No sun55iw3 board can hit this today (an RCQ mixer never coexists with
+a non-sun8i engine), but the pattern is one bad DT away from being
+live.  Filter candidates by their plane helper vtable first: only this
+driver's LAY overlay planes use sun55i_overlay_helper_funcs, so the
+container_of() below is always well-typed.  No behaviour change on
+existing hardware.
+
+Co-Authored-By: AI Agent
+---
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index 378c8e964..77f5d0bf1 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -342,6 +342,8 @@ static int sun55i_overlay_atomic_check(struct drm_plane *plane,
+ 	return 0;
+ }
+ 
++static const struct drm_plane_helper_funcs sun55i_overlay_helper_funcs;
++
+ /*
+  * atomic_check of the v35x primary: the common one (VSU scaling allowed) plus
+  * the coupling with its overlay layers: if the primary switches to AFBC or to
+@@ -401,9 +403,19 @@ static int sun55i_primary_atomic_check(struct drm_plane *plane,
+ 	}
+ 
+ 	drm_for_each_plane(other, plane->dev) {
+-		struct sun8i_layer *l = plane_to_sun8i_layer(other);
++		struct sun8i_layer *l;
+ 		struct drm_plane_state *s;
+ 
++		/*
++		 * Match this driver's LAY overlay planes by their helper
++		 * vtable BEFORE container_of(): a hybrid sun4i DRM device can
++		 * hold planes that are not struct sun8i_layer at all, and
++		 * reading fields through the wrong container is an
++		 * out-of-bounds access.
++		 */
++		if (other->helper_private != &sun55i_overlay_helper_funcs)
++			continue;
++		l = plane_to_sun8i_layer(other);
+ 		if (l->mixer != layer->mixer ||
+ 		    l->type != SUN8I_LAYER_TYPE_UI ||
+ 		    l->channel != layer->channel || l->overlay == 0)
+-- 
+2.53.0
+

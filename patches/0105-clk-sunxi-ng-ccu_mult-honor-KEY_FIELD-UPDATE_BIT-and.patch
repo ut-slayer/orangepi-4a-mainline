@@ -1,0 +1,177 @@
+From 664f7f9866fc47ba33eecd40b09493fcd377744a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 12:19:54 +0200
+Subject: [PATCH 105/143] clk: sunxi-ng: ccu_mult: honor KEY_FIELD, UPDATE_BIT
+ and CLEAR_MOD
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ccu_mult_set_rate() wrote the new N factor with a plain read-modify-write
+and ignored the CCU_FEATURE_KEY_FIELD and CCU_FEATURE_UPDATE_BIT features
+that ccu_div_set_rate() and ccu_mux_helper_set_parent() both honor. Add
+the same guards before the write.
+
+For CCU_FEATURE_CLEAR_MOD (the A523/T527 CPU PLLs), follow the documented
+programming sequence (T527 user manual v0.92, section 2.2.4.2): write the
+N factor, then write 1 to the update bit in a separate access, then wait
+for it to clear. Both writes stay inside the CCU spinlock, because
+clk_enable() paths (ccu_gate_helper_enable()) read-modify-write the same
+register from atomic context; only the read-only wait of up to 10 ms
+(ccu_helper_poll_for_clear()) runs outside the lock with IRQs enabled.
+
+No other platform uses these features with ccu_mult, so nothing changes
+for them.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+Co-Authored-By: AI Agent
+---
+ drivers/clk/sunxi-ng/ccu_common.c | 43 +++++++++++++++++++++++------
+ drivers/clk/sunxi-ng/ccu_common.h |  1 +
+ drivers/clk/sunxi-ng/ccu_mult.c   | 45 +++++++++++++++++++++++--------
+ 3 files changed, 70 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/clk/sunxi-ng/ccu_common.c b/drivers/clk/sunxi-ng/ccu_common.c
+index e3fea4b19..ee37b28a3 100644
+--- a/drivers/clk/sunxi-ng/ccu_common.c
++++ b/drivers/clk/sunxi-ng/ccu_common.c
+@@ -45,13 +45,17 @@ EXPORT_SYMBOL_NS_GPL(ccu_helper_wait_for_lock, "SUNXI_CCU");
+  * configuration is applied. Without this handshake the factor write is
+  * ignored and the PLL never asserts its lock bit again.
+  *
+- * The caller holds the framework's prepare_lock (clk_set_rate is process
+- * context) and no other thread writes this clock's register concurrently,
+- * so the poll runs in process context and is allowed to sleep -- use the
+- * non-atomic variant so the scheduler can preempt the up-to-10 ms wait
+- * instead of busy-spinning with IRQs disabled.  Matches
+- * ccu_helper_wait_for_lock() above, which is also called outside the CCU
+- * spinlock.
++ * This helper both arms the update bit and waits for it, so it must be
++ * called with the CCU spinlock held: the read-modify-write below touches
++ * the same register the caller just programmed, and clk_enable() paths
++ * (ccu_gate_helper_enable()) read-modify-write it too, from atomic
++ * context.  Because of that the wait has to be the atomic variant.
++ *
++ * Callers that can afford to drop the lock before waiting should instead
++ * fold @clear into the register write they already do under the lock, and
++ * then call ccu_helper_poll_for_clear() outside it -- the handshake can
++ * take up to 10 ms, and spinning that long with IRQs disabled stalls every
++ * other clock in the same CCU.
+  */
+ void ccu_helper_wait_for_clear(struct ccu_common *common, u32 clear)
+ {
+@@ -64,10 +68,33 @@ void ccu_helper_wait_for_clear(struct ccu_common *common, u32 clear)
+ 	addr = common->base + common->reg;
+ 	writel(readl(addr) | clear, addr);
+ 
++	WARN_ON(readl_relaxed_poll_timeout_atomic(addr, reg, !(reg & clear),
++						  100, 10000));
++}
++EXPORT_SYMBOL_NS_GPL(ccu_helper_wait_for_clear, "SUNXI_CCU");
++
++/*
++ * Wait for a self-clearing update bit that the caller already armed as part
++ * of its own register write, under the CCU spinlock.  Unlike
++ * ccu_helper_wait_for_clear() this only reads, so it is safe (and required)
++ * to call it with the lock dropped: the handshake takes up to 10 ms and the
++ * sleeping poll lets the scheduler preempt the wait instead of holding IRQs
++ * disabled.  Same pattern as ccu_helper_wait_for_lock().
++ */
++void ccu_helper_poll_for_clear(struct ccu_common *common, u32 clear)
++{
++	void __iomem *addr;
++	u32 reg;
++
++	if (!clear)
++		return;
++
++	addr = common->base + common->reg;
++
+ 	WARN_ON(readl_relaxed_poll_timeout(addr, reg, !(reg & clear),
+ 					   100, 10000));
+ }
+-EXPORT_SYMBOL_NS_GPL(ccu_helper_wait_for_clear, "SUNXI_CCU");
++EXPORT_SYMBOL_NS_GPL(ccu_helper_poll_for_clear, "SUNXI_CCU");
+ 
+ bool ccu_is_better_rate(struct ccu_common *common,
+ 			unsigned long target_rate,
+diff --git a/drivers/clk/sunxi-ng/ccu_common.h b/drivers/clk/sunxi-ng/ccu_common.h
+index 27fecc665..a1c8c9663 100644
+--- a/drivers/clk/sunxi-ng/ccu_common.h
++++ b/drivers/clk/sunxi-ng/ccu_common.h
+@@ -66,6 +66,7 @@ struct sunxi_ccu_desc {
+ 
+ void ccu_helper_wait_for_lock(struct ccu_common *common, u32 lock);
+ void ccu_helper_wait_for_clear(struct ccu_common *common, u32 clear);
++void ccu_helper_poll_for_clear(struct ccu_common *common, u32 clear);
+ 
+ bool ccu_is_better_rate(struct ccu_common *common,
+ 			unsigned long target_rate,
+diff --git a/drivers/clk/sunxi-ng/ccu_mult.c b/drivers/clk/sunxi-ng/ccu_mult.c
+index 7fe7729d6..4a638f15f 100644
+--- a/drivers/clk/sunxi-ng/ccu_mult.c
++++ b/drivers/clk/sunxi-ng/ccu_mult.c
+@@ -134,25 +134,48 @@ static int ccu_mult_set_rate(struct clk_hw *hw, unsigned long rate,
+ 	reg = readl(cm->common.base + cm->common.reg);
+ 	reg &= ~GENMASK(cm->mult.width + cm->mult.shift - 1, cm->mult.shift);
+ 	reg |= ((_cm.mult - cm->mult.offset) << cm->mult.shift);
++	/*
++	 * Defensive parity with ccu_div_set_rate() and ccu_mux_helper_set_parent():
++	 * honor the KEY_FIELD / UPDATE_BIT features the ccu_common struct
++	 * already declares.  No current ccu_mult user sets either feature --
++	 * the A523/T527 CPU PLLs use CCU_FEATURE_CLEAR_MOD, handled
++	 * separately below -- so this is a no-op today, but keeps the
++	 * generic type correct for any future clock that does set them.
++	 */
++	if (cm->common.features & CCU_FEATURE_KEY_FIELD)
++		reg |= CCU_MUX_KEY_VALUE;
++	if (cm->common.features & CCU_FEATURE_UPDATE_BIT)
++		reg |= CCU_SUNXI_UPDATE_BIT;
+ 
+ 	writel(reg, cm->common.base + cm->common.reg);
+ 
++	/*
++	 * Arm the self-clearing update bit with a second write, once the
++	 * factor write has completed: the manual documents the handshake as
++	 * separate steps -- configure the N factor, then write PLL_UPDATE,
++	 * then wait for it to self-clear (T527 UM v0.92, section 2.2.4.2,
++	 * steps 6-8) -- and the vendor driver arms it with a separate
++	 * register access as well.  Both writes stay inside the CCU
++	 * spinlock, since clk_enable() paths (ccu_gate_helper_enable())
++	 * read-modify-write this register from atomic context.  Only the
++	 * wait for the bit to clear is done outside the lock, below.
++	 */
++	if (cm->common.features & CCU_FEATURE_CLEAR_MOD)
++		writel(reg | cm->common.clear,
++		       cm->common.base + cm->common.reg);
++
+ 	spin_unlock_irqrestore(cm->common.lock, flags);
+ 
+ 	/*
+-	 * The UPDATE-bit handshake on A523/T527 CPU PLLs polls for up to
+-	 * 10 ms.  It must run OUTSIDE the CCU spinlock: clk_set_rate() is
+-	 * process context (it takes the framework's prepare_lock), no
+-	 * other thread writes this clock's register while we hold
+-	 * prepare_lock, and other clocks in the same CCU write different
+-	 * registers -- so the only thing the spinlock protects is the
+-	 * factor RMW above.  Holding the spinlock with IRQs disabled for
+-	 * 10 ms froze every other clock in the CCU on every cpufreq
+-	 * transition.  Matches ccu_helper_wait_for_lock() just below,
+-	 * which has always been called outside the spinlock.
++	 * The UPDATE-bit handshake on the A523/T527 CPU PLLs takes up to
++	 * 10 ms.  Waiting for it under the CCU spinlock, with IRQs disabled,
++	 * stalled every other clock of the same CCU on each cpufreq
++	 * transition.  The bit was already armed above, so what is left is a
++	 * read-only poll: do it here, outside the lock, with the sleeping
++	 * variant -- same pattern as ccu_helper_wait_for_lock() below.
+ 	 */
+ 	if (cm->common.features & CCU_FEATURE_CLEAR_MOD)
+-		ccu_helper_wait_for_clear(&cm->common, cm->common.clear);
++		ccu_helper_poll_for_clear(&cm->common, cm->common.clear);
+ 
+ 	ccu_helper_wait_for_lock(&cm->common, cm->lock);
+ 
+-- 
+2.53.0
+

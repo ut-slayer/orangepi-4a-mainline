@@ -1,0 +1,169 @@
+From dfd0dd108b3881d6274cd2ee563a5835926b99bb Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 04:04:05 +0200
+Subject: [PATCH 006/143] pinctrl: sun55i-a523: program the PIO bank withstand
+ mode from the hardware detection
+
+Root cause of the dead GMAC1 receive path on the Orange Pi 4A: the PJ bank
+(RGMII) runs from a 1.8V rail, but POW_MOD_SEL left it in 3.3V mode, so
+the input thresholds were wrong and the MAC never saw RXC/RXD (TX fine,
+1G link, rx_packets=0, no CRC errors). Clearing bit 9 of 0x0200_0380 by
+hand brought RX back instantly.
+
+On the A523/T527 the hardware reports the real voltage of every rail in
+POW_MOD_VAL (0x388, bit set = 1.8V), and the mode is selected in
+POW_MOD_SEL (0x380) with the polarity INVERTED compared with older SoCs
+(bit set = 3.3V mode). Neither the vendor U-Boot nor mainline kept SEL in
+sync with VAL, and five banks (C, E, G, J, K) came up in 3.3V mode on a
+1.8V rail.
+
+Sync SEL with VAL once at probe time: banks with their own bit are C, D,
+E, G, I, J and K (port index, A=0); PB and PH hang off VCCIO (VAL bit 16
+-> SEL bit 12); PF is skipped because the SD controller switches it for
+UHS.
+
+This runs before sunxi_pinctrl_init_with_variant() claims the PIO "apb"
+clock, so take and enable that clock around the fix (propagating
+-EPROBE_DEFER). Otherwise, with a bootloader that leaves the gate closed,
+VAL would read back as garbage and every bank would be programmed
+backwards. If the DT has no clock, assume the gate is already open.
+
+Co-Authored-By: AI Agent
+---
+ drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c | 105 ++++++++++++++++++++
+ 1 file changed, 105 insertions(+)
+
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+index 88d8acd5b..d75158740 100644
+--- a/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun55i-a523.c
+@@ -5,6 +5,8 @@
+  * Copyright (C) 2023 Arm Ltd.
+  */
+ 
++#include <linux/clk.h>
++#include <linux/io.h>
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/of.h>
+@@ -13,6 +15,103 @@
+ 
+ #include "pinctrl-sunxi.h"
+ 
++/*
++ * Per-bank withstand (voltage mode) of the A523/T527 PIO.
++ *
++ * The hardware detects the real voltage of each bank's rail in
++ * POW_MOD_VAL (bit=1: 1.8V rail, bit=0: 3.3V) and the input receiver mode
++ * is selected in POW_MOD_SEL with INVERTED polarity compared to
++ * older SoCs (bit=1: 3.3V mode, bit=0: 1.8V mode; "power_mode_reverse"
++ * in the BSP). If they don't match, the bank inputs get the wrong
++ * thresholds: with a 1.8V rail in 3.3V mode the bank is practically deaf
++ * (that was PJ = gmac1's RGMII: TX ok, RX dead).
++ *
++ * The BSP (sun55iw3_pinctrl_fix_over_voltage + set_io_bias_cfg with
++ * power_mode_detect) programs SEL from VAL at runtime; the vendor U-Boot
++ * does not leave it right for every bank. Replicate that logic here once,
++ * at probe time.
++ */
++#define A523_POW_MOD_SEL_REG	0x380
++#define A523_POW_MOD_VAL_REG	0x388
++#define A523_POW_VCCIO_SEL_BIT	12
++#define A523_POW_VCCIO_VAL_BIT	16
++
++static int a523_pio_fix_withstand(struct platform_device *pdev)
++{
++	/* Banks with their own bit (port index, A=0): C D E G I J K.
++	 * PB and PH hang off the VCCIO rail (bit 12 in SEL, 16 in VAL).
++	 * PF is skipped: its mode is switched by the SD controller (UHS), like
++	 * the BSP does. */
++	static const u8 banks[] = { 2, 3, 4, 6, 8, 9, 10 };
++	u32 val, sel, old;
++	void __iomem *base;
++	struct resource *res;
++	struct clk *clk;
++	int i, ret;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res)
++		return 0;
++
++	/*
++	 * This runs BEFORE sunxi_pinctrl_init_with_variant() (which is
++	 * what claims the PIO "apb" clock): make sure the gate is open before
++	 * reading VAL - today the vendor U-Boot leaves it open, but with mainline
++	 * U-Boot or another probe order we would read garbage and program
++	 * the withstand of the 7 banks + VCCIO backwards.
++	 */
++	clk = clk_get(&pdev->dev, "apb");
++	if (IS_ERR(clk)) {
++		if (PTR_ERR(clk) == -EPROBE_DEFER)
++			return -EPROBE_DEFER;
++		clk = NULL;	/* no clock in the DT: gate already open */
++	} else {
++		ret = clk_prepare_enable(clk);
++		if (ret) {
++			clk_put(clk);
++			return ret;
++		}
++	}
++
++	base = ioremap(res->start, 0x400);
++	if (!base) {
++		if (clk) {
++			clk_disable_unprepare(clk);
++			clk_put(clk);
++		}
++		return 0;
++	}
++
++	val = readl(base + A523_POW_MOD_VAL_REG);
++	old = sel = readl(base + A523_POW_MOD_SEL_REG);
++
++	for (i = 0; i < ARRAY_SIZE(banks); i++) {
++		if (val & BIT(banks[i]))
++			sel &= ~BIT(banks[i]);	/* 1.8V rail -> 1.8V mode */
++		else
++			sel |= BIT(banks[i]);	/* 3.3V rail -> 3.3V mode */
++	}
++
++	if (val & BIT(A523_POW_VCCIO_VAL_BIT))
++		sel &= ~BIT(A523_POW_VCCIO_SEL_BIT);
++	else
++		sel |= BIT(A523_POW_VCCIO_SEL_BIT);
++
++	if (sel != old) {
++		writel(sel, base + A523_POW_MOD_SEL_REG);
++		dev_info(&pdev->dev,
++			 "PIO withstand corregido: SEL 0x%04x -> 0x%04x (VAL 0x%05x)\n",
++			 old, sel, val);
++	}
++
++	iounmap(base);
++	if (clk) {
++		clk_disable_unprepare(clk);
++		clk_put(clk);
++	}
++	return 0;
++}
++
+ static const u8 a523_nr_bank_pins[SUNXI_PINCTRL_MAX_BANKS] =
+ /*	  PA  PB  PC  PD  PE  PF  PG  PH  PI  PJ  PK */
+ 	{  0, 15, 17, 24, 16,  7, 15, 20, 17, 28, 24 };
+@@ -31,6 +130,12 @@ static struct sunxi_pinctrl_desc a523_pinctrl_data = {
+ 
+ static int a523_pinctrl_probe(struct platform_device *pdev)
+ {
++	int ret;
++
++	ret = a523_pio_fix_withstand(pdev);
++	if (ret)
++		return ret;
++
+ 	return sunxi_pinctrl_dt_table_init(pdev, a523_nr_bank_pins,
+ 					   a523_irq_bank_muxes,
+ 					   &a523_pinctrl_data,
+-- 
+2.53.0
+

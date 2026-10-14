@@ -5,27 +5,26 @@
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Inv%C3%ADtame%20a%20un%20caf%C3%A9%20%E2%98%95-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/aurealnix)
 
 Soporte **mainline** para la Orange Pi 4A (SoC Allwinner **T527**, familia A523 /
-`sun55iw3`), sobre un kernel **6.18.38 vanilla**. Serie de 130 parches +
-`defconfig` + device-tree de la placa. Los ports de la serie comunitaria
-minimyth2 conservan la autoría original (Justin Suess, Jernej Škrabec) en las
-cabeceras de los parches.
+`sun55iw3`), sobre un kernel **6.18.55 vanilla**. Serie de 143 parches +
+`defconfig` + device-tree de la placa. Los parches portados del trabajo de otras
+personas conservan su autoría original en las cabeceras (Justin Suess y Jernej
+Škrabec en la serie de display de minimyth2, Marvin Wewer en el PCIe).
 
-> Base del árbol de trabajo: `linux-6.18.38` vanilla. Estos parches se aplican
+> Base del árbol de trabajo: `linux-6.18.55` vanilla. Estos parches se aplican
 > encima. `git format-patch --base` incluye el hash base en cada `.patch`.
 
-**Últimas imágenes: v0.4.1** — kernel **6.18.44**, WireGuard + NAT por
-nftables/iptables, una imagen nueva de **Kubuntu 26.04 (KDE Plasma)** junto a
-GNOME y CLI, decodificación de vídeo por hardware (VPU) y soporte de impresoras
-USB. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
+**Últimas imágenes: v0.5**: kernel **6.18.55** (`6.18.55-g3f67628a8bff`,
+exactamente esta serie de parches), cuatro imágenes: **CLI / headless**,
+**GNOME**, **Kubuntu 26.04 (KDE Plasma)** y, nueva y experimental, **Ubuntu 26.04
+Cinnamon sobre Wayland**. Descárgalas en la página de [Releases](../../releases);
+los cambios están en [CHANGELOG.es.md](CHANGELOG.es.md).
 
-> **Aviso:** la serie de parches de este repo es el kernel que hay detrás de las
-> **imágenes v0.3** (fix del reloj de la GPU, bring-up de PCIe, decodificación
-> de vídeo por hardware). Las **imágenes v0.4.x** llevan un kernel más nuevo
-> (**6.18.44**); la serie de parches actualizada para ese kernel aún no está
-> aquí — está en camino. Las imágenes listas para grabar — **CLI / headless**,
-> **GNOME** y **Kubuntu 26.04** — están en la página de
-> [Releases](../../releases). También puedes compilarte el kernel de la era v0.3
-> con los parches de aquí.
+> **La serie de parches ya va a la par con las imágenes.** En la v0.5 además se
+> ha limpiado: se quitaron los experimentos que luego deshacía otro parche, y cada
+> función que necesitó varios intentos es ahora un solo parche con el resultado
+> final (de 175 a 143 parches, misma lógica). Los comentarios del código y los
+> mensajes del log también están ya en inglés, y el defconfig de la serie es
+> el mismo con el que se compilan las imágenes.
 
 ## Qué funciona (confirmado en hardware)
 
@@ -44,9 +43,9 @@ USB. Historial en [CHANGELOG.es.md](CHANGELOG.es.md).
 | **USB** (4 puertos-A traseros — todos USB 2.0: la única lane combo USB3/PCIe del SoC va a la ranura M.2, así que esta placa no tiene USB 3.0 en absoluto; ver FAQ) | ✅ HID (teclado/ratón) + almacenamiento masivo + hotplug; el par OTG funciona como host |
 | **Sensores térmicos THS** (5 zonas: cpu_l / cpu_b / gpu / npu / ddr) | ✅ lectura en sysfs/hwmon + trip crítico 110 °C |
 | **cpufreq/DVFS de CPU** (little 480 MHz–1.416 GHz, big 480 MHz–1.8 GHz) + throttling térmico a 90 °C | ✅ |
-| **devfreq/DVFS de GPU** (Panfrost, 150–600 MHz) + throttling térmico | ✅ y ahora **a las frecuencias correctas** — el divisor de la GPU del A523 resultó ser de *enmascarado de ciclos* (fraccional), `frecuencia = fuente × (16−M)/16`, no un divisor lineal; medido con el contador de ciclos del Mali |
+| **devfreq/DVFS de GPU** (Panfrost, 150–696 MHz; 696 MHz es el punto de trabajo del fabricante para este SoC, validado con juegos en esta placa) + throttling térmico | ✅ y ahora **a las frecuencias correctas** — el divisor de la GPU del A523 resultó ser de *enmascarado de ciclos* (fraccional), `frecuencia = fuente × (16−M)/16`, no un divisor lineal; medido con el contador de ciclos del Mali |
 | **eMMC** (almacenamiento MMC) | ✅ detectada + lectura/escritura HS200, y **el arranque desde eMMC funciona**: un tester corre la imagen CLI entera desde el módulo eMMC (sin tarjeta SD), con el auto-resize del primer arranque llenando sus 58 GiB. Falta escribir la guía paso a paso de *instalar en eMMC* |
-| **PCIe / M.2 NVMe** (RC DesignWare + PHY combo Innosilicon) | ✅ **validado con discos reales por dos testers**: un KIOXIA KBG40ZNV256G y un SSD Intel de la serie 760p, ambos con el driver `nvme`, con pruebas de integridad `f3` sobre los **256 GB completos (varias pasadas)** y 50 GB — **0 sectores corruptos, dmesg limpio**, ~130 MB/s escritura / ~275 MB/s lectura. Como almacenamiento funciona de fábrica. **El sistema de ficheros raíz en NVMe aún no está montado** (`nvme` es módulo y las imágenes no llevan initramfs — en la lista) |
+| **PCIe / M.2 NVMe** (RC DesignWare + PHY combo Innosilicon) | ✅ **validado con discos reales por dos testers**: un KIOXIA KBG40ZNV256G y un SSD Intel de la serie 760p, ambos con el driver `nvme`, con pruebas de integridad `f3` sobre los **256 GB completos (varias pasadas)** y 50 GB — **0 sectores corruptos, dmesg limpio**, ~130 MB/s escritura / ~275 MB/s lectura. Como almacenamiento funciona de fábrica. Desde la v0.5 el driver `nvme` va **integrado en el kernel**, así que se puede arrancar desde la SD con el **sistema de ficheros raíz en el NVMe** (`root=` apuntando a la partición del NVMe, sin initramfs). Esa configuración aún no se ha probado con un disco real: se agradecen informes |
 
 **Decodificación de vídeo por hardware (VPU) — parcialmente funcionando, la parte
 de kernel incluida.** Este árbol trae el shim `cedar-ve` con su nodo de
@@ -64,9 +63,10 @@ estos parches, el userspace lo pones tú. La **variante de 4 GB está confirmada
 funcionando** (probada por **JamesCL** — ¡gracias! — que también confirmó la
 eMMC; el bootloader auto-detecta el tamaño de RAM).
 
-## Notas de la imagen (Debian 13)
+## Notas de las imágenes
 
-Decisiones tomadas en la imagen distribuida (no son parches del kernel):
+Decisiones tomadas en las imágenes distribuidas (no son parches del kernel). La
+mayoría valen para las cuatro; las propias de GNOME van marcadas.
 
 - **El primer arranque redimensiona el rootfs** para llenar la microSD y regenera
   las host keys de SSH — por eso el primer arranque tarda algo más. No cortes la
@@ -74,36 +74,49 @@ Decisiones tomadas en la imagen distribuida (no son parches del kernel):
 - **SSH activado desde el primer arranque**; usuario/contraseña `user` / `user`.
   **Cambia la contraseña de inmediato** (`passwd`) — una contraseña por defecto
   en un dispositivo en red es como acaban las placas en botnets.
-- **zram de 1 GB activado de serie; swapfile en SD opcional.** El zram (zstd)
-  es un intercambio comprimido en RAM: mantiene el escritorio ágil cuando un
-  navegador llena la RAM de la placa de 2 GB, no toca la SD y no cuesta casi
-  nada mientras no se usa. Se desactiva con `systemctl disable --now
-  zram-swap.service`. Para colchón extra, el script `add-swapfile.sh` de la
-  carpeta home añade un swapfile opcional de 1 GB en la SD, usado solo como
-  desbordamiento.
-- **Sesión Wayland** — el escritorio es **GNOME sobre Wayland**. No se incluye
-  sesión **X11**: Panfrost da su mejor aceleración bajo Wayland, y el vídeo por
-  hardware en el navegador en concreto lo necesita.
-- **Escritorio pensado para todos** — GNOME viene con una **barra de tareas**
+- **zram de 1 GB activado de serie; swapfile en SD opcional.** El zram es un
+  intercambio comprimido en RAM: mantiene el escritorio ágil cuando un navegador
+  llena la RAM de la placa de 2 GB, no toca la SD y no cuesta casi nada mientras
+  no se usa. Usa **lzo-rle**, el compresor más rápido del kernel medido en esta
+  placa. Puedes verlo trabajar con `sudo zramctl`; se desactiva con
+  `systemctl disable --now zram-swap.service`. Para colchón extra, el script
+  `add-swapfile.sh` de la carpeta home añade un swapfile opcional de 1 GB en la
+  SD, usado solo como desbordamiento.
+- **`/tmp` está en la SD, no en la RAM**, para que no compita con tus
+  aplicaciones por los 2 GB.
+- **Sesiones Wayland.** GNOME y Kubuntu van solo sobre **Wayland**: Panfrost da
+  su mejor aceleración ahí, y el vídeo por hardware en el navegador en concreto
+  lo necesita. Cinnamon arranca en su sesión Wayland (experimental) y trae
+  también la sesión X11 como respaldo.
+- **Paquetes parcheados y fijados en las imágenes Ubuntu.** Kubuntu y Cinnamon
+  llevan un Xwayland parcheado (el 24.1.10 de Ubuntu se cae) y Cinnamon un Muffin
+  parcheado (sin él, las aplicaciones Wayland van por software). Los dos están
+  fijados para que una actualización de Ubuntu sin el arreglo no devuelva el
+  fallo. Detalles y fuentes en [userspace-patches/](userspace-patches/).
+- **Escritorio pensado para todos** (GNOME) — GNOME viene con una **barra de tareas**
   (Dash to Panel), soltura de bandeja del sistema / app-indicator y botones de
   minimizar/maximizar en las ventanas, todo activado por defecto para que el
   escritorio se comporte como la mayoría espera. Son extensiones estándar de
   GNOME — desactiva cualquiera desde la app *Extensiones* si prefieres el GNOME
   de serie.
-- **Indexador de ficheros (Tracker) desactivado** — el indexador del `$HOME` de
+- **Indexador de ficheros (Tracker) desactivado** (GNOME) — el indexador del `$HOME` de
   GNOME va apagado: consume RAM que en la placa de 2 GB hace falta. Reactívalo si
   tienes la variante de 4 GB y quieres búsquedas más rápidas dentro de ficheros.
-- **Tienda de software quitada** — GNOME Software no está instalada; solo sondear
+- **Tienda de software quitada** (GNOME) — GNOME Software no está instalada; solo sondear
   actualizaciones le cuesta >150 MB de RAM. Las actualizaciones van por `apt`
   (ver la nota del pin del kernel más abajo).
-- **Ahorro de energía / suspensión desactivados (a propósito, de momento)** — la
-  suspensión automática *y* el apagado de pantalla por inactividad van los dos
-  apagados por defecto. En este SoC la ruta de *resume* de mainline aún necesita
-  pulido: el sistema no siempre vuelve una vez que la pantalla se ha apagado. Por
-  eso la placa se mantiene despierta y la pantalla encendida, antes que arriesgar
-  una sesión que no puedas despertar. Se reactivará cuando el *resume* esté
-  sólido; mientras tanto puedes volver a activar la suspensión, o poner un tiempo
-  de apagado de pantalla, en *Configuración → Energía*.
+- **Suspensión desactivada en todas las imágenes (a propósito, de momento).** En
+  mainline el A523 todavía no despierta de la suspensión: la placa se cuelga del
+  todo (ni el LED de latido) hasta quitarle la corriente. KDE Plasma y Cinnamon
+  suspenden solos tras un rato sin uso, así que la suspensión y la hibernación
+  están desactivadas en todo el sistema (los targets de reposo están enmascarados
+  y logind responde `CanSuspend=no`) y los escritorios ya no las ofrecen. Apagar
+  solo la **pantalla** por inactividad no da problemas: en Kubuntu se apaga y
+  vuelve sin fallos. GNOME deja la pantalla encendida por defecto. Se reactivará
+  cuando el *resume* funcione.
+- **Ahorro de energía del WiFi desactivado.** Con él activo, el WiFi integrado
+  (AP6256) podía perder la conexión unos segundos de vez en cuando, lo bastante
+  para cortar una sesión SSH.
 - **La salida de audio sigue a lo conectado** — un pequeño servicio de usuario
   (`aureal-audio-autoswitch`) mueve el sink por defecto al jack de auriculares de
   3,5 mm al enchufarlos, y de vuelta al HDMI al quitarlos. Los auriculares
@@ -116,25 +129,31 @@ Decisiones tomadas en la imagen distribuida (no son parches del kernel):
 
 Es trabajo de tiempo libre, así que sin fechas prometidas — pero a la vista:
 
-- ~~Actualización del kernel~~ **hecha**: las imágenes pasaron a **6.18.44** en
-  la v0.4 (arreglos de seguridad y estabilidad por todo el árbol, más mejoras
-  específicas del A523 como un mejor manejo de las interrupciones de GPIO). La
-  siguiente tarea del repo es publicar la **serie de parches actualizada** de
-  ese kernel — la serie de aquí aún refleja la v0.3 (6.18.38).
-- Siguen en pie los flecos de hardware de arriba: **raíz en NVMe** (necesita
-  `nvme` built-in o un initramfs), una **guía de instalación en eMMC**, y la captura de line-out /
-  micrófono.
+- ~~Serie de parches actualizada~~ **hecha** en la v0.5: la serie de aquí es
+  exactamente el kernel que llevan las imágenes.
+- **Suspensión / reanudación**: averiguar por qué el A523 no vuelve de la
+  suspensión (entra en el estado `deep` a través del firmware y no regresa).
+- Retirar los parches locales que upstream ya ha sustituido (el arreglo del
+  withstand del PIO ya existe en mainline de otra forma), tras volver a
+  validarlo en la placa.
+- Siguen en pie los flecos de hardware de arriba: una configuración probada de
+  **raíz en NVMe** (el driver ya va integrado), una **guía de instalación en
+  eMMC**, y la captura de line-out / micrófono.
 
 ## Contenido
 
-- `patches/` — serie `git format-patch` (0001–0130).
-- `opi4a_blindboot_defconfig` — para `arch/arm64/configs/`.
+- `patches/` — serie `git format-patch` (0001–0143).
+- `opi4a_blindboot_defconfig` — para `arch/arm64/configs/`: exactamente la
+  configuración con la que se compilaron las imágenes v0.5 (el último parche de
+  la serie instala el mismo fichero).
 - `sun55i-t527-orangepi-4a.dts` — device-tree de la placa.
+- `userspace-patches/` — los parches de Xwayland y Muffin que llevan las
+  imágenes Ubuntu (no son parches del kernel).
 
 ## Aplicar
 
 ```sh
-cd linux-6.18.38            # 6.18.38 vanilla
+cd linux-6.18.55            # 6.18.55 vanilla
 git am /ruta/share-orangepi-4a/patches/0*.patch
 cp /ruta/opi4a_blindboot_defconfig arch/arm64/configs/
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- opi4a_blindboot_defconfig
@@ -147,13 +166,16 @@ Los parches no son homogéneos. Si vas a integrar/reenviar, esta es la
 clasificación por dónde tiene sentido cada grupo:
 
 ### 1. Fixes genéricos del SoC → **linux-sunxi / mainline** (no específicos de placa)
-- `pinctrl: sun55i-a523: withstand de bancos PIO desde la detección hw`
-- `pinctrl: sunxi: polaridad invertida de POW_MOD_SEL en A523/T527`
-- `watchdog: sunxi_wdt: prioridad de restart 200 (gana a PSCI)`
-- `mfd: axp20x: poweroff del AXP717 (rango OFF_CTRL no writeable)`
+- `pinctrl: sun55i-a523: program the PIO bank withstand mode from the hardware
+  detection` (mainline ya tiene su propio arreglo de la polaridad invertida, de
+  Andre Przywara; este está pendiente de retirar)
+- `watchdog: sunxi_wdt: per-variant restart priority, 200 on the A523`
+- `mfd: axp20x: power off the AXP717 through SOFT_PWROFF (0x27)`
 - **Bug**: `RESET_GPIO` rompe `mmc-pwrseq-simple` con `#gpio-cells=3` — afecta a
-  **cualquier** placa sunxi con WiFi SDIO. Aquí está como `config=n`; el fix real
-  va al driver, upstream.
+  **cualquier** placa sunxi con WiFi SDIO. Aquí está como `config=n`. Ya lo
+  reportaron otros en upstream
+  ([propuesta de arreglo](https://lkml.iu.edu/2602.2/06168.html),
+  [RFC](https://ratatoskr.run/lkml/2026/04/3526967/t)); sigue abierto.
 
 ### 2. Display KMS del A523/H616 (drm/sun4i, iommu/sun50i, clk sunxi-ng)
 Serie de bring-up del pipeline HDMI. Buena parte parte del trabajo de la
@@ -166,7 +188,7 @@ CCU de CPU del A523 (clk sunxi-ng, portado del BSP `ccu-sun55iw3-displl.c`),
 THS del A523 (thermal sun8i, variante propia con calibración de 4 sensores),
 tablas OPP de CPU/GPU y cooling-maps. cpufreq (little hasta 1.416 GHz, big
 hasta 1.8 GHz) + devfreq de
-GPU 150–600 MHz, ambos como cooling devices.
+GPU 150–696 MHz, ambos como cooling devices.
 
 ### 3. Workarounds del **U-Boot BSP** (NO enviar upstream)
 Muletas para arrancar bajo el U-Boot propietario del BSP (no rellena `/memory`,
@@ -199,6 +221,10 @@ por contrato en Linux embebido (bring-up de placas, drivers, mainline) —
 - Controlador PCIe + PHY combo Innosilicon: de la serie de **Armbian** de
   **Marvin Wewer** (aquí portada a 6.18, con un fix de 1 lane sacado del BSP y
   el cableado de device-tree de esta placa) — su autoría se conserva en los parches.
+- Arreglos de espacio de usuario de las imágenes Ubuntu: el de Xwayland es de
+  **Olivier Fourdan** (xserver upstream); el trabajo de `wl_drm` y dma-buf v4 de
+  Muffin es del Muffin upstream (**Clement Lefebvre**, **Michael Webster**),
+  aquí portado a la versión 6.4 que trae Ubuntu.
 - El **divisor de la GPU por enmascarado de ciclos** se descubrió gracias a
   **Chen-Yu Tsai**, que señaló la semántica fraccional revisando un parche
   enviado a upstream.

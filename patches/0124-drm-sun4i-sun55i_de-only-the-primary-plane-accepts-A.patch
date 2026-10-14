@@ -1,0 +1,55 @@
+From 11d4139f2ae08e43c6b63a8bb675d8bd701cadea Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 19:10:56 +0200
+Subject: [PATCH 124/143] drm/sun4i: sun55i_de: only the primary plane accepts
+ AFBC modifiers
+
+The v35x overlay (LAY1..3) and cursor planes are registered with a
+LINEAR-only modifier list, but the plane's .format_mod_supported
+callback (shared with the primary) returns true for the supported AFBC
+modifier on every plane of an RCQ mixer.  drm_plane_has_format()
+consults the callback INSTEAD of the per-plane modifier list when it is
+set, so the atomic plane check accepted an AFBC framebuffer on the
+overlay/cursor planes even though only the primary's channel has the
+AFBD decoder wired: the staging code (sun55i_de_ovl_stage /
+sun55i_de_cursor_stage) then dropped the layer silently and the commit
+scanned out nothing where the plane should be.
+
+This also broke the atomic-reject contract the overlay planes rely on:
+an invalid configuration must fail atomic_check so the compositor falls
+back to GPU composition, never succeed and display wrong.
+
+Gate the AFBC path on the exact plane that feeds the AFBD (UI logical
+channel 1, layer 0).  The advertised IN_FORMATS blobs do not change
+(they are built from the per-plane modifier lists, which were already
+LINEAR-only for the overlay/cursor planes).
+
+Co-Authored-By: AI Agent
+---
+ drivers/gpu/drm/sun4i/sun8i_ui_layer.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+index fcff35e39..9af04eecf 100644
+--- a/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
++++ b/drivers/gpu/drm/sun4i/sun8i_ui_layer.c
+@@ -456,6 +456,15 @@ static bool sun8i_ui_layer_format_mod_supported(struct drm_plane *plane,
+ 		return true;
+ 	if (!layer->mixer || !layer->mixer->cfg->uses_rcq)
+ 		return false;
++	/*
++	 * Only the primary (channel 1 layer 0) feeds the AFBD; the LAY1..3
++	 * overlays and the cursor channel scan out LINEAR only.  This callback
++	 * overrides the per-plane modifier list in drm_plane_has_format(), so
++	 * without this check an AFBC fb on an overlay/cursor plane would pass
++	 * atomic_check and then be silently dropped by the staging code.
++	 */
++	if (layer->overlay != 0 || layer->channel != SUN55I_DE_OVL_UI_LOGIC_CHN)
++		return false;
+ 	return sun55i_de_afbc_mod_supported(format, modifier);
+ }
+ 
+-- 
+2.53.0
+

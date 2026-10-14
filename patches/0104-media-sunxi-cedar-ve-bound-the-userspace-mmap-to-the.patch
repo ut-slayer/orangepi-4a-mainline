@@ -1,0 +1,85 @@
+From 628cb5ddb7c6e8bee7d558a0a19ca512979316d3 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Tue, 21 Jul 2026 12:18:43 +0200
+Subject: [PATCH 104/143] media: sunxi: cedar-ve: bound the userspace mmap to
+ the VE register window
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+cedardev_mmap() hardcoded temp_pfn to MACC_REGS_BASE (0x01c0e000) and
+ignored vma->vm_pgoff, then mapped vma->vm_end - vma->vm_start bytes
+from that base.  Any process holding /dev/cedar_dev could therefore
+mmap a multi-MB window and gain MMIO access to the blocks adjacent to
+the VE (CSI, DE...) in the SoC address map.
+
+Bound the mapping to the VE register block as declared in the DTS
+(<0x01c0e000 0x1000>, 4 KiB) and reject non-zero vm_pgoff, since the
+driver ignores the offset entirely.
+
+The shim's userspace contract (libcedarc mmap of the VE register file)
+is unaffected -- it always maps exactly the 4 KiB register window at
+offset 0.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+---
+ .../media/platform/sunxi/cedar-ve/cedar_ve.c  | 31 ++++++++++++++++++-
+ 1 file changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+index 65db246d9..c6e04b1fb 100644
+--- a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
++++ b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+@@ -87,6 +87,14 @@ struct regulator *regu;
+ #endif
+ 
+ #define MACC_REGS_BASE		(0x01C0E000)
++/*
++ * Size of the VE register window that cedardev_mmap() exposes.  Matches the
++ * first reg entry of the video-engine node in sun55i-a523.dtsi
++ * (<0x01c0e000 0x1000>).  The mmap path used to map whatever size the user
++ * asked for, leaking a window into adjacent MMIO blocks (CSI, DE...) to any
++ * process holding /dev/cedar_dev.
++ */
++#define MACC_REGS_SIZE		(0x1000)
+ 
+ #ifndef CONFIG_OF
+ #define SUNXI_IRQ_VE		(90)
+@@ -2272,11 +2280,32 @@ static struct vm_operations_struct cedardev_remap_vm_ops = {
+ static int cedardev_mmap(struct file *filp, struct vm_area_struct *vma)
+ {
+ 	unsigned long temp_pfn;
++	unsigned long size = vma->vm_end - vma->vm_start;
+ 
+-	if (vma->vm_end - vma->vm_start == 0) {
++	if (size == 0) {
+ 		VE_LOGW("vma->vm_end is equal vma->vm_start : %lx\n", vma->vm_start);
+ 		return 0;
+ 	}
++	/*
++	 * The mmap is a fixed mapping of the VE register window at
++	 * MACC_REGS_BASE: pgoff is ignored (temp_pfn is hardcoded), so a
++	 * non-zero pgoff would map an address the driver never intended to
++	 * expose.  Reject it.
++	 */
++	if (vma->vm_pgoff != 0) {
++		VE_LOGW("non-zero vm_pgoff %lx not supported\n", vma->vm_pgoff);
++		return -EINVAL;
++	}
++	/*
++	 * Cap the mapping to the actual VE register block (MACC_REGS_SIZE,
++	 * 4 KiB per the DTS).  Without this a process could mmap a multi-MB
++	 * window and get MMIO of adjacent blocks (CSI, DE...) exposed.
++	 */
++	if (size > MACC_REGS_SIZE) {
++		VE_LOGW("mmap size %lu exceeds VE register block %lu\n",
++			size, (unsigned long)MACC_REGS_SIZE);
++		return -EINVAL;
++	}
+ 	if (vma->vm_pgoff > (~0UL >> PAGE_SHIFT)) {
+ 		VE_LOGW("the vma->vm_pgoff is %lx,it is large than the largest page number\n",
+ 			vma->vm_pgoff);
+-- 
+2.53.0
+

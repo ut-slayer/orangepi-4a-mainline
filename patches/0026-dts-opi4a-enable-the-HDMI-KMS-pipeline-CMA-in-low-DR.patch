@@ -1,0 +1,75 @@
+From b2fb49445ca29ede987f71b44da642110daff30a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 8 Jul 2026 18:09:42 +0200
+Subject: [PATCH 026/143] dts: opi4a: enable the HDMI KMS pipeline + CMA in low
+ DRAM
+
+Enable of &de/&hdmi + hdmi-connector (adapted from minimyth2 2903, which
+also covers the OPi 4A) merged by hand with our local dts (reserved-memory
+bl31+uboot_fb and the stage-A simple-framebuffer). 256MB CMA with explicit
+alloc-ranges in low DRAM: the DE DMA does not reach high addresses and the
+CMA here landed at ~0xb9e00000.
+---
+ .../dts/allwinner/sun55i-t527-orangepi-4a.dts | 48 +++++++++++++++++++
+ 1 file changed, 48 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index 2afd4cfed..ca2e27825 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -582,3 +582,51 @@ ext_rgmii_phy: ethernet-phy@1 {
+ 		reset-deassert-us = <150000>;
+ 	};
+ };
++
++/*
++ * ETAPA C display: pipeline KMS real (DE3.5 RCQ -> TCON-TV -> DW-HDMI+PHY Inno).
++ * Adaptation of the minimyth2 2903 enable to this dts (which already has
++ * reserved-memory with bl31+uboot_fb and the simpledrm boot framebuffer).
++ */
++/ {
++	hdmi-connector {
++		compatible = "hdmi-connector";
++		type = "a";
++
++		port {
++			hdmi_con_in: endpoint {
++				remote-endpoint = <&hdmi_out_con>;
++			};
++		};
++	};
++};
++
++/*
++ * The DE's DMA (scanout and RCQ pool) only reaches low DRAM; by default the
++ * CMA lands high (~0xb9e00000 here) and scanout would read zeros (black).
++ * Explicit alloc-ranges to force it low (the original patch relied
++ * on its own board's default placement).
++ */
++&{/reserved-memory} {
++	linux,cma {
++		compatible = "shared-dma-pool";
++		reusable;
++		size = <0x0 0x10000000>;
++		alloc-ranges = <0x0 0x40000000 0x0 0x30000000>;
++		linux,cma-default;
++	};
++};
++
++&de {
++	status = "okay";
++};
++
++&hdmi {
++	status = "okay";
++};
++
++&hdmi_out {
++	hdmi_out_con: endpoint {
++		remote-endpoint = <&hdmi_con_in>;
++	};
++};
+-- 
+2.53.0
+

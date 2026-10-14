@@ -1,0 +1,46 @@
+From f2780cab53c38b31a2b141ce28d4ed6a14027c05 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Wed, 29 Jul 2026 12:29:12 +0200
+Subject: [PATCH 133/143] arm64: dts: allwinner: t527-orangepi-4a: enable the
+ IR receiver
+
+The Orange Pi 4A has an IR receiver window on the board, wired to the
+SoC CIR input on PL11, served by the CIR instance in the RTC power
+domain.
+
+Enable that instance and mux its RX signal to PL11, following the
+X96Q Pro+ pattern from the upstream A523 CIR series.
+
+The wiring is confirmed by the vendor's Android 13 device tree for
+this exact board (s_irrx@7040000 status "okay" with PL11/"s_cir",
+irrx@2005000 disabled).  The vendor Linux BSP board file instead
+enables irrx@2005000 on PH19, but PH19's mux 2 is the CIR *output*
+per the BSP pinctrl table (cir_in lives on PI8 mux 3), so that
+combination cannot receive anything and looks like template rot.
+
+Co-Authored-By: AI Agent
+---
+ arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+index b91edba00..c8146f45c 100644
+--- a/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
++++ b/arch/arm64/boot/dts/allwinner/sun55i-t527-orangepi-4a.dts
+@@ -487,6 +487,12 @@ &pio {
+ 	vcc-pk-supply = <&reg_cldo1>;
+ };
+ 
++&r_ir {
++	pinctrl-names = "default";
++	pinctrl-0 = <&r_ir_rx_pin>;
++	status = "okay";
++};
++
+ &r_i2c0 {
+ 	status = "okay";
+ 
+-- 
+2.53.0
+

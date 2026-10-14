@@ -1,0 +1,57 @@
+From aca34d755111fe76576dc19e00e18df491a8d648 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Juan=20Manuel=20L=C3=B3pez=20Carrillo?=
+ <juanmanuellopezcarrillo@gmail.com>
+Date: Fri, 24 Jul 2026 19:25:30 +0200
+Subject: [PATCH 129/143] media: sunxi: cedar-ve: don't release proc_info lock
+ a caller never took
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ve_debug_proc_info.lock_proc is held across a pair of ioctls: it is taken
+by IOCTL_SET_PROC_INFO and released by IOCTL_COPY_PROC_INFO.  COPY_PROC_INFO
+unconditionally does mutex_unlock(&ve_debug_proc_info.lock_proc) on every
+exit path, even when the calling fd never issued a SET_PROC_INFO and thus
+never acquired the lock.
+
+A task that opens /dev/cedar_dev and calls IOCTL_COPY_PROC_INFO directly
+(CONFIG_DEBUG_FS enabled) therefore unlocks a mutex it does not own.  If
+another fd is mid-sequence holding lock_proc via SET_PROC_INFO, this clears
+that owner and lets a second writer into the shared ve_debug_proc_info
+critical section; with CONFIG_DEBUG_MUTEXES it trips the owner assertion.
+
+Gate the release on the fd actually holding VE_LOCK_PROC_INFO, mirroring the
+IOCTL_RELEASE_LOCK check.  The libcedarc contract always pairs SET_PROC_INFO
+and COPY_PROC_INFO on the same fd, so it is unaffected.
+
+Signed-off-by: Juan Manuel López Carrillo <juanmanuellopezcarrillo@gmail.com>
+Co-Authored-By: AI Agent
+---
+ drivers/media/platform/sunxi/cedar-ve/cedar_ve.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+index 37609820a..36296606e 100644
+--- a/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
++++ b/drivers/media/platform/sunxi/cedar-ve/cedar_ve.c
+@@ -1914,6 +1914,17 @@ static long compat_cedardev_ioctl(struct file *filp, unsigned int cmd, unsigned
+ 				if (cedar_devp->debug_root == NULL)
+ 					return 0;
+ 
++				/*
++				 * lock_proc is acquired by IOCTL_SET_PROC_INFO and
++				 * released here.  If this fd never issued a matching
++				 * SET_PROC_INFO it does not hold lock_proc, so bail out
++				 * before touching the shared state or unlocking a mutex
++				 * we do not own (which would corrupt another fd's
++				 * critical section).
++				 */
++				if (!(vi->lock_flags & lock_type))
++					return -EPERM;
++
+ 				mutex_lock(&vi->lock_flag_io);
+ 				vi->lock_flags &= (~lock_type);
+ 				mutex_unlock(&vi->lock_flag_io);
+-- 
+2.53.0
+
